@@ -5,6 +5,7 @@ import { MoreHorizontal, Trash2, Link as LinkIcon, AlertTriangle, X } from 'luci
 import { router } from '@inertiajs/react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const REPORT_REASONS = [
     { value: 'misleading', label: 'Misleading or scam' },
@@ -17,6 +18,7 @@ const REPORT_REASONS = [
 ];
 
 export default function PostManagementMenu({ post, isOwner, canReport = false }) {
+    const { copy } = useLocale();
     if (post?.is_deleted) {
         return null;
     }
@@ -60,7 +62,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
     }, [showReportModal]);
 
     const handleDelete = async () => {
-        if (!window.confirm('Una uhakika unataka kufuta chapisho hili? Hatua hii haiwezi kurudiwa.')) return;
+        if (!window.confirm(copy('Are you sure you want to delete this post? This action cannot be undone.', 'Una uhakika unataka kufuta chapisho hili? Hatua hii haiwezi kurudiwa.'))) return;
 
         setIsDeleting(true);
         try {
@@ -77,7 +79,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
             }
         } catch (error) {
             console.error('Failed to delete post:', error);
-            alert('Imeshindikana kufuta chapisho. Tafadhali jaribu tena.');
+            alert(copy('Could not delete the post. Please try again.', 'Imeshindikana kufuta chapisho. Tafadhali jaribu tena.'));
         } finally {
             setIsDeleting(false);
         }
@@ -88,7 +90,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
         const url = `${window.location.origin}/p/${postRouteKey}`;
         navigator.clipboard.writeText(url);
         setIsOpen(false);
-        toast.success('Link copied to clipboard!');
+        toast.success(copy('Link copied to clipboard.', 'Kiungo kimenakiliwa.'));
     };
 
     const openReportModal = () => {
@@ -99,7 +101,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
     const submitReport = async () => {
         const merchantId = post.merchant_id || post.merchant?.id;
         if (!merchantId) {
-            toast.error('Merchant taarifa haijapatikana.');
+            toast.error(copy('Merchant information was not found.', 'Taarifa za mfanyabiashara hazikupatikana.'));
             return;
         }
 
@@ -116,9 +118,9 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
             setShowReportModal(false);
             setReportReason('misleading');
             setReportNotes('');
-            toast.success('Report submitted.');
+            toast.success(copy('Report submitted.', 'Ripoti imetumwa.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kutuma report.');
+            toast.error(error.response?.data?.message || copy('Failed to submit report.', 'Imeshindikana kutuma ripoti.'));
         } finally {
             setIsReporting(false);
         }
@@ -152,7 +154,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
                                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-accent transition-colors text-foreground"
                                 >
                                     <LinkIcon className="h-4 w-4" />
-                                    Nakili Link
+                                    {copy('Copy link', 'Nakili kiungo')}
                                 </button>
 
                                 {canReport && !isOwner && (
@@ -161,7 +163,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
                                         className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-accent transition-colors text-foreground"
                                     >
                                         <AlertTriangle className="h-4 w-4" />
-                                        Report Content
+                                        {copy('Report content', 'Ripoti maudhui')}
                                     </button>
                                 )}
 
@@ -204,8 +206,8 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
                             >
                                 <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
                                     <div>
-                                        <h3 className="font-black text-sm uppercase tracking-wider">Report Content</h3>
-                                        <p className="mt-1 text-sm text-muted-foreground">Takeer will review this post.</p>
+                                            <h3 className="font-black text-sm uppercase tracking-wider">{copy('Report content', 'Ripoti maudhui')}</h3>
+                                            <p className="mt-1 text-sm text-muted-foreground">{copy('Takeer will review this post.', 'Takeer itakagua chapisho hili.')}</p>
                                     </div>
                                     <button
                                         type="button"
@@ -221,7 +223,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
                                             htmlFor={`post-report-reason-${post.id}`}
                                             className="block text-xs font-black uppercase tracking-wider text-muted-foreground"
                                         >
-                                            Reason
+                                            {copy('Reason', 'Sababu')}
                                         </label>
                                         <select
                                             id={`post-report-reason-${post.id}`}
@@ -241,14 +243,14 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
                                             htmlFor={`post-report-notes-${post.id}`}
                                             className="block text-xs font-black uppercase tracking-wider text-muted-foreground"
                                         >
-                                            Notes (Optional)
+                                            {copy('Notes (optional)', 'Dokezo (si lazima)')}
                                         </label>
                                         <textarea
                                             id={`post-report-notes-${post.id}`}
                                             value={reportNotes}
                                             onChange={(e) => setReportNotes(e.target.value)}
                                             className="w-full min-h-[96px] rounded-xl border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-                                            placeholder="Tell us more..."
+                                            placeholder={copy('Tell us more...', 'Tuambie zaidi...')}
                                             maxLength={2000}
                                         />
                                     </div>
@@ -258,7 +260,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
                                             onClick={() => setShowReportModal(false)}
                                             className="h-10 px-4 rounded-xl border border-border text-sm font-bold hover:bg-accent"
                                         >
-                                            Cancel
+                                            {copy('Cancel', 'Ghairi')}
                                         </button>
                                         <button
                                             type="button"
@@ -266,7 +268,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
                                             disabled={isReporting}
                                             className="h-10 px-4 rounded-xl bg-brand-600 text-white text-sm font-bold hover:bg-brand-700 disabled:opacity-60"
                                         >
-                                            {isReporting ? 'Submitting...' : 'Submit Report'}
+                                            {isReporting ? copy('Submitting...', 'Inatuma...') : copy('Submit report', 'Tuma ripoti')}
                                         </button>
                                     </div>
                                 </div>

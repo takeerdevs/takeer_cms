@@ -6,6 +6,7 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Pencil, Plus, Shapes, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const trustDocumentOptions = [
     { key: 'identity', label: 'KYC' },
@@ -46,6 +47,7 @@ const parseJsonField = (value, label) => {
 };
 
 export default function ServiceCategories() {
+    const { copy } = useLocale();
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [serviceTemplates, setServiceTemplates] = useState({});
@@ -65,7 +67,7 @@ export default function ServiceCategories() {
                 headers: { Accept: 'application/json' },
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.message || 'Failed to load service categories.');
+            if (!response.ok) throw new Error(data.message || copy('Failed to load service categories.', 'Imeshindikana kupakia kategoria za huduma.'));
             setCategories(data.data || []);
             setServiceTemplates(data.service_templates || {});
         } catch (error) {
@@ -87,7 +89,7 @@ export default function ServiceCategories() {
 
     const saveCategory = async () => {
         if (!form.name.trim()) {
-            toast.error('Category name is required.');
+            toast.error(copy('Category name is required.', 'Jina la kategoria linahitajika.'));
             return;
         }
 
@@ -118,8 +120,8 @@ export default function ServiceCategories() {
                 }),
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.message || 'Failed to save service category.');
-            toast.success(data.message || 'Saved.');
+            if (!response.ok) throw new Error(data.message || copy('Failed to save service category.', 'Imeshindikana kuhifadhi kategoria ya huduma.'));
+            toast.success(data.message || copy('Saved.', 'Imehifadhiwa.'));
             resetForm();
             await loadCategories();
         } catch (error) {
@@ -130,7 +132,7 @@ export default function ServiceCategories() {
     };
 
     const deleteCategory = async (category) => {
-        if (!window.confirm(`Delete "${category.name}"? Subcategories will become root categories.`)) return;
+        if (!window.confirm(`${copy('Delete', 'Futa')} "${category.name}"? ${copy('Subcategories will become root categories.', 'Kategoria ndogo zitakuwa kategoria kuu.')}`)) return;
 
         try {
             const response = await fetch(`/admin/api/service-categories/${category.id}`, {
@@ -141,8 +143,8 @@ export default function ServiceCategories() {
                 },
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.message || 'Failed to delete service category.');
-            toast.success(data.message || 'Deleted.');
+            if (!response.ok) throw new Error(data.message || copy('Failed to delete service category.', 'Imeshindikana kufuta kategoria ya huduma.'));
+            toast.success(data.message || copy('Deleted.', 'Imefutwa.'));
             await loadCategories();
         } catch (error) {
             toast.error(error.message);
@@ -208,34 +210,34 @@ export default function ServiceCategories() {
     const templateEntries = Object.entries(serviceTemplates || {});
 
     return (
-        <AdminLayout title="Service Categories">
-            <Head title="Service Categories | Takeer" />
+        <AdminLayout title={copy('Service categories', 'Kategoria za huduma')}>
+            <Head title={`${copy('Service categories', 'Kategoria za huduma')} | Takeer`} />
 
             <div className="space-y-6">
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                        <Shapes className="h-6 w-6 text-brand-700" /> Service Categories
+                        <Shapes className="h-6 w-6 text-brand-700" /> {copy('Service categories', 'Kategoria za huduma')}
                     </h1>
                     <p className="text-slate-600 mt-1 text-sm">
-                        Simple service taxonomy for discovery and service creation. No product facets, brands, models, or variant rules here.
+                        {copy('Simple service taxonomy for discovery and service creation. No product facets, brands, models, or variant rules here.', 'Muundo rahisi wa kategoria za huduma kwa ugunduzi na uundaji wa huduma. Hakuna sifa za bidhaa, chapa, modeli au kanuni za vibadala hapa.')}
                     </p>
                 </div>
 
                 <Card className="bg-white border-slate-200">
                     <CardContent className="p-4 space-y-3">
-                        <p className="font-bold text-slate-900">{editing ? `Edit ${editing.name}` : 'Create service category'}</p>
+                        <p className="font-bold text-slate-900">{editing ? `${copy('Edit', 'Hariri')} ${editing.name}` : copy('Create service category', 'Unda kategoria ya huduma')}</p>
                         <div className="grid md:grid-cols-5 gap-3">
                             <Input
                                 value={form.name}
                                 onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                                placeholder="Category or subcategory name"
+                                placeholder={copy('Category or subcategory name', 'Jina la kategoria au kategoria ndogo')}
                             />
                             <select
                                 className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
                                 value={form.parent_id}
                                 onChange={(event) => setForm((prev) => ({ ...prev, parent_id: event.target.value }))}
                             >
-                                <option value="">Parent (root)</option>
+                                <option value="">{copy('Parent (root)', 'Mzazi (kuu)')}</option>
                                 {parentOptions
                                     .filter((option) => !editing || option.id !== editing.id)
                                     .map((option) => (
@@ -247,7 +249,7 @@ export default function ServiceCategories() {
                                 min="0"
                                 value={form.sort_order}
                                 onChange={(event) => setForm((prev) => ({ ...prev, sort_order: event.target.value }))}
-                                placeholder="Sort order"
+                                placeholder={copy('Sort order', 'Mpangilio')}
                             />
                             <label className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm flex items-center gap-2">
                                 <input
@@ -255,20 +257,20 @@ export default function ServiceCategories() {
                                     checked={form.is_active}
                                     onChange={(event) => setForm((prev) => ({ ...prev, is_active: event.target.checked }))}
                                 />
-                                Active
+                                {copy('Active', 'Hai')}
                             </label>
                             <div className="flex gap-2">
                                 <Button className="bg-brand-600 hover:bg-brand-700 text-white flex-1" disabled={saving} onClick={saveCategory}>
                                     <Plus className="h-4 w-4 mr-2" />
-                                    {editing ? 'Save' : 'Add'}
+                                    {editing ? copy('Save', 'Hifadhi') : copy('Add', 'Ongeza')}
                                 </Button>
                                 {editing && (
-                                    <Button variant="outline" disabled={saving} onClick={resetForm}>Cancel</Button>
+                                    <Button variant="outline" disabled={saving} onClick={resetForm}>{copy('Cancel', 'Ghairi')}</Button>
                                 )}
                             </div>
                         </div>
                         <label className="block space-y-1">
-                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Service option template JSON</span>
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{copy('Service option template JSON', 'JSON ya kiolezo cha chaguo la huduma')}</span>
                             <textarea
                                 className="min-h-28 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-xs"
                                 value={form.option_template}
@@ -276,13 +278,13 @@ export default function ServiceCategories() {
                                 placeholder='{"label":"Room type","fields":{"capacity":true,"max_guests":true,"duration_minutes":false,"checkin_time":true,"checkout_time":true},"examples":["Standard Room","Deluxe Room"]}'
                             />
                             <p className="text-xs text-slate-500">
-                                Optional. Put this on subcategories to tailor service options/units in merchant service creation.
+                                {copy('Optional. Put this on subcategories to tailor service options/units in merchant service creation.', 'Si lazima. Weka kwenye kategoria ndogo ili kubinafsisha chaguo/vipimo vya huduma wakati wa kuunda huduma.')}
                             </p>
                         </label>
                         <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-3">
                             <div className="grid md:grid-cols-3 gap-3">
                                 <label className="space-y-1">
-                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Default workflow</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{copy('Default workflow', 'Mtiririko chaguo-msingi')}</span>
                                     <select
                                         className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
                                         value={form.service_template_key}
@@ -297,14 +299,14 @@ export default function ServiceCategories() {
                                             }));
                                         }}
                                     >
-                                        <option value="">Auto-detect / generic service</option>
+                                        <option value="">{copy('Auto-detect / generic service', 'Tambua kiotomatiki / huduma ya jumla')}</option>
                                         {templateEntries.map(([key, template]) => (
                                             <option key={key} value={key}>{template.label || key}</option>
                                         ))}
                                     </select>
                                 </label>
                                 <div className="md:col-span-2 space-y-1">
-                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Allowed workflows</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{copy('Allowed workflows', 'Mitririko inayoruhusiwa')}</span>
                                     <div className="flex flex-wrap gap-2">
                                         {templateEntries.map(([key, template]) => (
                                             <label key={key} className="rounded-full border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 flex items-center gap-2">
@@ -320,7 +322,7 @@ export default function ServiceCategories() {
                                 </div>
                             </div>
                             <label className="block space-y-1">
-                                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Template rule overrides JSON</span>
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{copy('Template rule overrides JSON', 'JSON ya kubadilisha kanuni za kiolezo')}</span>
                                 <textarea
                                     className="min-h-24 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-xs"
                                     value={form.template_rules}
@@ -328,27 +330,27 @@ export default function ServiceCategories() {
                                     placeholder='{"rental":{"required_documents":["identity","ownership_proof"],"rental_types":{"vehicle":{"required_documents":["identity","business_license","vehicle_registration","insurance"]}}}}'
                                 />
                                 <p className="text-xs text-blue-800">
-                                    Optional. Use this when a workflow under this category needs stricter documents or risk rules than the category default.
+                                    {copy('Optional. Use this when a workflow under this category needs stricter documents or risk rules than the category default.', 'Si lazima. Tumia ikiwa mtiririko chini ya kategoria hii unahitaji nyaraka au kanuni kali zaidi za hatari kuliko chaguo-msingi.')}
                                 </p>
                             </label>
                         </div>
                         <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
                             <div className="grid md:grid-cols-4 gap-3">
                                 <label className="space-y-1">
-                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Risk level</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{copy('Risk level', 'Kiwango cha hatari')}</span>
                                     <select
                                         className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
                                         value={form.risk_level}
                                         onChange={(event) => setForm((prev) => ({ ...prev, risk_level: event.target.value }))}
                                     >
-                                        <option value="standard">Standard</option>
-                                        <option value="elevated">Elevated</option>
-                                        <option value="regulated">Regulated</option>
-                                        <option value="restricted">Restricted</option>
+                                        <option value="standard">{copy('Standard', 'Kawaida')}</option>
+                                        <option value="elevated">{copy('Elevated', 'Juu')}</option>
+                                        <option value="regulated">{copy('Regulated', 'Inayodhibitiwa')}</option>
+                                        <option value="restricted">{copy('Restricted', 'Imezuiwa')}</option>
                                     </select>
                                 </label>
                                 <label className="space-y-1">
-                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Hold days</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{copy('Hold days', 'Siku za kushikilia')}</span>
                                     <Input
                                         type="number"
                                         min="0"
@@ -358,13 +360,13 @@ export default function ServiceCategories() {
                                     />
                                 </label>
                                 <label className="space-y-1">
-                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">First quote limit</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{copy('First quote limit', 'Kikomo cha bei ya kwanza')}</span>
                                     <Input
                                         type="number"
                                         min="0"
                                         value={form.max_first_quote_amount}
                                         onChange={(event) => setForm((prev) => ({ ...prev, max_first_quote_amount: event.target.value }))}
-                                        placeholder="Optional"
+                                        placeholder={copy('Optional', 'Si lazima')}
                                     />
                                 </label>
                                 <label className="h-10 self-end rounded-md border border-slate-300 bg-white px-3 text-sm flex items-center gap-2">
@@ -373,7 +375,7 @@ export default function ServiceCategories() {
                                         checked={form.requires_manual_review}
                                         onChange={(event) => setForm((prev) => ({ ...prev, requires_manual_review: event.target.checked }))}
                                     />
-                                    Manual review
+                                    {copy('Manual review', 'Ukaguzi wa mkono')}
                                 </label>
                             </div>
                             <div className="flex flex-wrap gap-2">
@@ -384,12 +386,12 @@ export default function ServiceCategories() {
                                             checked={(form.required_documents || []).includes(document.key)}
                                             onChange={() => toggleRequiredDocument(document.key)}
                                         />
-                                        {document.label}
+                                        {copy(document.label, document.key === 'business_license' ? 'Leseni ya biashara' : document.key === 'registration' ? 'Usajili' : document.key === 'professional_license' ? 'Leseni ya kitaaluma' : document.key === 'ownership_proof' ? 'Uthibitisho wa umiliki' : document.key === 'vehicle_registration' ? 'Usajili wa gari' : document.key === 'insurance' ? 'Bima' : document.key === 'operating_permit' ? 'Kibali cha uendeshaji' : document.label)}
                                     </label>
                                 ))}
                             </div>
                             <p className="text-xs text-amber-800">
-                                These controls decide whether a merchant can publish this service category and how long SafePay holds payout.
+                                {copy('These controls decide whether a merchant can publish this service category and which provider settlement rule applies.', 'Vidhibiti hivi huamua kama mfanyabiashara anaweza kuchapisha kategoria hii ya huduma na kanuni gani ya malipo ya mtoa huduma itatumika.')}
                             </p>
                         </div>
                     </CardContent>
@@ -397,11 +399,11 @@ export default function ServiceCategories() {
 
                 {loading ? (
                     <Card className="bg-white border-slate-200">
-                        <CardContent className="p-10 text-center text-slate-500">Loading service categories...</CardContent>
+                        <CardContent className="p-10 text-center text-slate-500">{copy('Loading service categories...', 'Inapakia kategoria za huduma...')}</CardContent>
                     </Card>
                 ) : categories.length === 0 ? (
                     <Card className="bg-white border-slate-200">
-                        <CardContent className="p-10 text-center text-slate-500">No service categories yet.</CardContent>
+                        <CardContent className="p-10 text-center text-slate-500">{copy('No service categories yet.', 'Hakuna kategoria za huduma bado.')}</CardContent>
                     </Card>
                 ) : (
                     <div className="grid lg:grid-cols-2 gap-4">
@@ -411,7 +413,7 @@ export default function ServiceCategories() {
                                     <CategoryRow category={category} onEdit={() => startEdit(category)} onDelete={() => deleteCategory(category)} />
                                     <div className="space-y-2 pl-4 border-l border-slate-200">
                                         {(category.children || []).length === 0 ? (
-                                            <p className="text-sm text-slate-500">No subcategories yet.</p>
+                                            <p className="text-sm text-slate-500">{copy('No subcategories yet.', 'Hakuna kategoria ndogo bado.')}</p>
                                         ) : category.children.map((child) => (
                                             <CategoryRow
                                                 key={child.id}
@@ -433,6 +435,7 @@ export default function ServiceCategories() {
 }
 
 function CategoryRow({ category, onEdit, onDelete, compact = false }) {
+    const { copy } = useLocale();
     return (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
             <div className="min-w-0">
@@ -440,13 +443,13 @@ function CategoryRow({ category, onEdit, onDelete, compact = false }) {
                     {category.name}
                 </p>
                 <p className="text-[11px] text-slate-500">
-                    /{category.slug} · sort {category.sort_order || 0} · {category.is_active ? 'active' : 'inactive'}{category.option_template ? ' · template' : ''}
+                    /{category.slug} · {copy('sort', 'mpangilio')} {category.sort_order || 0} · {category.is_active ? copy('active', 'hai') : copy('inactive', 'si hai')}{category.option_template ? ` · ${copy('template', 'kiolezo')}` : ''}
                 </p>
                 <p className="text-[11px] text-blue-700 font-bold">
-                    workflow {category.default_template_key || category.service_template_key || 'auto'} · allowed {(category.allowed_template_keys || []).join(', ') || 'default only'}
+                    {copy('workflow', 'mtiririko')} {category.default_template_key || category.service_template_key || 'auto'} · {copy('allowed', 'inayoruhusiwa')} {(category.allowed_template_keys || []).join(', ') || copy('default only', 'chaguo-msingi tu')}
                 </p>
                 <p className="text-[11px] text-amber-700 font-bold">
-                    {category.risk_level || 'standard'} · {(category.required_documents || []).join(', ') || 'no docs'} · hold {category.payout_hold_days ?? 3}d
+                    {category.risk_level || 'standard'} · {(category.required_documents || []).join(', ') || copy('no docs', 'hakuna nyaraka')} · {copy('provider review window', 'muda wa ukaguzi wa mtoa huduma')} {category.payout_hold_days ?? 3}d
                 </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">

@@ -18,16 +18,6 @@ class ReleaseExpiredOrders extends Command
     {
         $expiredOrders = \App\Models\Order::where('payment_status', 'pending')
             ->where('expires_at', '<', now())
-            ->where('is_inquiry', false) // Inquiries might have different rules, but usually they don't lock stock yet?
-            // Actually, CheckoutController decrements stock even for physical products if they are initiated.
-            ->get();
-
-        // Note: In CheckoutController, inquire() does NOT decrement stock. 
-        // But payInquiry() DOES decrement stock.
-        // So we should target any order that is pending AND has expired.
-        
-        $expiredOrders = \App\Models\Order::where('payment_status', 'pending')
-            ->where('expires_at', '<', now())
             ->get();
 
         if ($expiredOrders->isEmpty()) {
@@ -38,15 +28,21 @@ class ReleaseExpiredOrders extends Command
         foreach ($expiredOrders as $order) {
             \Illuminate\Support\Facades\DB::transaction(function () use ($order) {
                 $order->releaseInventory();
-                $order->update(['payment_status' => 'cancelled_expired']);
+                $order->update(['payment_status' => 'failed']);
                 
-                // Add a system message to the chat
-                \App\Models\Message::create([
-                    'order_id' => $order->id,
-                    'sender_id' => $order->merchant->user_id, // Merchant technically "releases" it
-                    'type' => 'system',
-                    'body' => 'Hifadhi (stock) ya agizo hili imeachiwa kwa sababu malipo hayakukamilika kwa wakati.',
-                ]);
+                if ($order->merchant?->user_id && $order->buyer_id) {
+                    \App\Models\Message::create([
+                        'order_id' => $order->id,
+                        'sender_id' => $order->merchant->user_id,
+                        'receiver_id' => $order->buyer_id,
+                        'type' => 'system',
+                        'body' => 'Hifadhi (stock) ya agizo hili imeachiwa kwa sababu malipo hayakukamilika kwa wakati.',
+                        'payload' => [
+                            'action_type' => 'order_payment_expired',
+                            'occurred_at' => now()->toISOString(),
+                        ],
+                    ]);
+                }
             });
 
             $this->info("Released inventory for Order #{$order->id}");

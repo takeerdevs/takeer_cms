@@ -43,6 +43,7 @@ import { cn } from '@/lib/utils';
 import { DeliveryFlowTimeline, DeliveryDirectionsButton, deliveryCurrentIndex, deliveryStepsFor } from '@/Components/DeliveryFlowTimeline';
 import { orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
+import { useLocale } from '@/lib/i18n';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -80,18 +81,18 @@ function maskPhone(value) {
     return `${digits.slice(0, 3)}...${digits.slice(-3)}`;
 }
 
-function typeMeta(kind) {
+function typeMeta(kind, translate = (english) => english) {
     const map = {
-        physical_product: { label: 'Physical Product', icon: ShoppingBag, cls: 'bg-amber-100 text-amber-700' },
-        physical_bundle: { label: 'Physical Bundle', icon: Boxes, cls: 'bg-amber-100 text-amber-700' },
-        bundle: { label: 'Bundle', icon: Boxes, cls: 'bg-sky-100 text-sky-700' },
-        offering_group: { label: 'Offering Group', icon: Layers, cls: 'bg-teal-100 text-teal-700' },
-        course_bundle: { label: 'Course Bundle', icon: BookOpenText, cls: 'bg-indigo-100 text-indigo-700' },
-        post_content: { label: 'Post Content', icon: BookOpenText, cls: 'bg-sky-100 text-sky-700' },
-        subscription_plan: { label: 'Membership', icon: Crown, cls: 'bg-violet-100 text-violet-700' },
-        digital_file: { label: 'Digital File', icon: Download, cls: 'bg-indigo-100 text-indigo-700' },
-        custom_work: { label: 'Custom Work', icon: FileUp, cls: 'bg-indigo-100 text-indigo-700' },
-        service_booking: { label: 'Service/Booking', icon: CalendarClock, cls: 'bg-emerald-100 text-emerald-700' },
+        physical_product: { label: translate('Physical Product', 'Bidhaa ya kimwili'), icon: ShoppingBag, cls: 'bg-amber-100 text-amber-700' },
+        physical_bundle: { label: translate('Physical Bundle', 'Kifurushi cha kimwili'), icon: Boxes, cls: 'bg-amber-100 text-amber-700' },
+        bundle: { label: translate('Bundle', 'Kifurushi'), icon: Boxes, cls: 'bg-sky-100 text-sky-700' },
+        offering_group: { label: translate('Offering Group', 'Kundi la ofa'), icon: Layers, cls: 'bg-teal-100 text-teal-700' },
+        course_bundle: { label: translate('Course Bundle', 'Kifurushi cha kozi'), icon: BookOpenText, cls: 'bg-indigo-100 text-indigo-700' },
+        post_content: { label: translate('Post Content', 'Maudhui ya chapisho'), icon: BookOpenText, cls: 'bg-sky-100 text-sky-700' },
+        subscription_plan: { label: translate('Membership', 'Uanachama'), icon: Crown, cls: 'bg-violet-100 text-violet-700' },
+        digital_file: { label: translate('Digital File', 'Faili ya kidijitali'), icon: Download, cls: 'bg-indigo-100 text-indigo-700' },
+        custom_work: { label: translate('Custom Work', 'Kazi maalum'), icon: FileUp, cls: 'bg-indigo-100 text-indigo-700' },
+        service_booking: { label: translate('Service/Booking', 'Huduma/Booking'), icon: CalendarClock, cls: 'bg-emerald-100 text-emerald-700' },
     };
 
     return map[kind] || map.post_content;
@@ -121,7 +122,7 @@ function fallbackMediaMeta(order) {
     };
 }
 
-function OfferingGroupLines({ lines = [], currency = 'TZS' }) {
+function OfferingGroupLines({ lines = [], currency = 'TZS', translate = (english) => english }) {
     if (!Array.isArray(lines) || lines.length === 0) return null;
 
     return (
@@ -136,21 +137,21 @@ function OfferingGroupLines({ lines = [], currency = 'TZS' }) {
                             <div className="flex min-w-0 items-start gap-3">
                                 <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50 text-slate-300">
                                     {line.image_url ? (
-                                        <img src={line.image_url} alt={line.title || 'Offering item'} className="h-full w-full object-cover" />
+                                        <img src={line.image_url} alt={line.title || translate('Offering item', 'Item ya ofa')} className="h-full w-full object-cover" />
                                     ) : (
                                         <ImageIcon className="h-5 w-5" />
                                     )}
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="break-words font-black text-slate-950">{line.title || 'Offering item'}</p>
+                                    <p className="break-words font-black text-slate-950">{line.title || translate('Offering item', 'Item ya ofa')}</p>
                                     <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                                        {line.section || 'Main'} · {String(line.role || 'optional').replace(/_/g, ' ')}
+                                        {line.section || translate('Main', 'Kuu')} · {String(line.role || translate('optional', 'hiari')).replace(/_/g, ' ')}
                                     </p>
                                 </div>
                             </div>
                             <div className="shrink-0 text-right">
                                 <p className="text-sm font-black text-brand-700">{formatMoney(line.line_total || 0, currency)}</p>
-                                <p className="text-[11px] font-bold text-muted-foreground">Qty {Number(line.quantity || 1).toLocaleString()}</p>
+                                <p className="text-[11px] font-bold text-muted-foreground">{translate('Qty', 'Idadi')} {Number(line.quantity || 1).toLocaleString()}</p>
                             </div>
                         </div>
 
@@ -158,7 +159,7 @@ function OfferingGroupLines({ lines = [], currency = 'TZS' }) {
                             <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Add-ons</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">{translate('Add-ons', 'Viongezi')}</p>
                                         <p className="mt-1 text-xs font-bold text-emerald-900">
                                             {addOns.map((addOn) => addOn.name).join(', ')}
                                         </p>
@@ -174,7 +175,7 @@ function OfferingGroupLines({ lines = [], currency = 'TZS' }) {
 
                         {Array.isArray(line.child_lines) && line.child_lines.length > 0 && (
                             <div className="mt-3 border-l-2 border-slate-100 pl-3">
-                                <OfferingGroupLines lines={line.child_lines} currency={currency} />
+                                <OfferingGroupLines lines={line.child_lines} currency={currency} translate={translate} />
                             </div>
                         )}
                     </div>
@@ -184,112 +185,106 @@ function OfferingGroupLines({ lines = [], currency = 'TZS' }) {
     );
 }
 
-function statusMeta(status, isEscrowOrder) {
+function statusMeta(status, translate = (english) => english) {
     const map = {
-        awaiting_merchant_confirmation: {
-            label: isEscrowOrder ? 'Mpya - Thibitisha' : 'Imelipwa',
-            cls: isEscrowOrder ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700',
-        },
-        escrow_locked: {
-            label: isEscrowOrder ? 'Pesa Ipo Escrow' : 'Imelipwa',
-            cls: isEscrowOrder ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700',
-        },
-        shipped: { label: 'Imesafirishwa', cls: 'bg-indigo-100 text-indigo-700' },
-        resolved_merchant_paid: { label: 'Imekamilika', cls: 'bg-emerald-100 text-emerald-700' },
-        disputed: { label: 'Mgogoro', cls: 'bg-red-100 text-red-700' },
-        refund_pending: { label: 'Refund Inasubiri Admin', cls: 'bg-amber-100 text-amber-700' },
-        resolved_buyer_refunded: { label: 'Mteja Amerudishiwa', cls: 'bg-slate-100 text-slate-700' },
+        pending_fulfillment: { label: translate('Paid - fulfillment required', 'Imelipwa - utimilishaji'), cls: 'bg-amber-100 text-amber-700' },
+        release_eligible: { label: translate('Ready for PSP payout', 'Tayari kwa PSP payout'), cls: 'bg-sky-100 text-sky-700' },
+        payout_processing: { label: translate('PSP payout processing', 'PSP payout inachakatwa'), cls: 'bg-indigo-100 text-indigo-700' },
+        paid_out: { label: translate('Completed', 'Imekamilika'), cls: 'bg-emerald-100 text-emerald-700' },
+        disputed: { label: translate('Disputed', 'Mgogoro'), cls: 'bg-red-100 text-red-700' },
+        refund_pending: { label: translate('Refund pending admin review', 'Refund inasubiri admin'), cls: 'bg-amber-100 text-amber-700' },
+        refunded: { label: translate('Buyer refunded', 'Mteja amerudishiwa'), cls: 'bg-slate-100 text-slate-700' },
     };
 
-    return map[status] || { label: status || 'Unknown', cls: 'bg-muted text-muted-foreground' };
+    return map[status] || { label: status || translate('Unknown', 'Haijulikani'), cls: 'bg-muted text-muted-foreground' };
 }
 
-function deliveryMethodLabel(delivery) {
+function deliveryMethodLabel(delivery, translate = (english) => english) {
     const type = delivery?.delivery_type || delivery?.type || '';
-    if (type === 'self_pickup') return 'SELF PICKUP';
-    if (type === 'forwarder') return 'FORWARDER DROP-OFF';
-    if (type === 'local_boda') return 'LOCAL DELIVERY';
-    if (type === 'intercity_bus') return 'INTERCITY BUS';
-    return type ? type.replaceAll('_', ' ').toUpperCase() : 'STANDARD';
+    if (type === 'self_pickup') return translate('SELF PICKUP', 'KUCHUKUA');
+    if (type === 'forwarder') return translate('FORWARDER DROP-OFF', 'FORWARDER DROP-OFF');
+    if (type === 'local_boda') return translate('LOCAL DELIVERY', 'DELIVERY YA KARIBU');
+    if (type === 'intercity_bus') return translate('INTERCITY BUS', 'BASI LA MKOA');
+    return type ? type.replaceAll('_', ' ').toUpperCase() : translate('STANDARD', 'KAWAIDA');
 }
 
-function deliveryStatusLabel(delivery) {
+function deliveryStatusLabel(delivery, translate = (english) => english) {
     const type = delivery?.delivery_type || delivery?.type || '';
     const status = delivery?.delivery_status || delivery?.status || '';
     if (type === 'self_pickup' && ['awaiting_boda', 'inquiry', 'awaiting_pickup'].includes(status)) {
-        return deliveryStatusText('awaiting_pickup');
+        return deliveryStatusText('awaiting_pickup', translate);
     }
     if (type === 'forwarder' && status === 'inquiry') {
-        return 'Awaiting dispatch to forwarder';
+        return translate('Awaiting dispatch to forwarder', 'Inasubiri kupelekwa kwa forwarder');
     }
     if (type === 'forwarder' && status === 'ready_at_terminal') {
-        return 'Received by forwarder';
+        return translate('Received by forwarder', 'Imepokelewa na forwarder');
     }
     if (type === 'forwarder' && status === 'customer_confirmed') {
-        return 'Handoff verified by buyer';
+        return translate('Handoff verified by buyer', 'Makabidhiano yamethibitishwa na mteja');
     }
-    return deliveryStatusText(status);
+    return deliveryStatusText(status, translate);
 }
 
-function deliveryStatusText(status) {
+function deliveryStatusText(status, translate = (english) => english) {
     const map = {
-        inquiry: 'Inquiry',
-        packing: 'Packing order',
-        ready_for_pickup: 'Ready for pickup',
-        awaiting_boda: 'Awaiting delivery',
-        awaiting_pickup: 'Awaiting pickup',
-        dispatched: 'Dispatched',
-        with_boda: 'With delivery rider',
-        in_transit: 'In transit',
-        arrived: 'Arrived at customer area',
-        ready_at_terminal: 'Ready at terminal',
-        delivered: 'Delivered',
-        issue_reported: 'Issue reported',
-        disputed: 'Disputed',
-        customer_confirmed: 'Customer confirmed',
+        inquiry: translate('Inquiry', 'Inquiry'),
+        packing: translate('Packing order', 'Kuandaa order'),
+        ready_for_pickup: translate('Ready for pickup', 'Tayari kuchukuliwa'),
+        awaiting_boda: translate('Awaiting delivery', 'Inasubiri delivery'),
+        awaiting_pickup: translate('Awaiting pickup', 'Inasubiri kuchukuliwa'),
+        dispatched: translate('Dispatched', 'Imetumwa'),
+        with_boda: translate('With delivery rider', 'Iko kwa dereva wa delivery'),
+        in_transit: translate('In transit', 'Iko njiani'),
+        arrived: translate('Arrived at customer area', 'Imefika eneo la mteja'),
+        ready_at_terminal: translate('Ready at terminal', 'Tayari kituoni'),
+        delivered: translate('Delivered', 'Imefikishwa'),
+        issue_reported: translate('Issue reported', 'Tatizo limeripotiwa'),
+        disputed: translate('Disputed', 'Mgogoro'),
+        customer_confirmed: translate('Customer confirmed', 'Mteja amethibitisha'),
     };
 
-    return map[status] || (status ? status.replaceAll('_', ' ') : 'N/A');
+    return map[status] || (status ? status.replaceAll('_', ' ') : translate('N/A', 'Haipo'));
 }
 
-function deliveryStatusOptions(delivery) {
+function deliveryStatusOptions(delivery, translate = (english) => english) {
     const type = delivery?.delivery_type || delivery?.type || '';
     if (type === 'self_pickup') {
         return [
-            { value: 'ready_for_pickup', label: 'Ready for pickup' },
-            { value: 'issue_reported', label: 'Issue reported' },
+            { value: 'ready_for_pickup', label: translate('Ready for pickup', 'Tayari kuchukuliwa') },
+            { value: 'issue_reported', label: translate('Issue reported', 'Tatizo limeripotiwa') },
         ];
     }
     if (type === 'intercity_bus') {
         return [
-            { value: 'packing', label: 'Packing order' },
-            { value: 'with_boda', label: 'Dispatched to bus' },
-            { value: 'in_transit', label: 'In transit' },
-            { value: 'ready_at_terminal', label: 'Ready at terminal (Bus Terminal)' },
-            { value: 'delivered', label: 'Delivered' },
-            { value: 'issue_reported', label: 'Issue reported' },
+            { value: 'packing', label: translate('Packing order', 'Kuandaa order') },
+            { value: 'with_boda', label: translate('Dispatched to bus', 'Imetumwa kwenye basi') },
+            { value: 'in_transit', label: translate('In transit', 'Iko njiani') },
+            { value: 'ready_at_terminal', label: translate('Ready at terminal (Bus Terminal)', 'Tayari kituo cha basi') },
+            { value: 'delivered', label: translate('Delivered', 'Imefikishwa') },
+            { value: 'issue_reported', label: translate('Issue reported', 'Tatizo limeripotiwa') },
         ];
     }
     if (type === 'forwarder') {
         return [
-            { value: 'packing', label: 'Packing order' },
-            { value: 'with_boda', label: 'Dispatched to forwarder' },
-            { value: 'ready_at_terminal', label: 'Received by forwarder' },
-            { value: 'issue_reported', label: 'Issue reported' },
+            { value: 'packing', label: translate('Packing order', 'Kuandaa order') },
+            { value: 'with_boda', label: translate('Dispatched to forwarder', 'Imetumwa kwa forwarder') },
+            { value: 'ready_at_terminal', label: translate('Received by forwarder', 'Imepokelewa na forwarder') },
+            { value: 'issue_reported', label: translate('Issue reported', 'Tatizo limeripotiwa') },
         ];
     }
     return [
-        { value: 'packing', label: 'Packing order' },
-        { value: 'with_boda', label: 'With delivery rider' },
-        { value: 'in_transit', label: 'In transit' },
-        { value: 'arrived', label: 'Arrived at customer area' },
-        { value: 'delivered', label: 'Delivered' },
-        { value: 'issue_reported', label: 'Issue reported' },
+        { value: 'packing', label: translate('Packing order', 'Kuandaa order') },
+        { value: 'with_boda', label: translate('With delivery rider', 'Iko kwa dereva wa delivery') },
+        { value: 'in_transit', label: translate('In transit', 'Iko njiani') },
+        { value: 'arrived', label: translate('Arrived at customer area', 'Imefika eneo la mteja') },
+        { value: 'delivered', label: translate('Delivered', 'Imefikishwa') },
+        { value: 'issue_reported', label: translate('Issue reported', 'Tatizo limeripotiwa') },
     ];
 }
 
-function availableDeliveryStatusOptions(delivery) {
-    const options = deliveryStatusOptions(delivery);
+function availableDeliveryStatusOptions(delivery, translate = (english) => english) {
+    const options = deliveryStatusOptions(delivery, translate);
     const type = delivery?.delivery_type || delivery?.type || '';
 
     if (type === 'self_pickup') return options;
@@ -333,10 +328,10 @@ function googleRouteUrl(origin, destination) {
     return null;
 }
 
-function paymentOverview(order) {
+function paymentOverview(order, translate = (english) => english) {
     const total = Number(order?.order_total_with_additions ?? order?.total_paid ?? 0);
     const explicitPaid = order?.amount_paid ?? order?.paid_amount ?? null;
-    const paidStatuses = ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed', 'resolved_merchant_paid'];
+    const paidStatuses = ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'payout_processing', 'disputed', 'paid_out'];
     const paid = explicitPaid !== null
         ? Number(explicitPaid || 0)
         : (paidStatuses.includes(order?.payment_status) ? total : 0);
@@ -346,10 +341,10 @@ function paymentOverview(order) {
 
     if (isComplete) {
         return {
-            label: order?.payment_status === 'resolved_merchant_paid' ? 'Completed' : 'Paid',
-            body: order?.payment_status === 'resolved_merchant_paid'
-                ? 'Payment has been released to the merchant.'
-                : 'Payment is received and protected until fulfilment is completed.',
+            label: order?.payment_status === 'paid_out' ? translate('Completed', 'Imekamilika') : translate('Paid', 'Imelipwa'),
+            body: order?.payment_status === 'paid_out'
+                ? translate('The PSP confirmed seller payout.', 'PSP imethibitisha malipo ya muuzaji.')
+                : translate('The PSP confirmed payment; fulfilment must be completed before payout.', 'PSP imethibitisha malipo; utimilishaji ukamilike kabla ya payout.'),
             tone: 'border-emerald-100 bg-emerald-50 text-emerald-800',
             paid,
             left,
@@ -359,8 +354,8 @@ function paymentOverview(order) {
 
     if (isPartial) {
         return {
-            label: 'Partially paid',
-            body: 'Customer has paid part of the order. Do not release until the remaining amount is cleared.',
+            label: translate('Partially paid', 'Imelipwa kwa sehemu'),
+            body: translate('Customer has paid part of the order. Do not release until the remaining amount is cleared.', 'Mteja amelipa sehemu ya order. Usitoe mzigo hadi kiasi kilichobaki kilipwe.'),
             tone: 'border-amber-100 bg-amber-50 text-amber-800',
             paid,
             left,
@@ -369,8 +364,8 @@ function paymentOverview(order) {
     }
 
     return {
-        label: 'Not paid',
-        body: 'Payment has not been completed yet. Wait for payment before releasing goods or services.',
+        label: translate('Not paid', 'Haijalipwa'),
+        body: translate('Payment has not been completed yet. Wait for payment before releasing goods or services.', 'Malipo hayajakamilika. Subiri malipo kabla ya kutoa bidhaa au huduma.'),
         tone: 'border-red-100 bg-red-50 text-red-800',
         paid,
         left,
@@ -378,25 +373,25 @@ function paymentOverview(order) {
     };
 }
 
-function extraChargeStatusLabel(status, orderPaymentStatus = null) {
-    if (status === 'paid_held' && orderPaymentStatus === 'resolved_merchant_paid') {
-        return 'Released';
+function extraChargeStatusLabel(status, orderPaymentStatus = null, translate = (english) => english) {
+    if (status === 'paid_held' && orderPaymentStatus === 'paid_out') {
+        return translate('Released', 'Imetolewa');
     }
 
     return {
-        proposed: 'Proposed',
-        accepted: 'Accepted',
-        payment_pending: 'Payment started',
-        paid_held: 'Paid & held',
-        released: 'Released',
-        resolved_merchant_paid: 'Released',
-        escrow_locked: 'Paid & held',
-        awaiting_merchant_confirmation: 'Paid',
-    }[status] || String(status || 'Extra charge').replaceAll('_', ' ');
+        proposed: translate('Proposed', 'Imependekezwa'),
+        accepted: translate('Accepted', 'Imekubaliwa'),
+        payment_pending: translate('Payment started', 'Malipo yameanza'),
+        paid_held: translate('Paid & held', 'Imelipwa na kushikiliwa'),
+        released: translate('Released', 'Imetolewa'),
+        paid_out: translate('PSP payout confirmed', 'PSP imethibitisha payout'),
+        release_eligible: translate('Release eligible', 'Tayari kutolewa'),
+        pending_fulfillment: translate('Paid - fulfillment required', 'Imelipwa - inahitaji utimilishaji'),
+    }[status] || String(status || translate('Extra charge', 'Gharama ya ziada')).replaceAll('_', ' ');
 }
 
-function packageTitleForLabel(order) {
-    if (!order) return 'Takeer package';
+function packageTitleForLabel(order, translate = (english) => english) {
+    if (!order) return translate('Takeer package', 'Kifurushi cha Takeer');
 
     if (order.product?.title) return order.product.title;
 
@@ -409,45 +404,63 @@ function packageTitleForLabel(order) {
         ? order.offering_group_selection.lines.map((line) => line?.title).filter(Boolean)
         : [];
 
-    return groupTitles.join(', ') || 'Takeer package';
+    return groupTitles.join(', ') || translate('Takeer package', 'Kifurushi cha Takeer');
+}
+
+function orderStatusLabel(value, translate = (english) => english) {
+    const labels = {
+        pending_merchant_review: translate('Awaiting merchant review', 'Inasubiri ukaguzi wa muuzaji'),
+        approved: translate('Approved', 'Imekubaliwa'),
+        item_received: translate('Item received', 'Bidhaa imepokelewa'),
+        completed: translate('Completed', 'Imekamilika'),
+        escalated: translate('Escalated', 'Imepelekwa ngazi ya juu'),
+        open: translate('Open', 'Wazi'),
+        under_review: translate('Under review', 'Inakaguliwa'),
+        resolved: translate('Resolved', 'Imetatuliwa'),
+        rejected: translate('Rejected', 'Imekataliwa'),
+        cancelled: translate('Cancelled', 'Imeghairiwa'),
+        disputed: translate('Disputed', 'Ina mgogoro'),
+    };
+
+    return labels[value] || (value ? String(value).replaceAll('_', ' ') : translate('N/A', 'Haipo'));
 }
 
 function forwarderShipmentRef(order) {
     return order?.delivery?.forwarder_shipment_public_id || order?.public_id || order?.transaction_ref || `ORDER-${order?.id || ''}`;
 }
 
-function forwarderShippingLabelText(order) {
+function forwarderShippingLabelText(order, translate = (english) => english) {
     const ref = forwarderShipmentRef(order);
-    const address = order?.delivery?.physical_address || 'Forwarder warehouse address unavailable';
-    const buyerName = order?.buyer?.name || 'Customer';
-    const buyerPhone = order?.buyer?.phone_number || order?.account_phone || order?.payment_phone || 'Not provided';
-    const packageTitle = packageTitleForLabel(order);
+    const address = order?.delivery?.physical_address || translate('Forwarder warehouse address unavailable', 'Anwani ya ghala la forwarder haipatikani');
+    const buyerName = order?.buyer?.name || translate('Customer', 'Mteja');
+    const buyerPhone = order?.buyer?.phone_number || order?.account_phone || order?.payment_phone || translate('Not provided', 'Haijatolewa');
+    const packageTitle = packageTitleForLabel(order, translate);
     const qty = order?.requested_quantity || order?.quantity || 1;
 
     return [
-        `Recipient: Forwarder warehouse / Takeer ${ref}`,
-        `Takeer shipment ref: ${ref}`,
-        `Takeer order ref: ${order?.public_id || 'Not provided'}`,
-        `Customer: ${buyerName}`,
-        `Customer phone: ${buyerPhone}`,
-        `Package: ${packageTitle}`,
-        `Quantity: ${qty}`,
+        `${translate('Recipient', 'Mpokeaji')}: ${translate('Forwarder warehouse', 'Ghala la forwarder')} / Takeer ${ref}`,
+        `${translate('Takeer shipment ref', 'Ref ya shipment ya Takeer')}: ${ref}`,
+        `${translate('Takeer order ref', 'Ref ya order ya Takeer')}: ${order?.public_id || translate('Not provided', 'Haijatolewa')}`,
+        `${translate('Customer', 'Mteja')}: ${buyerName}`,
+        `${translate('Customer phone', 'Namba ya mteja')}: ${buyerPhone}`,
+        `${translate('Package', 'Kifurushi')}: ${packageTitle}`,
+        `${translate('Quantity', 'Idadi')}: ${qty}`,
         '',
-        'Warehouse address:',
+        `${translate('Warehouse address:', 'Anwani ya ghala:')}`,
         address,
         '',
-        'Instruction: Please write the Takeer shipment ref on the parcel or attach this label before handoff.',
+        `${translate('Instruction: Please write the Takeer shipment ref on the parcel or attach this label before handoff.', 'Maelekezo: Andika ref ya shipment ya Takeer kwenye kifurushi au ambatisha label hii kabla ya kukabidhi.')}`,
     ].join('\n');
 }
 
-function printForwarderShippingLabel(order) {
-    const text = forwarderShippingLabelText(order);
+function printForwarderShippingLabel(order, translate = (english) => english) {
+    const text = forwarderShippingLabelText(order, translate);
     const ref = forwarderShipmentRef(order);
     const lines = text.split('\n').map((line) => `<div>${escapeHtml(line) || '&nbsp;'}</div>`).join('');
     const popup = window.open('', '_blank', 'noopener,noreferrer,width=720,height=840');
 
     if (!popup) {
-        toast.error('Browser blocked the print window. Copy the label instead.');
+        toast.error(translate('Browser blocked the print window. Copy the label instead.', 'Browser imezuia dirisha la kuchapisha. Nakili label badala yake.'));
         return;
     }
 
@@ -469,10 +482,10 @@ function printForwarderShippingLabel(order) {
             </head>
             <body>
                 <div class="label">
-                    <div class="title">Takeer Forwarder Drop-off</div>
+                    <div class="title">${escapeHtml(translate('Takeer Forwarder Drop-off', 'Takeer kupeleka kwa forwarder'))}</div>
                     <div class="ref">${escapeHtml(ref)}</div>
                     <div class="body">${lines}</div>
-                    <div class="footer">Attach to package or show to domestic courier/warehouse receiver.</div>
+                    <div class="footer">${escapeHtml(translate('Attach to package or show to domestic courier/warehouse receiver.', 'Ambatisha kwenye kifurushi au onyesha kwa courier wa ndani/mpokeaji wa ghala.'))}</div>
                 </div>
                 <script>window.onload = () => { window.print(); };</script>
             </body>
@@ -491,17 +504,18 @@ function escapeHtml(value) {
 }
 
 function ForwarderShippingLabelTools({ order }) {
+    const { copy } = useLocale();
     if (!order?.delivery?.physical_address) return null;
 
     const ref = forwarderShipmentRef(order);
-    const labelText = forwarderShippingLabelText(order);
+    const labelText = forwarderShippingLabelText(order, copy);
 
     const copyLabel = async () => {
         try {
             await navigator.clipboard.writeText(labelText);
-            toast.success('Shipping label copied.');
+            toast.success(copy('Shipping label copied.', 'Label ya usafirishaji imenakiliwa.'));
         } catch (error) {
-            toast.error('Could not copy the label.');
+            toast.error(copy('Could not copy the label.', 'Imeshindwa kunakili label.'));
         }
     };
 
@@ -509,20 +523,20 @@ function ForwarderShippingLabelTools({ order }) {
         <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">Shipping label</p>
-                    <p className="mt-1 text-sm font-black text-slate-950">Takeer ref: {ref}</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">{copy('Shipping label', 'Label ya usafirishaji')}</p>
+                    <p className="mt-1 text-sm font-black text-slate-950">{copy('Takeer ref:', 'Ref ya Takeer:')} {ref}</p>
                     <p className="mt-1 text-xs font-bold leading-5 text-sky-900">
-                        Print or copy this label so the warehouse can identify the parcel when it arrives.
+                        {copy('Print or copy this label so the warehouse can identify the parcel when it arrives.', 'Chapisha au nakili label hii ili ghala litambue kifurushi kinapowasili.')}
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="outline" onClick={copyLabel} className="h-10 rounded-xl border-sky-200 bg-white text-xs font-black text-sky-700">
                         <Copy className="mr-2 h-4 w-4" />
-                        Copy Label
+                        {copy('Copy Label', 'Nakili label')}
                     </Button>
-                    <Button type="button" onClick={() => printForwarderShippingLabel(order)} className="h-10 rounded-xl text-xs font-black">
+                    <Button type="button" onClick={() => printForwarderShippingLabel(order, copy)} className="h-10 rounded-xl text-xs font-black">
                         <Printer className="mr-2 h-4 w-4" />
-                        Print Label
+                        {copy('Print Label', 'Chapisha label')}
                     </Button>
                 </div>
             </div>
@@ -534,6 +548,7 @@ function ForwarderShippingLabelTools({ order }) {
 }
 
 export default function MerchantOrderDetails({ merchantUsername, merchantName, orderId }) {
+    const { copy } = useLocale();
     const { can } = useMerchantPermissions(merchantUsername);
     const canDispatch = can('orders.dispatch');
     const canUpdateOrder = can('orders.update');
@@ -605,7 +620,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     }, [order?.shipping_fee, order?.unit_price, order?.agreement_snapshot]);
 
     useEffect(() => {
-        const options = availableDeliveryStatusOptions(order?.delivery);
+        const options = availableDeliveryStatusOptions(order?.delivery, copy);
         if (!options.some((option) => option.value === deliveryStatusInput)) {
             setDeliveryStatusInput(options[0]?.value || 'packing');
         }
@@ -617,15 +632,15 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             const res = await axios.get(`/merchant/${merchantUsername}/orders/${orderId}/api`);
             setOrder(res.data);
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kupakia order details.');
+            toast.error(error?.response?.data?.message || copy('Could not load order details.', 'Imeshindwa kupakia maelezo ya order.'));
         } finally {
             setLoading(false);
         }
     }
 
-    const kind = typeMeta(order?.display_kind);
-    const status = statusMeta(order?.payment_status, !!order?.is_escrow_order);
-    const paymentState = paymentOverview(order);
+    const kind = typeMeta(order?.display_kind, copy);
+    const status = statusMeta(order?.payment_status, copy);
+    const paymentState = paymentOverview(order, copy);
     const currencyCode = order?.merchant_currency_code || order?.merchant?.currency?.code || 'TZS';
     const extraChargeLines = useMemo(() => (
         Array.isArray(order?.extra_charges)
@@ -637,8 +652,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         const lines = [
             {
                 key: 'package',
-                label: 'Package cost',
-                description: order?.display_title || order?.product?.title || 'Main order package',
+                label: copy('Package cost', 'Gharama ya kifurushi'),
+                description: order?.display_title || order?.product?.title || copy('Main order package', 'Kifurushi kikuu cha order'),
                 amount: Number(order?.total_paid || 0),
                 status: order?.payment_status,
             },
@@ -648,8 +663,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             extraChargeLines.forEach((charge) => {
                 lines.push({
                     key: charge.id || charge.public_id,
-                    label: 'Extra charge',
-                    description: charge.description || charge.title || 'Extra charge agreed in chat',
+                    label: copy('Extra charge', 'Gharama ya ziada'),
+                    description: charge.description || charge.title || copy('Extra charge agreed in chat', 'Gharama ya ziada iliyokubaliwa kwenye chat'),
                     amount: Number(charge.amount || 0),
                     currency: charge.currency_code,
                     status: charge.status,
@@ -658,30 +673,30 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         } else if (extraChargeTotal > 0) {
             lines.push({
                 key: 'extra-charges-total',
-                label: 'Extra charges',
-                description: 'Extra charges agreed in chat',
+                label: copy('Extra charges', 'Gharama za ziada'),
+                description: copy('Extra charges agreed in chat', 'Gharama za ziada zilizokubaliwa kwenye chat'),
                 amount: extraChargeTotal,
                 status: 'paid_held',
             });
         }
 
         return lines;
-    }, [extraChargeLines, extraChargeTotal, order?.display_title, order?.payment_status, order?.product?.title, order?.total_paid]);
+    }, [extraChargeLines, extraChargeTotal, order?.display_title, order?.payment_status, order?.product?.title, order?.total_paid, copy]);
     const KindIcon = kind.icon;
 
     const flowCopy = useMemo(() => {
         if (!order) return '';
-        if (order.order_flow === 'escrow') {
-            if (['awaiting_merchant_confirmation', 'escrow_locked', 'disputed'].includes(order.payment_status)) {
-                return 'Hii ni order ya escrow: pesa hushikiliwa hadi hatua za utimilifu zikamilike.';
+        if (order.order_flow === 'fulfillment') {
+            if (['pending_fulfillment', 'release_eligible', 'disputed'].includes(order.payment_status)) {
+                return copy('PSP confirmed payment; payout follows fulfilment evidence.', 'PSP imethibitisha malipo; payout itafuata baada ya ushahidi wa utimilishaji.');
             }
-            if (order.payment_status === 'resolved_merchant_paid') {
-                return 'Escrow imekamilika: mteja amelipa, order imekabidhiwa, na fedha imeachiwa kwa muuzaji.';
+            if (order.payment_status === 'paid_out') {
+                return copy('PSP confirmed seller payout after the order was completed.', 'PSP imethibitisha payout ya muuzaji baada ya order kukamilika.');
             }
-            return 'Escrow bado haijakamilika kwa order hii.';
+            return copy('This order is still being fulfilled.', 'Utimilishaji wa order hii bado unaendelea.');
         }
-        return 'Hii ni order ya instant flow: malipo huwekwa settled mara moja.';
-    }, [order]);
+        return copy('This is an instant-flow order: payment is settled immediately.', 'Hii ni order ya instant flow: malipo huwekwa settled mara moja.');
+    }, [order, copy]);
 
     const merchantConfirmed = Boolean(order?.is_merchant_confirmed || order?.merchant_confirmed_at);
     const isForwarderOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'forwarder';
@@ -696,7 +711,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         && pickupDeadlinePassed
         && !order?.pickup_completed_at
         && !order?.pickup_no_show_marked_at
-        && !['resolved_merchant_paid', 'resolved_buyer_refunded'].includes(order?.payment_status);
+        && !['paid_out', 'refunded'].includes(order?.payment_status);
     const isPackingStatus = deliveryStatusInput === 'packing';
     const needsTransportEvidence = ['intercity_bus', 'forwarder'].includes(deliveryType)
         && ['with_boda', 'in_transit', 'ready_at_terminal'].includes(deliveryStatusInput);
@@ -726,7 +741,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     }, [order?.merchant?.locations, customerLocation?.latitude, customerLocation?.longitude]);
     const routeUrl = isForwarderOrder ? '' : googleRouteUrl(closestLocation, customerLocation);
     const routeShareText = routeUrl
-        ? `Delivery route: ${closestLocation?.name ? `${closestLocation.name} to ` : ''}${order?.delivery?.physical_address || 'customer location'} ${routeUrl}`
+        ? `${copy('Delivery route:', 'Njia ya delivery:')} ${closestLocation?.name ? `${closestLocation.name} ${copy('to', 'hadi')} ` : ''}${order?.delivery?.physical_address || copy('customer location', 'eneo la mteja')} ${routeUrl}`
         : '';
     const canEditShipping = canUpdateOrder
         && order?.is_inquiry
@@ -739,18 +754,17 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         && order?.payment_status === 'pending'
         && (canEditShipping || isB2BOrder);
     const isWaitingForShippingFee = canEditShipping && order?.shipping_fee === null;
-    const statusOptions = availableDeliveryStatusOptions(order?.delivery);
+    const statusOptions = availableDeliveryStatusOptions(order?.delivery, copy);
     const deliveryEvents = Array.isArray(order?.delivery?.events) ? order.delivery.events : [];
     const isForwarderHandoffComplete = isForwarderOrder
         && deliveryCurrentIndex(order?.delivery || {}) >= deliveryStepsFor('forwarder').length - 1;
     const canUpdateDeliveryStatus = !!order
-        && order.is_escrow_order
         && deliveryType !== 'self_pickup'
         && (canDispatch || canUpdateOrder)
-        && ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed'].includes(order.payment_status);
+        && ['pending_fulfillment', 'release_eligible', 'payout_processing', 'disputed'].includes(order.payment_status);
     const canConfirmPaidPickup = canUpdateOrder
         && order?.product?.type === 'physical'
-        && order?.payment_status === 'awaiting_merchant_confirmation'
+        && order?.payment_status === 'pending_fulfillment'
         && deliveryType === 'self_pickup'
         && !merchantConfirmed;
     const canConfirmUnpaidPickup = canUpdateOrder
@@ -791,14 +805,14 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             await axios.post(`/merchant/${merchantUsername}/orders/${orderId}/delivery-status`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            toast.success('Delivery status imehifadhiwa.');
+            toast.success(copy('Delivery status saved.', 'Hali ya delivery imehifadhiwa.'));
             setDeliveryStatusNote('');
             setDeliveryStatusProofs([]);
             setDeliveryCourierReceipt(null);
             setTrackingLink('');
             await loadOrder();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kuhifadhi delivery status.');
+            toast.error(error?.response?.data?.message || copy('Could not save delivery status.', 'Imeshindwa kuhifadhi hali ya delivery.'));
         } finally {
             setDeliveryStatusSubmitting(false);
         }
@@ -821,7 +835,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             });
 
             if (unique.length > 10) {
-                toast.error('Unaweza kuweka hadi media 10 kwa status moja.');
+                toast.error(copy('You can add up to 10 media files for one status.', 'Unaweza kuweka hadi media 10 kwa hali moja.'));
             }
 
             return unique.slice(0, 10);
@@ -844,13 +858,13 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             setRiderLinkExpiresAt(res.data.expires_at || null);
             if (res.data.url) {
                 await navigator.clipboard?.writeText(res.data.url);
-                toast.success('Rider link imetengenezwa na kunakiliwa.');
+                toast.success(copy('Rider link generated and copied.', 'Rider link imetengenezwa na kunakiliwa.'));
             } else {
-                toast.success('Rider link imetengenezwa.');
+                toast.success(copy('Rider link generated.', 'Rider link imetengenezwa.'));
             }
             await loadOrder();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kutengeneza rider link.');
+            toast.error(error?.response?.data?.message || copy('Could not generate rider link.', 'Imeshindwa kutengeneza rider link.'));
         } finally {
             setRiderLinkGenerating(false);
         }
@@ -860,9 +874,9 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         if (!riderLink) return;
         try {
             await navigator.clipboard.writeText(riderLink);
-            toast.success('Rider link imenakiliwa.');
+            toast.success(copy('Rider link copied.', 'Rider link imenakiliwa.'));
         } catch (error) {
-            toast.error('Imeshindwa kunakili rider link.');
+            toast.error(copy('Could not copy rider link.', 'Imeshindwa kunakili rider link.'));
         }
     }
 
@@ -882,12 +896,12 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             await axios.post(`/merchant/${merchantUsername}/orders/${orderId}/custom-delivery`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            toast.success('Custom delivery imepakiwa.');
+            toast.success(copy('Custom delivery uploaded.', 'Custom delivery imepakiwa.'));
             setCustomDeliveryFile(null);
             setCustomDeliveryMessage('');
             await loadOrder();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kupakia custom delivery.');
+            toast.error(error?.response?.data?.message || copy('Could not upload custom delivery.', 'Imeshindwa kupakia custom delivery.'));
         } finally {
             setCustomDeliverySubmitting(false);
         }
@@ -896,7 +910,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     async function submitReturnAction(action) {
         if (!canUpdateOrder || !order?.return_request || returnSubmitting) return;
         if (action === 'reject' && !returnNote.trim()) {
-            toast.error('Andika sababu ya kukataa return request.');
+            toast.error(copy('Enter a reason for rejecting the return request.', 'Andika sababu ya kukataa ombi la kurudisha.'));
             return;
         }
 
@@ -911,11 +925,11 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             }
 
             await axios.post(`/merchant/${merchantUsername}/orders/${orderId}/return-request/${action}`, payload);
-            toast.success('Return request imesasishwa.');
+            toast.success(copy('Return request updated.', 'Ombi la kurudisha limesasishwa.'));
             setReturnNote('');
             await loadOrder();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindikana kusasisha return request.');
+            toast.error(error?.response?.data?.message || copy('Could not update the return request.', 'Imeshindikana kusasisha ombi la kurudisha.'));
         } finally {
             setReturnSubmitting(false);
         }
@@ -927,7 +941,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         if (quoteSubmitting) return;
         if (!isB2BOrder && !shippingFeeInput) return;
         if (isB2BOrder && !quoteUnitPriceInput) {
-            toast.error('Weka unit price ya proforma.');
+            toast.error(copy('Enter the proforma unit price.', 'Weka unit price ya proforma.'));
             return;
         }
 
@@ -943,10 +957,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                 payment_terms_note: quotePaymentTermsNote || undefined,
                 customization_note: quoteCustomizationNote || undefined,
             });
-            toast.success(isB2BOrder ? 'Proforma terms zimetumwa kwa mteja.' : 'Gharama ya usafiri imetumwa kwa mteja.');
+            toast.success(isB2BOrder ? copy('Proforma terms sent to the buyer.', 'Proforma terms zimetumwa kwa mteja.') : copy('Shipping cost sent to the buyer.', 'Gharama ya usafiri imetumwa kwa mteja.'));
             await loadOrder();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kutuma gharama.');
+            toast.error(error?.response?.data?.message || copy('Could not send the cost.', 'Imeshindwa kutuma gharama.'));
         } finally {
             setQuoteSubmitting(false);
         }
@@ -959,12 +973,12 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         try {
             await axios.post(`/api/merchant/orders/${orderId}/confirm-availability`);
             toast.success(canConfirmPaidPickup
-                ? 'Pickup imethibitishwa. PIN sasa inapatikana kwa mteja.'
-                : 'Order imethibitishwa. Mteja anaweza kulipia sasa.'
+                ? copy('Pickup confirmed. The PIN is now available to the buyer.', 'Pickup imethibitishwa. PIN sasa inapatikana kwa mteja.')
+                : copy('Order confirmed. The buyer can pay now.', 'Order imethibitishwa. Mteja anaweza kulipia sasa.')
             );
             await loadOrder();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kuthibitisha order.');
+            toast.error(error?.response?.data?.message || copy('Could not confirm the order.', 'Imeshindwa kuthibitisha order.'));
         } finally {
             setQuoteSubmitting(false);
         }
@@ -975,9 +989,9 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
         try {
             await navigator.clipboard.writeText(routeShareText || routeUrl);
-            toast.success('Route link imenakiliwa.');
+            toast.success(copy('Route link copied.', 'Route link imenakiliwa.'));
         } catch (error) {
-            toast.error('Imeshindwa kunakili route link.');
+            toast.error(copy('Could not copy the route link.', 'Imeshindwa kunakili route link.'));
         }
     }
 
@@ -987,7 +1001,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         if (navigator.share) {
             try {
                 await navigator.share({
-                    title: 'Delivery route',
+                    title: copy('Delivery route', 'Njia ya delivery'),
                     text: routeShareText,
                     url: routeUrl,
                 });
@@ -1009,11 +1023,11 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             await axios.post(`/api/merchant/${merchantUsername}/orders/${orderId}/verify-pickup`, {
                 pickup_pin: pickupPinInput
             });
-            toast.success('Pickup imethibitishwa! Malipo yameidhinishwa.');
+            toast.success(copy('Pickup confirmed! Payment is now eligible for release.', 'Pickup imethibitishwa! Malipo yameidhinishwa.'));
             setPickupPinInput('');
             await loadOrder();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'PIN si sahihi.');
+            toast.error(error?.response?.data?.message || copy('The PIN is not correct.', 'PIN si sahihi.'));
         } finally {
             setPinVerifying(false);
         }
@@ -1021,7 +1035,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
     async function markPickupNoShow() {
         if (!canMarkPickupNoShow || pickupNoShowSubmitting) return;
-        const confirmed = window.confirm('Mark this pickup as buyer no-show? This will be recorded in the order chat.');
+        const confirmed = window.confirm(copy('Mark this pickup as buyer no-show? This will be recorded in the order chat.', 'Weka pickup kuwa mteja hakutokea? Hii itaandikwa kwenye chat ya order.'));
         if (!confirmed) return;
 
         setPickupNoShowSubmitting(true);
@@ -1029,10 +1043,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             await axios.post(`/api/merchant/${merchantUsername}/orders/${orderId}/pickup-no-show`, {
                 reason: 'Buyer did not collect within the agreed pickup window.',
             });
-            toast.success('Pickup marked as buyer no-show.');
+            toast.success(copy('Pickup marked as buyer no-show.', 'Pickup imewekwa kuwa mteja hakutokea.'));
             await loadOrder();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindikana kuweka no-show.');
+            toast.error(error.response?.data?.message || copy('Could not mark the pickup as no-show.', 'Imeshindikana kuweka no-show.'));
         } finally {
             setPickupNoShowSubmitting(false);
         }
@@ -1047,11 +1061,11 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             await axios.post(`/api/merchant/${merchantUsername}/orders/${orderId}/verify-delivery`, {
                 buyer_release_pin: releasePinInput
             });
-            toast.success('Delivery imethibitishwa! Malipo yameidhinishwa.');
+            toast.success(copy('Delivery confirmed! Payment is now eligible for release.', 'Delivery imethibitishwa! Malipo yameidhinishwa.'));
             setReleasePinInput('');
             await loadOrder();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'PIN si sahihi.');
+            toast.error(error?.response?.data?.message || copy('The PIN is not correct.', 'PIN si sahihi.'));
         } finally {
             setPinVerifying(false);
         }
@@ -1067,7 +1081,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
     return (
         <AppLayout>
-            <Head title={`Order ${displayId} | ${merchantName || 'Biashara'} | Takeer`} />
+            <Head title={`${copy('Order', 'Order')} ${displayId} | ${merchantName || copy('Business', 'Biashara')} | Takeer`} />
 
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-5 pb-24">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1081,8 +1095,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                             <ArrowLeft className="h-5 w-5" />
                         </Button>
                         <div>
-                            <h1 className="text-2xl font-black tracking-tight">Order Details</h1>
-                            <p className="text-sm text-muted-foreground">{displayId} • {merchantName || 'Biashara'}</p>
+                            <h1 className="text-2xl font-black tracking-tight">{copy('Order Details', 'Maelezo ya order')}</h1>
+                            <p className="text-sm text-muted-foreground">{displayId} • {merchantName || copy('Business', 'Biashara')}</p>
                         </div>
                     </div>
                     {!loading && order && !isSubscriptionOrder && (
@@ -1092,7 +1106,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                             disabled={!order?.public_id}
                         >
                             <MessageSquare className="h-4 w-4 mr-2" />
-                            Open Chat
+                            {copy('Open Chat', 'Fungua chat')}
                         </Button>
                     )}
                 </div>
@@ -1104,7 +1118,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                 ) : !order ? (
                     <Card className="rounded-2xl border-dashed">
                         <CardContent className="p-8 text-center text-muted-foreground font-medium">
-                            Order details hazijapatikana.
+                            {copy('Order details were not found.', 'Maelezo ya order hayakupatikana.')}
                         </CardContent>
                     </Card>
                 ) : (
@@ -1122,15 +1136,15 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     type="button"
                                                     className="group h-full w-full cursor-pointer"
                                                     onClick={() => router.visit(productDetailUrl)}
-                                                    aria-label={`Open product details for ${order.display_title || 'order item'}`}
+                                                    aria-label={`${copy('Open product details for', 'Fungua maelezo ya bidhaa ya')} ${order.display_title || copy('order item', 'bidhaa ya order')}`}
                                                 >
-                                                    <img src={orderImage} alt={order.display_title || 'Order item'} onError={() => setOrderImageFailed(true)} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                                                    <img src={orderImage} alt={order.display_title || copy('Order item', 'Bidhaa ya order')} onError={() => setOrderImageFailed(true)} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                                                     <span className="absolute bottom-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-brand-700 shadow-sm ring-1 ring-slate-200 transition-colors group-hover:bg-brand-600 group-hover:text-white">
                                                         <LinkIcon className="h-3.5 w-3.5" />
                                                     </span>
                                                 </button>
                                             ) : (
-                                                <img src={orderImage} alt={order.display_title || 'Order item'} onError={() => setOrderImageFailed(true)} className="h-full w-full object-cover" />
+                                                <img src={orderImage} alt={order.display_title || copy('Order item', 'Bidhaa ya order')} onError={() => setOrderImageFailed(true)} className="h-full w-full object-cover" />
                                             )
                                         ) : (
                                             <>
@@ -1139,7 +1153,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     <button
                                                         type="button"
                                                         onClick={() => router.visit(productDetailUrl)}
-                                                        aria-label={`Open product details for ${order.display_title || 'order item'}`}
+                                                        aria-label={`${copy('Open product details for', 'Fungua maelezo ya bidhaa ya')} ${order.display_title || copy('order item', 'bidhaa ya order')}`}
                                                         className="absolute bottom-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-brand-700 shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-brand-600 hover:text-white"
                                                     >
                                                         <LinkIcon className="h-3.5 w-3.5" />
@@ -1158,7 +1172,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 {kind.label}
                                             </span>
                                         </div>
-                                        <h2 className="text-xl md:text-2xl font-black mt-3 break-words">{order.display_title || 'Order item'}</h2>
+                                        <h2 className="text-xl md:text-2xl font-black mt-3 break-words">{order.display_title || copy('Order item', 'Bidhaa ya order')}</h2>
                                         <p className="text-sm text-muted-foreground mt-1">
                                             {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
                                         </p>
@@ -1175,19 +1189,19 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                         <UserRound className="h-4 w-4 text-brand-600" />
-                                        Customer Details
+                                        {copy('Customer Details', 'Maelezo ya mteja')}
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-2 text-sm">
                                     {isPos ? (
                                         <>
-                                            <p><span className="text-muted-foreground">Jina (POS):</span> <span className="font-semibold">{order.customer_name || 'Anonymous'}</span></p>
-                                            <p><span className="text-muted-foreground">Namba:</span> <span className="font-semibold">{order.customer_phone || 'N/A'}</span></p>
+                                            <p><span className="text-muted-foreground">{copy('Name (POS):', 'Jina (POS):')}</span> <span className="font-semibold">{order.customer_name || copy('Anonymous', 'Mteja asiyejulikana')}</span></p>
+                                            <p><span className="text-muted-foreground">{copy('Phone:', 'Namba:')}</span> <span className="font-semibold">{order.customer_phone || copy('N/A', 'Haipo')}</span></p>
                                         </>
                                     ) : (
                                         <>
-                                            <p><span className="text-muted-foreground">Jina:</span> <span className="font-semibold">{order.buyer?.name || 'N/A'}</span></p>
-                                            <p><span className="text-muted-foreground">Namba:</span> <span className="font-semibold">{order.buyer?.phone_number || 'N/A'}</span></p>
+                                            <p><span className="text-muted-foreground">{copy('Name:', 'Jina:')}</span> <span className="font-semibold">{order.buyer?.name || copy('N/A', 'Haipo')}</span></p>
+                                            <p><span className="text-muted-foreground">{copy('Phone:', 'Namba:')}</span> <span className="font-semibold">{order.buyer?.phone_number || copy('N/A', 'Haipo')}</span></p>
                                         </>
                                     )}
                                 </CardContent>
@@ -1197,29 +1211,29 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                         <ReceiptText className="h-4 w-4 text-brand-600" />
-                                        Payment Details
+                                        {copy('Payment Details', 'Maelezo ya malipo')}
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-2 text-sm">
-                                    <p><span className="text-muted-foreground">Order Ref:</span> <span className="font-semibold">{isPos ? `#POS-${order.public_id}` : (order.transaction_ref || `#${order.id}`)}</span></p>
-                                    <p><span className="text-muted-foreground">Kiasi:</span> <span className="font-semibold">{orderQuantityLabel(order)}</span></p>
-                                    <p><span className="text-muted-foreground">Bei moja:</span> <span className="font-semibold">{orderUnitPriceLabel(order)}</span></p>
-                                    <p><span className="text-muted-foreground">Jumla:</span> <span className="font-semibold">{formatMoney(order.order_total_with_additions ?? order.total_paid ?? 0, currencyCode)}</span></p>
+                                    <p><span className="text-muted-foreground">{copy('Order Ref:', 'Ref ya order:')}</span> <span className="font-semibold">{isPos ? `#POS-${order.public_id}` : (order.transaction_ref || `#${order.id}`)}</span></p>
+                                    <p><span className="text-muted-foreground">{copy('Quantity:', 'Kiasi:')}</span> <span className="font-semibold">{orderQuantityLabel(order)}</span></p>
+                                    <p><span className="text-muted-foreground">{copy('Unit price:', 'Bei moja:')}</span> <span className="font-semibold">{orderUnitPriceLabel(order)}</span></p>
+                                    <p><span className="text-muted-foreground">{copy('Total:', 'Jumla:')}</span> <span className="font-semibold">{formatMoney(order.order_total_with_additions ?? order.total_paid ?? 0, currencyCode)}</span></p>
                                     {Number(order.additional_paid_total || 0) > 0 && (
-                                        <p><span className="text-muted-foreground">Extra charges:</span> <span className="font-semibold">{formatMoney(order.additional_paid_total || 0, currencyCode)}</span></p>
+                                        <p><span className="text-muted-foreground">{copy('Extra charges:', 'Gharama za ziada:')}</span> <span className="font-semibold">{formatMoney(order.additional_paid_total || 0, currencyCode)}</span></p>
                                     )}
                                     {extraChargeLines.length > 0 && (
                                         <div className="space-y-1 pt-1">
                                             {extraChargeLines.map((charge) => (
                                                 <p key={charge.id || charge.public_id} className="flex items-start justify-between gap-3 text-xs">
-                                                    <span className="text-muted-foreground break-words">{charge.description || charge.title || 'Extra charge'}</span>
+                                                    <span className="text-muted-foreground break-words">{charge.description || charge.title || copy('Extra charge', 'Gharama ya ziada')}</span>
                                                     <span className="shrink-0 font-black text-slate-950">{formatMoney(charge.amount || 0, charge.currency_code || currencyCode)}</span>
                                                 </p>
                                             ))}
                                         </div>
                                     )}
-                                    <p><span className="text-muted-foreground">Payment phone:</span> <span className="font-semibold">{maskPhone(order.payment_phone)}</span></p>
-                                    <p><span className="text-muted-foreground">Account phone:</span> <span className="font-semibold">{maskPhone(order.account_phone)}</span></p>
+                                    <p><span className="text-muted-foreground">{copy('Payment phone:', 'Namba ya malipo:')}</span> <span className="font-semibold">{maskPhone(order.payment_phone)}</span></p>
+                                    <p><span className="text-muted-foreground">{copy('Account phone:', 'Namba ya akaunti:')}</span> <span className="font-semibold">{maskPhone(order.account_phone)}</span></p>
                                 </CardContent>
                             </Card>
 
@@ -1228,25 +1242,25 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                             <Layers className="h-4 w-4 text-teal-700" />
-                                            Offering Selection
+                                            {copy('Offering Selection', 'Uchaguzi wa ofa')}
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
                                         <div className="grid gap-3 sm:grid-cols-3">
                                             <div className="rounded-xl bg-white p-3">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Offering</p>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{copy('Offering', 'Ofa')}</p>
                                                 <p className="mt-1 font-black text-slate-950">{order.offering_group_selection?.group?.title || order.display_title}</p>
                                             </div>
                                             <div className="rounded-xl bg-white p-3">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Lines</p>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{copy('Lines', 'Mistari')}</p>
                                                 <p className="mt-1 font-black text-slate-950">{order.offering_group_selection.lines.length}</p>
                                             </div>
                                             <div className="rounded-xl bg-white p-3">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Subtotal</p>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{copy('Subtotal', 'Jumla ndogo')}</p>
                                                 <p className="mt-1 font-black text-slate-950">{formatMoney(order.offering_group_selection?.subtotal || 0, currencyCode)}</p>
                                             </div>
                                         </div>
-                                        <OfferingGroupLines lines={order.offering_group_selection.lines} currency={currencyCode} />
+                                        <OfferingGroupLines lines={order.offering_group_selection.lines} currency={currencyCode} translate={copy} />
                                     </CardContent>
                                 </Card>
                             )}
@@ -1255,7 +1269,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                         <ShieldCheck className="h-4 w-4 text-brand-600" />
-                                        Fulfilment Workflow
+                                        {copy('Fulfilment Workflow', 'Mchakato wa utimilishaji')}
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-2 text-sm">
@@ -1266,11 +1280,11 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     </p>
                                     {order.delivery && (
                                         <>
-                                            <p><span className="text-muted-foreground">{deliveryType === 'self_pickup' ? 'Fulfilment Method:' : 'Delivery Method:'}</span> <span className="font-semibold uppercase text-brand-700">{deliveryMethodLabel(order.delivery)}</span></p>
-                                            <p><span className="text-muted-foreground">{deliveryType === 'self_pickup' ? 'Pickup status:' : 'Delivery status:'}</span> <span className="font-semibold">{deliveryStatusLabel(order.delivery)}</span></p>
+                                            <p><span className="text-muted-foreground">{deliveryType === 'self_pickup' ? copy('Fulfilment Method:', 'Njia ya utimilishaji:') : copy('Delivery Method:', 'Njia ya delivery:')}</span> <span className="font-semibold uppercase text-brand-700">{deliveryMethodLabel(order.delivery, copy)}</span></p>
+                                            <p><span className="text-muted-foreground">{deliveryType === 'self_pickup' ? copy('Pickup status:', 'Hali ya kuchukua:') : copy('Delivery status:', 'Hali ya delivery:')}</span> <span className="font-semibold">{deliveryStatusLabel(order.delivery, copy)}</span></p>
                                             {deliveryType === 'self_pickup' && buyerRequestedPickupSlot?.start_at && buyerRequestedPickupSlot?.end_at && (
                                                 <div className="rounded-2xl border border-brand-100 bg-brand-50/70 px-4 py-3">
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Muda aliochagua mteja</p>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">{copy('Buyer-selected time', 'Muda aliochagua mteja')}</p>
                                                     <p className="mt-1 text-sm font-black text-brand-950">
                                                         {formatDateTime(buyerRequestedPickupSlot.start_at)} - {formatDateTime(buyerRequestedPickupSlot.end_at)}
                                                     </p>
@@ -1280,11 +1294,11 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4">
                                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                         <div>
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Inasubiri uthibitisho wako</p>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">{copy('Waiting for your confirmation', 'Inasubiri uthibitisho wako')}</p>
                                                             <p className="mt-1 text-sm font-bold leading-6 text-emerald-950">
                                                                 {canConfirmPaidPickup
-                                                                    ? 'Mteja amelipa. Thibitisha stock/uwezo wa kutimiza kabla pickup PIN haijaonekana.'
-                                                                    : 'Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipia.'}
+                                                                    ? copy('Buyer has paid. Confirm stock/capacity before the pickup PIN is shown.', 'Mteja amelipa. Thibitisha stock/uwezo wa kutimiza kabla pickup PIN haijaonekana.')
+                                                                    : copy('Confirm stock/capacity so the buyer can pay.', 'Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipia.')}
                                                             </p>
                                                         </div>
                                                         <Button
@@ -1294,33 +1308,33 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                             className="h-11 rounded-xl bg-emerald-600 px-5 font-black uppercase tracking-widest hover:bg-emerald-700"
                                                         >
                                                             {quoteSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                                                            {canConfirmPaidPickup ? 'THIBITISHA PICKUP IPO' : 'THIBITISHA ORDER IPO'}
+                                                            {canConfirmPaidPickup ? copy('CONFIRM PICKUP READY', 'THIBITISHA PICKUP IPO') : copy('CONFIRM ORDER READY', 'THIBITISHA ORDER IPO')}
                                                         </Button>
                                                     </div>
                                                 </div>
                                             )}
                                             {order.delivery.physical_address && (
                                                 <div>
-                                                    <span className="text-muted-foreground">{isForwarderOrder ? 'Forwarder warehouse:' : 'Anwani ya Mteja:'}</span>
+                                                    <span className="text-muted-foreground">{isForwarderOrder ? copy('Forwarder warehouse:', 'Ghala la forwarder:') : copy('Customer address:', 'Anwani ya mteja:')}</span>
                                                     <p className="mt-1 whitespace-pre-line font-semibold leading-6">{order.delivery.physical_address}</p>
                                                 </div>
                                             )}
                                             {isForwarderOrder && !order.is_inquiry && <ForwarderShippingLabelTools order={order} />}
                                             {order.delivery.delivery_type === 'intercity_bus' && order.delivery.shipping_zone && (
-                                                <p><span className="text-muted-foreground">Inter-city destination:</span> <span className="font-semibold">{order.delivery.shipping_zone.destination_city || order.delivery.shipping_zone.zone_name || order.delivery.shipping_zone.destination_region}</span></p>
+                                                <p><span className="text-muted-foreground">{copy('Inter-city destination:', 'Unakoenda mkoani:')}</span> <span className="font-semibold">{order.delivery.shipping_zone.destination_city || order.delivery.shipping_zone.zone_name || order.delivery.shipping_zone.destination_region}</span></p>
                                             )}
-                                            {order.delivery.bus_company && <p><span className="text-muted-foreground">Bus company:</span> <span className="font-semibold">{order.delivery.bus_company}</span></p>}
-                                            {order.delivery.waybill_tracking_number && <p><span className="text-muted-foreground">Waybill tracking:</span> <span className="font-semibold">{order.delivery.waybill_tracking_number}</span></p>}
-                                            {order.delivery.boda_phone && <p><span className="text-muted-foreground">Delivery phone:</span> <span className="font-semibold">{order.delivery.boda_phone}</span></p>}
+                                            {order.delivery.bus_company && <p><span className="text-muted-foreground">{copy('Bus company:', 'Kampuni ya basi:')}</span> <span className="font-semibold">{order.delivery.bus_company}</span></p>}
+                                            {order.delivery.waybill_tracking_number && <p><span className="text-muted-foreground">{copy('Waybill tracking:', 'Ufuatiliaji wa waybill:')}</span> <span className="font-semibold">{order.delivery.waybill_tracking_number}</span></p>}
+                                            {order.delivery.boda_phone && <p><span className="text-muted-foreground">{copy('Delivery phone:', 'Namba ya delivery:')}</span> <span className="font-semibold">{order.delivery.boda_phone}</span></p>}
                                             {order.delivery.delivery_type !== 'self_pickup' && order.delivery.buyer_release_pin && (
-                                                <p><span className="text-muted-foreground">Expected PIN from Buyer:</span> <span className="font-mono font-bold text-brand-600 ml-1">Needed for payout</span></p>
+                                                <p><span className="text-muted-foreground">{copy('Expected PIN from buyer:', 'PIN inayotarajiwa kutoka kwa mteja:')}</span> <span className="font-mono font-bold text-brand-600 ml-1">{copy('Needed for payout', 'Inahitajika kwa payout')}</span></p>
                                             )}
                                             {order.delivery.delivery_type !== 'self_pickup' && (
                                                 <div className="mt-3 flex flex-wrap gap-2">
                                                     <DeliveryDirectionsButton routeUrl={routeUrl} />
                                                     {order.delivery.boda_phone && (
                                                         <a href={`tel:${order.delivery.boda_phone}`} className="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-sky-700">
-                                                            Delivery phone
+                                                            {copy('Delivery phone', 'Namba ya delivery')}
                                                         </a>
                                                     )}
                                                 </div>
@@ -1329,20 +1343,19 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
                                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                         <div>
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">Temporary rider link</p>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">{copy('Temporary rider link', 'Kiungo cha muda cha rider')}</p>
                                                             <p className="mt-1 text-xs font-semibold text-sky-900">
-                                                                Let a boda/rider update package status and upload proof without merchant login.
+                                                                {copy('Let a boda/rider update package status and upload proof without merchant login.', 'Mruhusu boda/rider kusasisha hali ya mzigo na kupakia ushahidi bila kuingia kama merchant.')}
                                                             </p>
                                                             {order.delivery.rider_access_active && !riderLink && (
                                                                 <p className="mt-2 text-[11px] font-bold text-sky-700">
-                                                                    Existing link active until {order.delivery.rider_access_expires_at ? new Date(order.delivery.rider_access_expires_at).toLocaleString() : 'expiry'}.
-                                                                    Regenerate if you need to copy it again.
+                                                                    {copy('Existing link active until', 'Kiungo kilichopo kinafanya kazi hadi')} {order.delivery.rider_access_expires_at ? new Date(order.delivery.rider_access_expires_at).toLocaleString() : copy('expiry', 'kuisha')}. {copy('Regenerate if you need to copy it again.', 'Tengeneza tena ikiwa unahitaji kukinakili.')}
                                                                 </p>
                                                             )}
                                                         </div>
                                                         <Button type="button" variant="outline" onClick={generateRiderLink} disabled={riderLinkGenerating} className="h-11 rounded-xl border-sky-200 bg-white font-bold text-sky-700 hover:bg-sky-50">
                                                             {riderLinkGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
-                                                            Generate Link
+                                                            {copy('Generate link', 'Tengeneza kiungo')}
                                                         </Button>
                                                     </div>
                                                     {riderLink && (
@@ -1351,7 +1364,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                             <div className="mt-3 flex flex-wrap gap-2">
                                                                 <Button type="button" size="sm" onClick={copyRiderLink} className="rounded-lg font-bold">
                                                                     <Copy className="mr-2 h-3.5 w-3.5" />
-                                                                    Copy
+                                                                    {copy('Copy', 'Nakili')}
                                                                 </Button>
                                                                 <a
                                                                     href={`https://wa.me/?text=${encodeURIComponent(`Delivery update link: ${riderLink}`)}`}
@@ -1370,7 +1383,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                             </div>
                                                             {riderLinkExpiresAt && (
                                                                 <p className="mt-2 text-[11px] font-semibold text-muted-foreground">
-                                                                    Expires {new Date(riderLinkExpiresAt).toLocaleString()}.
+                                                                    {copy('Expires', 'Inaisha')} {new Date(riderLinkExpiresAt).toLocaleString()}.
                                                                 </p>
                                                             )}
                                                         </div>
@@ -1380,7 +1393,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                         </>
                                     )}
                                     {!order.delivery && (
-                                        <p className="text-muted-foreground">Hakuna taarifa za delivery kwa order hii.</p>
+                                        <p className="text-muted-foreground">{copy('No delivery information for this order.', 'Hakuna taarifa za delivery kwa order hii.')}</p>
                                     )}
                                 </CardContent>
                             </Card>
@@ -1390,13 +1403,13 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                             <Truck className="h-4 w-4 text-brand-600" />
-                                            {isForwarderOrder ? 'Forwarder Drop-off Quote' : 'Shipping Quote Inquiry'}
+                                            {isForwarderOrder ? copy('Forwarder drop-off quote', 'Nukuu ya kupeleka kwa forwarder') : copy('Shipping quote inquiry', 'Inquiry ya gharama ya usafiri')}
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-5 space-y-4">
                                         <div className="bg-white/60 p-4 rounded-xl border border-brand-100/50">
-                                            <p className="text-xs font-black uppercase tracking-widest text-brand-700/80 mb-2">{isForwarderOrder ? 'Forwarder warehouse:' : 'Customer Address:'}</p>
-                                            <p className="font-bold text-brand-900 mb-2 whitespace-pre-line leading-6">{order.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
+                                            <p className="text-xs font-black uppercase tracking-widest text-brand-700/80 mb-2">{isForwarderOrder ? copy('Forwarder warehouse:', 'Ghala la forwarder:') : copy('Customer address:', 'Anwani ya mteja:')}</p>
+                                            <p className="font-bold text-brand-900 mb-2 whitespace-pre-line leading-6">{order.delivery?.physical_address || copy('Address not provided', 'Anwani haikuwekwa')}</p>
                                             {!isForwarderOrder && closestLocation && (
                                                 <div className="mt-3 rounded-xl border border-brand-100 bg-brand-50/70 p-3">
                                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1405,9 +1418,9 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                                 <Store className="h-5 w-5" />
                                                             </div>
                                                             <div>
-                                                                <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Nearest shop</p>
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">{copy('Nearest shop', 'Duka lililo karibu')}</p>
                                                                 <p className="text-sm font-black text-brand-950">{closestLocation.name}</p>
-                                                                <p className="text-xs font-bold text-brand-800">{closestLocation.distance.toFixed(1)} km from customer</p>
+                                                                <p className="text-xs font-bold text-brand-800">{closestLocation.distance.toFixed(1)} {copy('km from customer', 'km kutoka kwa mteja')}</p>
                                                             </div>
                                                         </div>
                                                         <div className="flex flex-wrap gap-2">
@@ -1418,7 +1431,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                                     rel="noopener noreferrer"
                                                                     className="inline-flex items-center gap-1.5 text-[10px] font-black text-brand-700 bg-white px-3 py-2 rounded-xl border border-brand-100 hover:bg-brand-50 transition-colors"
                                                                 >
-                                                                    <MapPin className="h-3 w-3" /> ROUTE
+                                                                    <MapPin className="h-3 w-3" /> {copy('ROUTE', 'NJIA')}
                                                                 </a>
                                                             )}
                                                             {routeUrl && (
@@ -1429,7 +1442,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                                     className="h-8 rounded-xl border-brand-100 bg-white px-3 text-[10px] font-black text-brand-700 hover:bg-brand-50"
                                                                 >
                                                                     <Share2 className="h-3 w-3 mr-1" />
-                                                                    SHARE
+                                                                    {copy('SHARE', 'GAWANA')}
                                                                 </Button>
                                                             )}
                                                         </div>
@@ -1439,7 +1452,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             {isForwarderOrder && (
                                                 <>
                                                     <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-900">
-                                                        Forwarder drop-off uses domestic courier, cargo, or warehouse drop-off proof. Add courier tracking or waybill evidence after payment.
+                                                        {copy('Forwarder drop-off uses domestic courier, cargo, or warehouse drop-off proof. Add courier tracking or waybill evidence after payment.', 'Kupeleka kwa forwarder hutumia ushahidi wa courier wa ndani, cargo, au ghala. Ongeza ufuatiliaji wa courier au waybill baada ya malipo.')}
                                                     </div>
                                                     <ForwarderShippingLabelTools order={order} />
                                                 </>
@@ -1451,7 +1464,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center gap-1.5 text-[10px] font-bold text-brand-600 bg-brand-50 px-2.5 py-1 rounded-lg border border-brand-100 hover:bg-brand-100 transition-colors"
                                                 >
-                                                    <MapPin className="h-3 w-3" /> FUNGUA KWENYE RAMANI
+                                                    <MapPin className="h-3 w-3" /> {copy('OPEN IN MAP', 'FUNGUA KWENYE RAMANI')}
                                                 </a>
                                             )}
                                         </div>
@@ -1460,9 +1473,9 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <form onSubmit={submitQuote} className={`rounded-xl border bg-white/80 p-4 transition-colors ${isWaitingForShippingFee ? 'border-red-300 ring-2 ring-red-100' : 'border-slate-100'}`}>
                                                 {isB2BOrder && (
                                                     <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Wholesale proforma</p>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">{copy('Wholesale proforma', 'Proforma ya jumla')}</p>
                                                         <p className="mt-1 text-xs font-semibold leading-5 text-emerald-900">
-                                                            Buyer payment must go through Takeer SafePay. Use these terms for deposit, production, delivery, and payout/dispute decisions.
+                                                            {copy('Buyer payment must go through the configured licensed PSP. Use these terms for deposit, production, delivery, and payout/dispute decisions.', 'Malipo ya mteja lazima yapitie PSP mwenye leseni aliyesanidiwa. Tumia masharti haya kwa amana, uzalishaji, delivery, na maamuzi ya payout/mgogoro.')}
                                                         </p>
                                                     </div>
                                                 )}
@@ -1470,12 +1483,12 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     {isB2BOrder && (
                                                         <div>
                                                             <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">
-                                                                Unit Price ({currencyCode})
+                                                                {copy('Unit price', 'Bei ya unit')} ({currencyCode})
                                                             </label>
                                                             <Input
                                                                 type="number"
                                                                 min="0"
-                                                                placeholder="Mf. 25000"
+                                                                placeholder={copy('E.g. 25000', 'Mf. 25000')}
                                                                 value={quoteUnitPriceInput}
                                                                 onChange={e => setQuoteUnitPriceInput(e.target.value)}
                                                                 className="font-bold rounded-xl h-11"
@@ -1485,12 +1498,12 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     )}
                                                     <div>
                                                         <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">
-                                                            {order.shipping_fee !== null && order.shipping_fee !== undefined ? `Update Shipping Fee (${currencyCode})` : `Enter Shipping Fee (${currencyCode})`}
+                                                            {order.shipping_fee !== null && order.shipping_fee !== undefined ? `${copy('Update shipping fee', 'Sasisha gharama ya usafiri')} (${currencyCode})` : `${copy('Enter shipping fee', 'Weka gharama ya usafiri')} (${currencyCode})`}
                                                         </label>
                                                         <Input
                                                             type="number"
                                                             min="0"
-                                                            placeholder="Mf. 5000"
+                                                                placeholder={copy('E.g. 5000', 'Mf. 5000')}
                                                             value={shippingFeeInput}
                                                             onChange={e => setShippingFeeInput(e.target.value)}
                                                             className={`font-bold rounded-xl h-11 ${isWaitingForShippingFee ? 'border-red-400 bg-red-50/40 focus-visible:ring-red-200' : ''}`}
@@ -1500,25 +1513,25 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     {isB2BOrder && (
                                                         <>
                                                             <div>
-                                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">Deposit %</label>
+                                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">{copy('Deposit %', 'Amana %')}</label>
                                                                 <Input type="number" min="0" max="100" placeholder="30" value={quoteDepositPercent} onChange={e => setQuoteDepositPercent(e.target.value)} className="font-bold rounded-xl h-11" />
                                                             </div>
                                                             <div>
-                                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">Production days</label>
+                                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">{copy('Production days', 'Siku za uzalishaji')}</label>
                                                                 <Input type="number" min="0" placeholder="14" value={quoteProductionDays} onChange={e => setQuoteProductionDays(e.target.value)} className="font-bold rounded-xl h-11" />
                                                             </div>
                                                             <div className="sm:col-span-2">
-                                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">Balance due</label>
+                                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">{copy('Balance due', 'Salio la kulipa')}</label>
                                                                 <select value={quoteBalanceDue} onChange={(e) => setQuoteBalanceDue(e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold">
-                                                                    <option value="before_production">Before production</option>
-                                                                    <option value="before_delivery">Before delivery</option>
-                                                                    <option value="on_delivery_confirmation">After buyer confirms delivery</option>
-                                                                    <option value="manual">Manual agreement</option>
+                                                                    <option value="before_production">{copy('Before production', 'Kabla ya uzalishaji')}</option>
+                                                                    <option value="before_delivery">{copy('Before delivery', 'Kabla ya delivery')}</option>
+                                                                    <option value="on_delivery_confirmation">{copy('After buyer confirms delivery', 'Baada ya mteja kuthibitisha delivery')}</option>
+                                                                    <option value="manual">{copy('Manual agreement', 'Makubaliano ya mkono')}</option>
                                                                 </select>
                                                             </div>
                                                             <label className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700">
                                                                 <input type="checkbox" checked={quoteInspectionRequired} onChange={(e) => setQuoteInspectionRequired(e.target.checked)} />
-                                                                Inspection required before release
+                                                                {copy('Inspection required before release', 'Ukaguzi unahitajika kabla ya kutoa')}
                                                             </label>
                                                         </>
                                                     )}
@@ -1529,40 +1542,40 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                             disabled={quoteSubmitting || (!isB2BOrder && shippingFeeInput === '') || (isB2BOrder && quoteUnitPriceInput === '')}
                                                         >
                                                             {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                                                            {isB2BOrder ? 'TUMA PROFORMA' : (order.shipping_fee !== null && order.shipping_fee !== undefined ? 'SASISHA GHARAMA' : 'TUMA GHARAMA')}
+                                                            {isB2BOrder ? copy('SEND PROFORMA', 'TUMA PROFORMA') : (order.shipping_fee !== null && order.shipping_fee !== undefined ? copy('UPDATE COST', 'SASISHA GHARAMA') : copy('SEND COST', 'TUMA GHARAMA'))}
                                                         </Button>
                                                     </div>
                                                 </div>
                                                 {isB2BOrder && (
                                                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                                                        <Input value={quotePaymentTermsNote} onChange={(e) => setQuotePaymentTermsNote(e.target.value)} placeholder="Payment terms note, e.g. 30% deposit, 70% before dispatch" className="h-11 rounded-xl" />
-                                                        <Input value={quoteCustomizationNote} onChange={(e) => setQuoteCustomizationNote(e.target.value)} placeholder="Customization or packaging note" className="h-11 rounded-xl" />
+                                                        <Input value={quotePaymentTermsNote} onChange={(e) => setQuotePaymentTermsNote(e.target.value)} placeholder={copy('Payment terms note, e.g. 30% deposit, 70% before dispatch', 'Maelezo ya masharti ya malipo, mf. deposit 30%, 70% kabla ya kutuma')} className="h-11 rounded-xl" />
+                                                        <Input value={quoteCustomizationNote} onChange={(e) => setQuoteCustomizationNote(e.target.value)} placeholder={copy('Customization or packaging note', 'Maelezo ya customization au packaging')} className="h-11 rounded-xl" />
                                                     </div>
                                                 )}
                                                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
                                                     <div className="rounded-xl bg-slate-50 px-3 py-2">
-                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Current shipping</p>
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{copy('Current shipping', 'Usafiri wa sasa')}</p>
                                                         <p className="text-sm font-black text-slate-950">{formatMoney(order.shipping_fee || 0, currencyCode)}</p>
                                                     </div>
                                                     <div className="rounded-xl bg-slate-50 px-3 py-2">
-                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Items total</p>
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{copy('Items total', 'Jumla ya items')}</p>
                                                         <p className="text-sm font-black text-slate-950">{formatMoney((order.total_paid || 0) - (order.shipping_fee || 0), currencyCode)}</p>
                                                     </div>
                                                     <div className="rounded-xl bg-slate-50 px-3 py-2">
-                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Customer total</p>
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{copy('Customer total', 'Jumla ya mteja')}</p>
                                                         <p className="text-sm font-black text-brand-700">{formatMoney(order.order_total_with_additions ?? order.total_paid ?? 0, currencyCode)}</p>
                                                     </div>
                                                 </div>
                                             </form>
                                         ) : order.inquiry_status === 'pending' && !canUpdateOrder ? (
                                             <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-sm font-semibold text-slate-600">
-                                                Shipping quote is pending. You have view-only access for this order.
+                                                {copy('Shipping quote is pending. You have view-only access for this order.', 'Nukuu ya usafiri inasubiri. Una ruhusa ya kuangalia tu order hii.')}
                                             </div>
                                         ) : order.inquiry_status === 'quoted' && !merchantConfirmed ? (
                                             <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                 <div>
-                                                    <p className="text-[10px] font-black uppercase text-amber-700 mb-1">Inasubiri uthibitisho wako:</p>
-                                                    <p className="text-sm font-bold text-amber-900">Gharama ipo tayari. Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipia.</p>
+                                                    <p className="text-[10px] font-black uppercase text-amber-700 mb-1">{copy('Waiting for your confirmation:', 'Inasubiri uthibitisho wako:')}</p>
+                                                    <p className="text-sm font-bold text-amber-900">{copy('The cost is ready. Confirm stock/capacity so the buyer can pay.', 'Gharama ipo tayari. Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipia.')}</p>
                                                 </div>
                                                 <Button
                                                     type="button"
@@ -1571,24 +1584,24 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     className="h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-bold"
                                                 >
                                                     {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                                                    THIBITISHA
+                                                    {copy('CONFIRM', 'THIBITISHA')}
                                                 </Button>
                                             </div>
                                         ) : (
                                             <div className="p-4 rounded-xl bg-green-50 border border-green-100 flex items-center justify-between">
                                                 <div>
-                                                    <p className="text-[10px] font-black uppercase text-green-700 mb-1">Gharama uliyoweka:</p>
+                                                    <p className="text-[10px] font-black uppercase text-green-700 mb-1">{copy('Your quoted cost:', 'Gharama uliyoweka:')}</p>
                                                     <p className="text-lg font-black text-green-600">{formatMoney(order.shipping_fee || 0, currencyCode)}</p>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="text-[10px] font-black uppercase text-green-700 mb-1">Hali ya Inquiry:</p>
-                                                    <span className="text-xs font-bold bg-green-200/50 text-green-800 px-3 py-1 rounded-full uppercase tracking-widest">Quoted</span>
+                                                    <p className="text-[10px] font-black uppercase text-green-700 mb-1">{copy('Inquiry status:', 'Hali ya inquiry:')}</p>
+                                                    <span className="text-xs font-bold bg-green-200/50 text-green-800 px-3 py-1 rounded-full uppercase tracking-widest">{copy('Quoted', 'Imenukuliwa')}</span>
                                                 </div>
                                             </div>
                                         )}
                                         {hasDeliveryFeeWorkflow && (
                                             <p className="text-[11px] text-muted-foreground italic font-medium">
-                                                Kabla ya mteja kulipa, unaweza kusasisha gharama ya usafiri kulingana na makubaliano ya boda au mabadiliko ya haraka. Baada ya malipo, gharama inafungwa.
+                                                {copy('Before the buyer pays, you can update the shipping cost based on boda agreement or urgent changes. After payment, the cost is locked.', 'Kabla ya mteja kulipa, unaweza kusasisha gharama ya usafiri kulingana na makubaliano ya boda au mabadiliko ya haraka. Baada ya malipo, gharama inafungwa.')}
                                             </p>
                                         )}
                                     </CardContent>
@@ -1599,28 +1612,28 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                         <ReceiptText className="h-4 w-4 text-brand-600" />
-                                        Payment Status
+                                        {copy('Payment Status', 'Hali ya malipo')}
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-5">
                                     <div className={`rounded-[1.75rem] border p-5 ${paymentState.tone}`}>
                                         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                             <div>
-                                                <p className="text-[10px] font-black uppercase tracking-[0.22em] opacity-70">Payment state</p>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.22em] opacity-70">{copy('Payment state', 'Hali ya malipo')}</p>
                                                 <h3 className="mt-1 text-2xl font-black">{paymentState.label}</h3>
                                                 <p className="mt-1 max-w-2xl text-sm font-semibold opacity-80">{paymentState.body}</p>
                                             </div>
                                             <div className="grid min-w-full gap-2 sm:grid-cols-3 md:min-w-[420px]">
                                                 <div className="rounded-2xl bg-white/75 px-4 py-3">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Total</p>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest opacity-60">{copy('Total', 'Jumla')}</p>
                                                     <p className="mt-1 text-lg font-black text-slate-950">{formatMoney(paymentState.total, currencyCode)}</p>
                                                 </div>
                                                 <div className="rounded-2xl bg-white/75 px-4 py-3">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Paid</p>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest opacity-60">{copy('Paid', 'Imelipwa')}</p>
                                                     <p className="mt-1 text-lg font-black text-emerald-700">{formatMoney(paymentState.paid, currencyCode)}</p>
                                                 </div>
                                                 <div className="rounded-2xl bg-white/75 px-4 py-3">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Left</p>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest opacity-60">{copy('Left', 'Iliyobaki')}</p>
                                                     <p className="mt-1 text-lg font-black text-amber-700">{formatMoney(paymentState.left, currencyCode)}</p>
                                                 </div>
                                             </div>
@@ -1629,8 +1642,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <div className="mt-4 border-t border-current/10 pt-4">
                                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                                     <div>
-                                                        <p className="text-[10px] font-black uppercase tracking-[0.22em] opacity-70">Payment breakdown</p>
-                                                        <p className="mt-1 text-sm font-semibold opacity-80">Package cost plus any extra charges agreed in chat.</p>
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.22em] opacity-70">{copy('Payment breakdown', 'Mgawanyo wa malipo')}</p>
+                                                        <p className="mt-1 text-sm font-semibold opacity-80">{copy('Package cost plus any extra charges agreed in chat.', 'Gharama ya kifurushi pamoja na gharama za ziada zilizokubaliwa kwenye chat.')}</p>
                                                     </div>
                                                     <p className="text-lg font-black">{formatMoney(paymentState.total, currencyCode)}</p>
                                                 </div>
@@ -1640,7 +1653,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                             <div className="min-w-0">
                                                                 <p className="text-sm font-black text-slate-950 break-words">{line.description}</p>
                                                                 <p className="mt-0.5 text-[10px] font-black uppercase tracking-widest opacity-60">
-                                                                    {line.label} · {extraChargeStatusLabel(line.status, order?.payment_status)}
+                                                                    {line.label} · {extraChargeStatusLabel(line.status, order?.payment_status, copy)}
                                                                 </p>
                                                             </div>
                                                             <p className="shrink-0 text-sm font-black text-slate-950">{formatMoney(line.amount || 0, line.currency || currencyCode)}</p>
@@ -1658,7 +1671,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                             <FileUp className="h-4 w-4 text-indigo-600" />
-                                            Custom Digital Delivery
+                                            {copy('Custom Digital Delivery', 'Delivery ya kidijitali maalum')}
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-5 space-y-4">
@@ -1667,31 +1680,31 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 <div className="flex items-start justify-between gap-3">
                                                     <p className="text-sm font-black text-emerald-800">
                                                         {order.custom_delivery.status === 'revision_requested'
-                                                            ? 'Revision requested'
+                                                            ? copy('Revision requested', 'Marekebisho yameombwa')
                                                             : order.custom_delivery.status === 'accepted'
-                                                                ? 'Accepted by buyer'
-                                                                : 'Delivered'}
+                                                                ? copy('Accepted by buyer', 'Yamekubaliwa na mteja')
+                                                                : copy('Delivered', 'Yamewasilishwa')}
                                                     </p>
                                                     <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">
-                                                        {order.custom_delivery.status || 'delivered'}
+                                                        {order.custom_delivery.status || copy('delivered', 'imewasilishwa')}
                                                     </span>
                                                 </div>
                                                 <p className="mt-1 text-xs font-semibold text-emerald-700">
-                                                    {order.custom_delivery.file_name || 'Final file'} · {order.custom_delivery.delivered_at ? new Date(order.custom_delivery.delivered_at).toLocaleString() : ''}
+                                                    {order.custom_delivery.file_name || copy('Final file', 'Faili ya mwisho')} · {order.custom_delivery.delivered_at ? new Date(order.custom_delivery.delivered_at).toLocaleString() : ''}
                                                 </p>
                                                 {order.custom_delivery.message && (
                                                     <p className="mt-2 text-sm text-emerald-900 whitespace-pre-line">{order.custom_delivery.message}</p>
                                                 )}
                                                 {order.custom_delivery.revision_message && (
                                                     <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Buyer revision note</p>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">{copy('Buyer revision note', 'Ujumbe wa marekebisho wa mteja')}</p>
                                                         <p className="mt-1 text-sm text-amber-950 whitespace-pre-line">{order.custom_delivery.revision_message}</p>
                                                     </div>
                                                 )}
                                             </div>
                                         ) : (
                                             <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-                                                Buyer has paid. Upload the finished file when the custom work is ready.
+                                                {copy('Buyer has paid. Upload the finished file when the custom work is ready.', 'Mteja amelipa. Pakia faili iliyokamilika kazi maalum ikiwa tayari.')}
                                             </div>
                                         )}
 
@@ -1699,7 +1712,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <label className="rounded-xl border border-input bg-background p-3 text-sm block">
                                                 <span className="mb-2 inline-flex items-center gap-2 font-semibold">
                                                     <FileUp className="h-4 w-4 text-indigo-600" />
-                                                    Final delivery file
+                                                    {copy('Final delivery file', 'Faili ya mwisho ya delivery')}
                                                 </span>
                                                 <input
                                                     type="file"
@@ -1712,16 +1725,16 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 value={customDeliveryMessage}
                                                 onChange={(e) => setCustomDeliveryMessage(e.target.value)}
                                                 rows={3}
-                                                placeholder="Optional delivery note, instructions, revision note, or usage guidance..."
+                                                placeholder={copy('Optional delivery note, instructions, revision note, or usage guidance...', 'Ujumbe wa delivery, maelekezo, marekebisho, au mwongozo wa matumizi (hiari)...')}
                                                 className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
                                             />
                                             <div className="flex items-center justify-between gap-3">
                                                 <p className="text-xs text-muted-foreground">
-                                                    Uploading a new file replaces the previous final delivery for this order.
+                                                    {copy('Uploading a new file replaces the previous final delivery for this order.', 'Kupakia faili mpya kunabadilisha delivery ya mwisho ya awali ya order hii.')}
                                                 </p>
                                                 <Button type="submit" className="rounded-xl font-bold" disabled={!customDeliveryFile || customDeliverySubmitting}>
                                                     {customDeliverySubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileUp className="h-4 w-4 mr-2" />}
-                                                    Upload Delivery
+                                                    {copy('Upload delivery', 'Pakia delivery')}
                                                 </Button>
                                             </div>
                                         </form>
@@ -1729,12 +1742,12 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </Card>
                             )}
 
-                            {order.is_escrow_order && canVerifyPickup && order.delivery?.delivery_type === 'self_pickup' && order.payment_status === 'awaiting_merchant_confirmation' && merchantConfirmed && order.pickup_status === 'ready_for_pickup' && (
+                            {canVerifyPickup && order.delivery?.delivery_type === 'self_pickup' && ['pending_fulfillment', 'release_eligible'].includes(order.payment_status) && merchantConfirmed && order.pickup_status === 'ready_for_pickup' && (
                                 <Card className="rounded-[2rem] md:col-span-2 overflow-hidden border-brand-100 bg-white shadow-xl shadow-brand-100/40">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                             <ShieldCheck className="h-4 w-4 text-brand-600" />
-                                            Verification: Customer Pickup (Self Delivery)
+                                            {copy('Verification: Customer Pickup (Self Delivery)', 'Uthibitisho: Mteja anachukua (self delivery)')}
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-6">
@@ -1743,16 +1756,16 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 <Store className="h-8 w-8" />
                                             </div>
 	                                            <div>
-	                                                <h3 className="text-2xl font-black tracking-tight text-slate-950">Confirm customer pickup</h3>
+                                                <h3 className="text-2xl font-black tracking-tight text-slate-950">{copy('Confirm customer pickup', 'Thibitisha mteja amechukua')}</h3>
 	                                                <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">
-	                                                    Mteja akifika, omba <strong>Pickup PIN</strong> aliyopewa kwenye chat yake. Ukithibitisha PIN, order itatolewa na escrow itaendelea kukamilishwa.
+                                                    {copy('When the customer arrives, ask for the Pickup PIN from their chat. After you verify it, the order becomes release-eligible and the PSP payout request follows provider rules.', 'Mteja akifika, omba Pickup PIN aliyopewa kwenye chat yake. Ukithibitisha PIN, order itakuwa release-eligible na PSP payout itaombwa kulingana na provider rules.')}
 	                                                </p>
 	                                            </div>
 	                                            {order.pickup_deadline_at && (
 	                                                <div className="w-full rounded-2xl border border-amber-100 bg-amber-50/70 p-4 text-left">
-	                                                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Pickup agreement</p>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">{copy('Pickup agreement', 'Makubaliano ya kuchukua')}</p>
 	                                                    <p className="mt-1 text-sm font-black text-amber-950">
-	                                                        Collect before {formatDateTime(order.pickup_deadline_at)}
+                                                        {copy('Collect before', 'Chukua kabla ya')} {formatDateTime(order.pickup_deadline_at)}
 	                                                    </p>
 	                                                    {order.pickup_policy_snapshot?.instructions && (
 	                                                        <p className="mt-2 whitespace-pre-line text-xs font-semibold leading-5 text-slate-600">
@@ -1768,12 +1781,12 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 	                                                            className="mt-3 h-10 rounded-xl border-amber-200 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-amber-800 hover:bg-amber-100"
 	                                                        >
 	                                                            {pickupNoShowSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CircleAlert className="mr-2 h-4 w-4" />}
-	                                                            Mark Buyer No-show
+                                                            {copy('Mark buyer no-show', 'Weka mteja hakutokea')}
 	                                                        </Button>
 	                                                    )}
 	                                                    {order.pickup_no_show_marked_at && (
 	                                                        <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-amber-800">
-	                                                            No-show marked {formatDateTime(order.pickup_no_show_marked_at)}
+                                                            {copy('No-show marked', 'Mteja hakutokea')} {formatDateTime(order.pickup_no_show_marked_at)}
 	                                                        </p>
 	                                                    )}
 	                                                </div>
@@ -1789,7 +1802,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 />
                                                 <Button type="submit" disabled={pinVerifying || pickupPinInput.length !== 4} className="mx-auto h-14 w-full max-w-80 rounded-2xl bg-brand-600 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-brand-600/25 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400">
                                                     {pinVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                                                    Kabidhi Mzigo
+                                                    {copy('Confirm pickup', 'Thibitisha kuchukua')}
                                                 </Button>
                                             </form>
                                         </div>
@@ -1802,7 +1815,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                             <RefreshCcw className="h-4 w-4 text-brand-600" />
-                                            Delivery Status Update
+                                            {copy('Delivery Status Update', 'Sasisho la hali ya delivery')}
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent>
@@ -1814,14 +1827,14 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                         <CircleAlert className="h-5 w-5" />
                                                     </div>
                                                     <div className="min-w-0">
-                                                        <p className="text-sm font-black uppercase tracking-wider text-amber-900">Handoff submitted for verification</p>
+                                                        <p className="text-sm font-black uppercase tracking-wider text-amber-900">{copy('Handoff submitted for verification', 'Makabidhiano yametumwa kwa uthibitisho')}</p>
                                                         <p className="mt-1 text-sm font-semibold leading-6 text-amber-900">
-                                                            The seller has submitted forwarder handoff proof. Escrow stays held until the buyer confirms, the verification window passes, or Takeer reviews the evidence.
+                                                            {copy('The seller has submitted forwarder handoff proof. The provider payout request waits until the buyer confirms, the verification window passes, or Takeer reviews the evidence.', 'Muuzaji ametuma ushahidi wa makabidhiano kwa forwarder. Ombi la payout linasubiri hadi mteja athibitishe, muda wa uthibitisho upite, au Takeer ipitie ushahidi.')}
                                                         </p>
-                                                        {order.payment_status === 'resolved_merchant_paid' ? (
-                                                            <p className="mt-2 text-xs font-black uppercase tracking-widest text-emerald-700">Escrow released to merchant</p>
+                                                        {order.payment_status === 'paid_out' ? (
+                                                            <p className="mt-2 text-xs font-black uppercase tracking-widest text-emerald-700">{copy('PSP payout confirmed', 'PSP imethibitisha payout')}</p>
                                                         ) : (
-                                                            <p className="mt-2 text-xs font-black uppercase tracking-widest text-amber-700">Escrow held until verification or admin review</p>
+                                                            <p className="mt-2 text-xs font-black uppercase tracking-widest text-amber-700">{copy('Payout waits for verification or operations review', 'Payout inasubiri uthibitisho au ukaguzi wa operations')}</p>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1830,7 +1843,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <form onSubmit={submitDeliveryStatus} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                                                 <div className="grid gap-3 md:grid-cols-2">
                                                     <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                        Delivery Status
+                                                        {copy('Delivery status', 'Hali ya delivery')}
                                                         <select
                                                             value={deliveryStatusInput}
                                                             onChange={(e) => setDeliveryStatusInput(e.target.value)}
@@ -1842,7 +1855,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                         </select>
                                                     </label>
                                                     <div className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                        {isPackingStatus ? 'Packing Proof Photo/Video' : 'Proof Photo/Video'}
+                                                        {isPackingStatus ? copy('Packing proof photo/video', 'Picha/video ya ushahidi wa kufunga') : copy('Proof photo/video', 'Picha/video ya ushahidi')}
                                                         <label
                                                             htmlFor="delivery-status-proofs"
                                                             onDragOver={(event) => {
@@ -1873,10 +1886,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                             />
                                                             <FileUp className="mb-2 h-7 w-7 text-brand-600" />
                                                             <span className="text-sm font-black normal-case tracking-normal text-slate-950">
-                                                                Tap to add photos/videos
+                                                                {copy('Tap to add photos/videos', 'Gusa kuongeza picha/video')}
                                                             </span>
                                                             <span className="mt-1 text-[11px] font-bold normal-case tracking-normal text-muted-foreground">
-                                                                Or drop files here. Up to 10 media files.
+                                                                {copy('Or drop files here. Up to 10 media files.', 'Au dondosha faili hapa. Hadi faili 10 za media.')}
                                                             </span>
                                                         </label>
                                                         {deliveryStatusProofs.length > 0 && (
@@ -1886,14 +1899,14 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                                         <div className="min-w-0 flex-1">
                                                                             <p className="truncate text-xs font-black text-slate-900">{file.name}</p>
                                                                             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                                                {(file.size / 1024 / 1024).toFixed(1)} MB · {file.type?.startsWith('video/') ? 'Video' : 'Photo'}
+                                                                                {(file.size / 1024 / 1024).toFixed(1)} MB · {file.type?.startsWith('video/') ? copy('Video', 'Video') : copy('Photo', 'Picha')}
                                                                             </p>
                                                                         </div>
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => removeDeliveryStatusProof(index)}
                                                                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-600"
-                                                                            aria-label={`Remove ${file.name}`}
+                                                                            aria-label={`${copy('Remove', 'Ondoa')} ${file.name}`}
                                                                         >
                                                                             <X className="h-4 w-4" />
                                                                         </button>
@@ -1904,7 +1917,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     </div>
                                                     {order.delivery.delivery_type === 'local_boda' && (
                                                         <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                            Delivery Phone
+                                                            {copy('Delivery phone', 'Namba ya delivery')}
                                                             <input
                                                                 value={bodaPhone}
                                                                 onChange={(e) => setBodaPhone(e.target.value)}
@@ -1917,20 +1930,20 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                         <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
                                                             {isForwarderOrder && (
                                                                 <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground md:col-span-2">
-                                                                    Evidence Type
+                                                                    {copy('Evidence type', 'Aina ya ushahidi')}
                                                                     <select
                                                                         value={forwarderEvidenceType}
                                                                         onChange={(e) => setForwarderEvidenceType(e.target.value)}
                                                                         className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
                                                                     >
-                                                                        <option value="tracked_courier">Tracked courier (DHL/FedEx/UPS/SF etc.)</option>
-                                                                        <option value="manual_forwarder">Manual forwarder / cargo / bus receipt</option>
-                                                                        <option value="takeer_verified_forwarder">Takeer verified forwarder</option>
+                                                                        <option value="tracked_courier">{copy('Tracked courier (DHL/FedEx/UPS/SF etc.)', 'Courier anayefuatiliwa (DHL/FedEx/UPS/SF n.k.)')}</option>
+                                                                        <option value="manual_forwarder">{copy('Manual forwarder / cargo / bus receipt', 'Forwarder / cargo / risiti ya basi ya mkono')}</option>
+                                                                        <option value="takeer_verified_forwarder">{copy('Takeer verified forwarder', 'Forwarder aliyethibitishwa na Takeer')}</option>
                                                                     </select>
                                                                 </label>
                                                             )}
                                                             <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                                Transport Receipt / Waybill
+                                                                {copy('Transport receipt / waybill', 'Risiti ya usafiri / waybill')}
                                                                 <input
                                                                     type="file"
                                                                     accept="image/*,application/pdf"
@@ -1942,7 +1955,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                                 )}
                                                             </label>
                                                             <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                                {isForwarderOrder ? 'Carrier / Forwarder' : 'Bus / Cargo Company'}
+                                                                {isForwarderOrder ? copy('Carrier / forwarder', 'Carrier / forwarder') : copy('Bus / cargo company', 'Kampuni ya basi / cargo')}
                                                                 <input
                                                                     value={busCompany}
                                                                     onChange={(e) => setBusCompany(e.target.value)}
@@ -1951,16 +1964,16 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                                 />
                                                             </label>
                                                             <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                                Receipt / Waybill / Tracking # (optional)
+                                                                {copy('Receipt / waybill / tracking # (optional)', 'Risiti / waybill / namba ya ufuatiliaji (hiari)')}
                                                                 <input
                                                                     value={waybillTrackingNumber}
                                                                     onChange={(e) => setWaybillTrackingNumber(e.target.value)}
-                                                                    placeholder="Reference, waybill, or tracking number"
+                                                                    placeholder={copy('Reference, waybill, or tracking number', 'Rejeo, waybill, au namba ya ufuatiliaji')}
                                                                     className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
                                                                 />
                                                             </label>
                                                             <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                                Tracking Link (optional)
+                                                                {copy('Tracking link (optional)', 'Kiungo cha ufuatiliaji (hiari)')}
                                                                 <input
                                                                     type="url"
                                                                     value={trackingLink}
@@ -1972,7 +1985,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                         </div>
                                                     )}
                                                     <label className="text-xs font-black uppercase tracking-widest text-muted-foreground md:col-span-2">
-                                                        Note
+                                                        {copy('Note', 'Ujumbe')}
                                                         <textarea
                                                             value={deliveryStatusNote}
                                                             onChange={(e) => setDeliveryStatusNote(e.target.value)}
@@ -1982,10 +1995,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     </label>
                                                 </div>
                                                 <div className="mt-3 flex items-center justify-between gap-3">
-                                                    <p className="text-xs text-muted-foreground">Delivery updates stay separate from payment status and build a proof timeline for both sides.</p>
+                                                    <p className="text-xs text-muted-foreground">{copy('Delivery updates stay separate from payment status and build a proof timeline for both sides.', 'Masasisho ya delivery yanabaki tofauti na hali ya malipo na huunda timeline ya ushahidi kwa pande zote.')}</p>
                                                     <Button type="submit" className="rounded-xl font-bold" disabled={deliveryStatusSubmitting}>
                                                         {deliveryStatusSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                                        Save Status
+                                                        {copy('Save status', 'Hifadhi hali')}
                                                     </Button>
                                                 </div>
                                             </form>
@@ -1994,12 +2007,12 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </Card>
                             )}
 
-                            {order.is_escrow_order && canVerifyPickup && order.payment_status === 'escrow_locked' && ['local_boda', 'intercity_bus'].includes(order.delivery?.delivery_type) && (
+                            {canVerifyPickup && order.payment_status === 'release_eligible' && ['local_boda', 'intercity_bus'].includes(order.delivery?.delivery_type) && (
                                 <Card className="rounded-2xl md:col-span-2">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                             <Truck className="h-4 w-4 text-brand-600" />
-                                            Verification & Delivery Info
+                                            {copy('Verification & Delivery Info', 'Uthibitisho na taarifa za delivery')}
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
@@ -2009,10 +2022,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     <Truck className="h-8 w-8" />
                                                 </div>
                                                 <div>
-                                                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">Delivery Verification</p>
-                                                    <h3 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Confirm customer handoff</h3>
+                                                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">{copy('Delivery verification', 'Uthibitisho wa delivery')}</p>
+                                                    <h3 className="mt-1 text-2xl font-black tracking-tight text-slate-950">{copy('Confirm customer handoff', 'Thibitisha makabidhiano kwa mteja')}</h3>
                                                     <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">
-                                                        Baada ya dereva kumkabidhi mteja mzigo, mteja akague kwanza kisha ampe dereva <strong>Release PIN</strong>. Ingiza PIN hapa ili kuidhinisha malipo.
+                                                        {copy('After the rider hands over the package, the buyer should inspect it and give the rider the Release PIN. Enter the PIN here to authorize payment.', 'Baada ya dereva kumkabidhi mteja mzigo, mteja akague kwanza kisha ampe dereva Release PIN. Ingiza PIN hapa ili kuidhinisha malipo.')}
                                                     </p>
                                                 </div>
                                                 <form onSubmit={verifyDeliveryPin} className="w-full space-y-3">
@@ -2026,7 +2039,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     />
                                                     <Button type="submit" disabled={pinVerifying || releasePinInput.length !== 4} className="mx-auto h-14 w-full max-w-80 rounded-2xl bg-brand-600 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-brand-600/25 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400">
                                                         {pinVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                                                        Thibitisha Delivery
+                                                        {copy('Confirm delivery', 'Thibitisha delivery')}
                                                     </Button>
                                                 </form>
                                             </div>
@@ -2034,8 +2047,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
                                         {order.delivery?.delivery_type === 'intercity_bus' && (
                                             <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                                                <p className="text-sm font-bold text-indigo-900">In Transit (Mkoani)</p>
-                                                <p className="text-sm mt-1">Destination na bei ya mkoa vimehifadhiwa kwenye order. Pickup/drop-off office halisi itathibitishwa kwenye waybill/risiti au simu kutoka transporter. Mteja akichukua mzigo na kila kitu kiko sawa, atathibitisha kwenye App.</p>
+                                                <p className="text-sm font-bold text-indigo-900">{copy('In transit (intercity)', 'Inasafirishwa (mkoani)')}</p>
+                                                <p className="text-sm mt-1">{copy('The destination and intercity price are stored on the order. The actual pickup/drop-off office is confirmed on the waybill/receipt or by phone from the transporter. Once the buyer receives the package and everything is correct, they confirm in the app.', 'Destination na bei ya mkoa vimehifadhiwa kwenye order. Pickup/drop-off office halisi itathibitishwa kwenye waybill/risiti au simu kutoka transporter. Mteja akichukua mzigo na kila kitu kiko sawa, atathibitisha kwenye App.')}</p>
                                             </div>
                                         )}
                                     </CardContent>
@@ -2047,7 +2060,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                             <Star className="h-4 w-4 text-amber-600 fill-amber-600" />
-                                            Customer Review
+                                            {copy('Customer Review', 'Mapitio ya mteja')}
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-2">
@@ -2069,19 +2082,19 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                             <Video className="h-4 w-4 text-indigo-600" />
-                                            Unboxing Video (Customer)
+                                            {copy('Unboxing Video (Customer)', 'Video ya kufungua mzigo (mteja)')}
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent>
                                         <div className="flex items-center justify-between bg-white/60 p-4 rounded-xl border border-indigo-100">
-                                            <p className="text-sm font-bold text-indigo-900">Ushahidi wa Kupokea</p>
+                                            <p className="text-sm font-bold text-indigo-900">{copy('Proof of receipt', 'Ushahidi wa kupokea')}</p>
                                             <a
                                                 href={order.delivery.buyer_unboxing_video_url}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="inline-flex items-center gap-2 text-xs font-black text-indigo-600 hover:underline bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100"
                                             >
-                                                <Play className="h-3 w-3" /> TAZAMA VIDEO
+                                                <Play className="h-3 w-3" /> {copy('WATCH VIDEO', 'TAZAMA VIDEO')}
                                             </a>
                                         </div>
                                     </CardContent>
@@ -2095,16 +2108,16 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <div>
                                                 <p className="font-black text-sky-800 flex items-center gap-2">
                                                     <RefreshCcw className="h-4 w-4" />
-                                                    Return request
+                                                    {copy('Return request', 'Ombi la kurudisha')}
                                                 </p>
-                                                <p className="mt-1 text-sky-800/90"><span className="font-semibold">Status:</span> {String(returnRequest.status || '').replaceAll('_', ' ')}</p>
-                                                <p className="mt-1 text-sky-800/90"><span className="font-semibold">Customer reason:</span> {returnRequest.reason || 'N/A'}</p>
+                                                <p className="mt-1 text-sky-800/90"><span className="font-semibold">{copy('Status:', 'Hali:')}</span> {orderStatusLabel(returnRequest.status, copy)}</p>
+                                                <p className="mt-1 text-sky-800/90"><span className="font-semibold">{copy('Customer reason:', 'Sababu ya mteja:')}</span> {returnRequest.reason || copy('N/A', 'Haipo')}</p>
                                                 {returnRequest.policy_snapshot?.window_ends_at && (
-                                                    <p className="mt-1 text-sky-800/90"><span className="font-semibold">Policy window:</span> ends {new Date(returnRequest.policy_snapshot.window_ends_at).toLocaleDateString()}</p>
+                                                    <p className="mt-1 text-sky-800/90"><span className="font-semibold">{copy('Policy window:', 'Muda wa sera:')}</span> {copy('ends', 'unaisha')} {new Date(returnRequest.policy_snapshot.window_ends_at).toLocaleDateString()}</p>
                                                 )}
                                                 {returnRequest.evidence_url && (
                                                     <a href={returnRequest.evidence_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-black uppercase tracking-widest text-sky-700 underline">
-                                                        View evidence
+                                                        {copy('View evidence', 'Tazama ushahidi')}
                                                     </a>
                                                 )}
                                             </div>
@@ -2114,7 +2127,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                         value={returnNote}
                                                         onChange={(e) => setReturnNote(e.target.value)}
                                                         rows={3}
-                                                        placeholder="Message to customer: return instructions, rejection reason, or resolution note..."
+                                                        placeholder={copy('Message to customer: return instructions, rejection reason, or resolution note...', 'Ujumbe kwa mteja: maelekezo ya kurudisha, sababu ya kukataa, au maelezo ya suluhisho...')}
                                                         className="w-full rounded-2xl border border-sky-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-sky-500/20"
                                                     />
                                                     {['approved', 'item_received'].includes(returnRequest.status) && (
@@ -2123,31 +2136,31 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                             onChange={(e) => setReturnResolution(e.target.value)}
                                                             className="w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm font-bold"
                                                         >
-                                                            <option value="replacement">Replacement sent</option>
-                                                            <option value="refund">Refund buyer</option>
-                                                            <option value="store_credit">Store credit</option>
-                                                            <option value="other">Other resolution</option>
+                                                            <option value="replacement">{copy('Replacement sent', 'Bidhaa mbadala imetumwa')}</option>
+                                                            <option value="refund">{copy('Refund buyer', 'Mrejesho kwa mteja')}</option>
+                                                            <option value="store_credit">{copy('Store credit', 'Salio la duka')}</option>
+                                                            <option value="other">{copy('Other resolution', 'Suluhisho jingine')}</option>
                                                         </select>
                                                     )}
                                                     <div className="grid grid-cols-2 gap-2">
                                                         {returnRequest.status === 'pending_merchant_review' && (
                                                             <>
                                                                 <Button type="button" className="rounded-xl bg-sky-700 text-white hover:bg-sky-800" disabled={returnSubmitting} onClick={() => submitReturnAction('approve')}>
-                                                                    Approve
+                                                                    {copy('Approve', 'Kubali')}
                                                                 </Button>
                                                                 <Button type="button" variant="outline" className="rounded-xl border-red-200 text-red-700" disabled={returnSubmitting} onClick={() => submitReturnAction('reject')}>
-                                                                    Reject
+                                                                    {copy('Reject', 'Kataa')}
                                                                 </Button>
                                                             </>
                                                         )}
                                                         {returnRequest.status === 'approved' && (
                                                             <Button type="button" className="col-span-2 rounded-xl bg-sky-700 text-white hover:bg-sky-800" disabled={returnSubmitting} onClick={() => submitReturnAction('received')}>
-                                                                Mark Item Received
+                                                                {copy('Mark item received', 'Weka item imepokelewa')}
                                                             </Button>
                                                         )}
                                                         {['approved', 'item_received'].includes(returnRequest.status) && (
                                                             <Button type="button" variant="outline" className="col-span-2 rounded-xl border-emerald-200 text-emerald-700" disabled={returnSubmitting} onClick={() => submitReturnAction('complete')}>
-                                                                Complete Return
+                                                                {copy('Complete return', 'Kamilisha kurudisha')}
                                                             </Button>
                                                         )}
                                                     </div>
@@ -2163,10 +2176,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <CardContent className="p-4 text-sm">
                                         <p className="font-black text-red-700 flex items-center gap-2">
                                             <CircleAlert className="h-4 w-4" />
-                                            Order ina mgogoro
+                                            {copy('Order is disputed', 'Order ina mgogoro')}
                                         </p>
-                                        <p className="mt-1 text-red-700/90"><span className="font-semibold">Status:</span> {order.dispute.status || 'open'}</p>
-                                        <p className="mt-1 text-red-700/90"><span className="font-semibold">Reason:</span> {order.dispute.reason || 'N/A'}</p>
+                                        <p className="mt-1 text-red-700/90"><span className="font-semibold">{copy('Status:', 'Hali:')}</span> {orderStatusLabel(order.dispute.status, copy)}</p>
+                                        <p className="mt-1 text-red-700/90"><span className="font-semibold">{copy('Reason:', 'Sababu:')}</span> {order.dispute.reason || copy('N/A', 'Haipo')}</p>
                                     </CardContent>
                                 </Card>
                             )}
@@ -2179,10 +2192,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                     <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
                         <div className="flex items-start justify-between gap-4">
                             <div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-700">Share route</p>
-                                <h3 className="mt-1 text-xl font-black text-slate-950">Delivery Route</h3>
+                                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-700">{copy('Share route', 'Gawana njia')}</p>
+                                <h3 className="mt-1 text-xl font-black text-slate-950">{copy('Delivery Route', 'Njia ya delivery')}</h3>
                                 <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                                    {closestLocation?.name || 'Shop'} to {order?.delivery?.physical_address || 'customer location'}
+                                    {closestLocation?.name || copy('Shop', 'Duka')} {copy('to', 'hadi')} {order?.delivery?.physical_address || copy('customer location', 'eneo la mteja')}
                                 </p>
                             </div>
                             <button
@@ -2198,17 +2211,17 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                             <QRCodeCanvas value={routeUrl} size={220} includeMargin />
                         </div>
                         <p className="mt-3 text-center text-xs font-semibold text-muted-foreground">
-                            Boda mwenye smartphone anaweza kuscan hii QR kufungua route Google Maps.
+                            {copy('A boda rider with a smartphone can scan this QR to open the route in Google Maps.', 'Boda mwenye smartphone anaweza kuscan hii QR kufungua route Google Maps.')}
                         </p>
 
                         <div className="mt-5 grid grid-cols-2 gap-2">
                             <Button type="button" onClick={shareRouteLink} className="h-11 rounded-xl bg-brand-600 font-black">
                                 <Share2 className="h-4 w-4 mr-2" />
-                                Share
+                                {copy('Share', 'Gawana')}
                             </Button>
                             <Button type="button" variant="outline" onClick={copyRouteLink} className="h-11 rounded-xl font-black">
                                 <Copy className="h-4 w-4 mr-2" />
-                                Copy
+                                {copy('Copy', 'Nakili')}
                             </Button>
                             <a
                                 href={`https://wa.me/?text=${encodeURIComponent(routeShareText)}`}
@@ -2233,7 +2246,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                             className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-xl border border-brand-100 bg-brand-50 text-xs font-black uppercase tracking-widest text-brand-700 hover:bg-brand-100"
                         >
                             <MapPin className="h-4 w-4 mr-2" />
-                            Open Google Maps
+                            {copy('Open Google Maps', 'Fungua Google Maps')}
                         </a>
                     </div>
                 </div>

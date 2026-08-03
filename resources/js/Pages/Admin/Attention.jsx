@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowRight, Bell, CheckCircle2, CreditCard, Flag, Refres
 import { toast } from 'sonner';
 import axios from 'axios';
 import { cn } from '@/lib/utils';
+import { useLocale } from '@/lib/i18n';
 
 const filters = [
     { key: 'all', label: 'All', icon: Bell },
@@ -18,7 +19,22 @@ const filters = [
     { key: 'system', label: 'System', icon: AlertTriangle },
 ];
 
+function filterLabel(key, copy) {
+    const labels = {
+        all: ['All', 'Zote'],
+        payments: ['Payments', 'Malipo'],
+        trust: ['Trust', 'Uaminifu'],
+        content: ['Content', 'Maudhui'],
+        services: ['Services', 'Huduma'],
+        logistics: ['Logistics', 'Usafirishaji'],
+        system: ['System', 'Mfumo'],
+    };
+    const [english, swahili] = labels[key] || [key, key];
+    return copy(english, swahili);
+}
+
 export default function AdminAttention() {
+    const { copy } = useLocale();
     const [items, setItems] = useState([]);
     const [summary, setSummary] = useState({ total: 0, categories: {} });
     const [filter, setFilter] = useState('all');
@@ -33,7 +49,7 @@ export default function AdminAttention() {
             setItems(res.data?.items || []);
             setSummary(res.data?.summary || { total: 0, categories: {} });
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to load admin attention items.');
+            toast.error(error.response?.data?.message || copy('Failed to load admin attention items.', 'Imeshindikana kupakia vitu vya uangalizi wa msimamizi.'));
         } finally {
             setLoading(false);
         }
@@ -53,8 +69,8 @@ export default function AdminAttention() {
     }, [items]);
 
     return (
-        <AdminLayout title="Attention Center">
-            <Head title="Attention Center | Takeer Admin" />
+        <AdminLayout title={copy('Attention Center', 'Kituo cha Uangalizi')}>
+            <Head title={`${copy('Attention Center', 'Kituo cha Uangalizi')} | Takeer Admin`} />
 
             <div className="space-y-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -63,22 +79,22 @@ export default function AdminAttention() {
                             <Bell className="h-6 w-6" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-black text-slate-900">Attention Center</h1>
-                            <p className="mt-1 text-sm text-slate-600">One place for admin work that needs review, approval, or follow-up.</p>
+                            <h1 className="text-2xl font-black text-slate-900">{copy('Attention Center', 'Kituo cha Uangalizi')}</h1>
+                            <p className="mt-1 text-sm text-slate-600">{copy('One place for admin work that needs review, approval, or follow-up.', 'Mahali pamoja pa kazi za msimamizi zinazohitaji ukaguzi, idhini au ufuatiliaji.')}</p>
                         </div>
                     </div>
                     <Button variant="outline" onClick={() => load(filter)} disabled={loading}>
                         <RefreshCw className="mr-2 h-4 w-4" />
-                        Refresh
+                        {copy('Refresh', 'Onyesha upya')}
                     </Button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-                    <Metric label="Total" value={summary.total || 0} tone="text-slate-900" />
-                    <Metric label="Critical" value={summary.critical || 0} tone="text-red-700" />
-                    <Metric label="High" value={summary.high || 0} tone="text-orange-700" />
-                    <Metric label="Medium" value={summary.medium || 0} tone="text-amber-700" />
-                    <Metric label="Low" value={summary.low || 0} tone="text-slate-600" />
+                    <Metric label={copy('Total', 'Jumla')} value={summary.total || 0} tone="text-slate-900" />
+                    <Metric label={copy('Critical', 'Muhimu sana')} value={summary.critical || 0} tone="text-red-700" />
+                    <Metric label={copy('High', 'Juu')} value={summary.high || 0} tone="text-orange-700" />
+                    <Metric label={copy('Medium', 'Wastani')} value={summary.medium || 0} tone="text-amber-700" />
+                    <Metric label={copy('Low', 'Chini')} value={summary.low || 0} tone="text-slate-600" />
                 </div>
 
                 <Card className="border-slate-200 bg-white">
@@ -101,7 +117,7 @@ export default function AdminAttention() {
                                         )}
                                     >
                                         <Icon className="h-4 w-4" />
-                                        {label}
+                                        {filterLabel(key, copy)}
                                         <span className={cn(
                                             'min-w-5 rounded-full px-1.5 py-0.5 text-center text-[10px] font-black leading-none',
                                             active ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-600',
@@ -117,14 +133,14 @@ export default function AdminAttention() {
 
                 {loading ? (
                     <Card className="border-slate-200 bg-white">
-                        <CardContent className="py-16 text-center text-sm font-semibold text-slate-500">Loading attention items...</CardContent>
+                        <CardContent className="py-16 text-center text-sm font-semibold text-slate-500">{copy('Loading attention items...', 'Inapakia vitu vya uangalizi...')}</CardContent>
                     </Card>
                 ) : items.length === 0 ? (
                     <Card className="border-slate-200 bg-white">
                         <CardContent className="py-16 text-center">
                             <CheckCircle2 className="mx-auto h-9 w-9 text-emerald-600" />
-                            <p className="mt-3 font-black text-slate-900">Nothing needs attention here.</p>
-                            <p className="mt-1 text-sm text-slate-500">This view will light up again when admin work appears.</p>
+                            <p className="mt-3 font-black text-slate-900">{copy('Nothing needs attention here.', 'Hakuna kinachohitaji uangalizi hapa.')}</p>
+                            <p className="mt-1 text-sm text-slate-500">{copy('This view will light up again when admin work appears.', 'Mwonekano huu utaonyesha kazi mpya za msimamizi zitakapoonekana.')}</p>
                         </CardContent>
                     </Card>
                 ) : (
@@ -134,11 +150,11 @@ export default function AdminAttention() {
                                 <section key={severity} className="space-y-3">
                                     <div className="flex items-center gap-2">
                                         <span className={cn('h-2.5 w-2.5 rounded-full', severityDotClass(severity))} />
-                                        <h2 className="text-xs font-black uppercase tracking-widest text-slate-500">{severity}</h2>
+                                        <h2 className="text-xs font-black uppercase tracking-widest text-slate-500">{severityLabel(severity, copy)}</h2>
                                     </div>
                                     <div className="space-y-3">
                                         {groupedItems[severity].map((item) => (
-                                            <AttentionItem key={item.id} item={item} />
+                                            <AttentionItem key={item.id} item={item} copy={copy} />
                                         ))}
                                     </div>
                                 </section>
@@ -162,7 +178,7 @@ function Metric({ label, value, tone }) {
     );
 }
 
-function AttentionItem({ item }) {
+function AttentionItem({ item, copy }) {
     return (
         <Card className={cn('border bg-white shadow-sm', severityBorderClass(item.severity))}>
             <CardContent className="p-4">
@@ -182,7 +198,7 @@ function AttentionItem({ item }) {
                     </div>
                     <Link href={item.href} className="shrink-0">
                         <Button className="bg-slate-900 text-white hover:bg-slate-800">
-                            {item.action || 'Open'}
+                            {item.action || copy('Open', 'Fungua')}
                             <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
                     </Link>
@@ -193,7 +209,7 @@ function AttentionItem({ item }) {
 }
 
 function formatDate(value) {
-    if (!value) return 'No date';
+    if (!value) return '—';
 
     return new Intl.DateTimeFormat('en-GB', {
         day: '2-digit',
@@ -202,6 +218,17 @@ function formatDate(value) {
         hour: '2-digit',
         minute: '2-digit',
     }).format(new Date(value));
+}
+
+function severityLabel(value, copy) {
+    const labels = {
+        critical: ['Critical', 'Muhimu sana'],
+        high: ['High', 'Juu'],
+        medium: ['Medium', 'Wastani'],
+        low: ['Low', 'Chini'],
+    };
+    const [english, swahili] = labels[value] || [value || 'Low', value || 'Chini'];
+    return copy(english, swahili);
 }
 
 function severityDotClass(severity) {

@@ -667,7 +667,7 @@ class ServiceRequestController extends Controller
 
         if (! in_array($serviceRequest->payment_status, ['held', 'paid'], true)) {
             return response()->json([
-                'message' => 'Huduma hii haipo kwenye SafePay hold.',
+                'message' => 'Huduma hii haina provider settlement hold.',
             ], 422);
         }
 

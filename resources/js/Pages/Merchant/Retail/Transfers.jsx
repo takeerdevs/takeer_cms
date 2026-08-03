@@ -15,8 +15,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { productQuantityLabel, productStockLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 export default function Transfers({ merchant }) {
+    const { copy } = useLocale();
     const [transfers, setTransfers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isRequesting, setIsRequesting] = useState(false);
@@ -195,7 +197,7 @@ export default function Transfers({ merchant }) {
 
     return (
         <AppLayout>
-            <Head title="Stock Transfers | Takeer" />
+            <Head title={`${copy('Stock Transfers', 'Uhamishaji wa Stock')} | Takeer`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-8 pb-24">
 
                 {/* Header */}
@@ -204,30 +206,30 @@ export default function Transfers({ merchant }) {
                         <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
                             Stock Movements <ArrowRightLeft className="h-8 w-8 text-brand-600" />
                         </h1>
-                        <p className="text-muted-foreground">Move inventory between stores and shops with digital handshakes.</p>
+                        <p className="text-muted-foreground">{copy('Move inventory between stores and shops with digital handshakes.', 'Hamisha stock kati ya store na maduka kwa uthibitisho wa kidijitali.')}</p>
                     </div>
                     <Button
                         onClick={() => setIsRequesting(!isRequesting)}
                         className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg"
                     >
-                        {isRequesting ? 'Cancel' : <><PlusCircle className="mr-2 h-4 w-4" /> Move Stock</>}
+                        {isRequesting ? copy('Cancel', 'Ghairi') : <><PlusCircle className="mr-2 h-4 w-4" /> {copy('Move Stock', 'Hamisha Stock')}</>}
                     </Button>
                 </div>
 
                 <Card className="glass-card border-brand-100 shadow-sm">
                     <CardContent className="p-4 grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                         <div className="space-y-1 md:col-span-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1"><Search className="h-3.5 w-3.5" /> Search Product/SKU</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1"><Search className="h-3.5 w-3.5" /> {copy('Search Product/SKU', 'Tafuta Bidhaa/SKU')}</label>
                             <input
                                 type="text"
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
-                                placeholder="e.g. Router, TL Link, SKU..."
+                                placeholder={copy('e.g. Router, TL Link, SKU...', 'mf. Router, TL Link, SKU...')}
                                 className="flex h-11 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm"
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /> From Date</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /> {copy('From Date', 'Kuanzia Tarehe')}</label>
                             <input
                                 type="date"
                                 value={dateFrom}
@@ -236,7 +238,7 @@ export default function Transfers({ merchant }) {
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">To Date</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{copy('To Date', 'Hadi Tarehe')}</label>
                             <input
                                 type="date"
                                 value={dateTo}
@@ -246,20 +248,20 @@ export default function Transfers({ merchant }) {
                         </div>
                         <div className="flex gap-2">
                             <Button variant="outline" className="h-11 rounded-xl" onClick={() => { setDateFrom(''); setDateTo(''); }}>
-                                Clear Filters
+                                {copy('Clear Filters', 'Futa vichujio')}
                             </Button>
                         </div>
                         <div className="space-y-1">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1"><Filter className="h-3.5 w-3.5" /> From Location</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1"><Filter className="h-3.5 w-3.5" /> {copy('From Location', 'Kutoka Eneo')}</label>
                             <select value={fromFilter} onChange={(e) => setFromFilter(e.target.value)} className="flex h-11 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm">
-                                <option value="">All</option>
+                                <option value="">{copy('All', 'Zote')}</option>
                                 {locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
                             </select>
                         </div>
                         <div className="space-y-1">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">To Location</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{copy('To Location', 'Hadi Eneo')}</label>
                             <select value={toFilter} onChange={(e) => setToFilter(e.target.value)} className="flex h-11 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm">
-                                <option value="">All</option>
+                                <option value="">{copy('All', 'Zote')}</option>
                                 {locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
                             </select>
                         </div>
@@ -269,12 +271,12 @@ export default function Transfers({ merchant }) {
                 {isRequesting && (
                     <Card className="glass-card border-brand-200 shadow-xl overflow-hidden animate-in fade-in zoom-in-95">
                         <CardHeader className="bg-brand-50/50 p-6">
-                            <CardTitle className="text-lg font-bold">New Transfer Request</CardTitle>
+                            <CardTitle className="text-lg font-bold">{copy('New Transfer Request', 'Ombi Jipya la Uhamishaji')}</CardTitle>
                         </CardHeader>
                         <CardContent className="p-6">
                             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 <div className="space-y-1">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Select Product / Variant</label>
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{copy('Select Product / Variant', 'Chagua Bidhaa / Variant')}</label>
                                     <select
                                         required
                                         className="flex h-12 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm font-bold"
@@ -289,21 +291,21 @@ export default function Transfers({ merchant }) {
                                             });
                                         }}
                                     >
-                                        <option value="">-- Choose Item --</option>
+                                        <option value="">-- {copy('Choose Item', 'Chagua Kitu')} --</option>
                                         {transferItems.map(item => (
                                             <option key={item.key} value={item.key}>{item.label}</option>
                                         ))}
                                     </select>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">From (Source)</label>
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{copy('From (Source)', 'Kutoka (Chanzo)')}</label>
                                     <select
                                         required
                                         className="flex h-12 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm"
                                         value={form.from_location_id}
                                         onChange={e => setForm({ ...form, from_location_id: e.target.value })}
                                     >
-                                        <option value="">-- Select Source --</option>
+                                        <option value="">-- {copy('Select Source', 'Chagua Chanzo')} --</option>
                                         {locations.map(loc => {
                                             const qty = locationStockForSelectedItem(loc.id);
                                             return (
@@ -315,14 +317,14 @@ export default function Transfers({ merchant }) {
                                     </select>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">To (Destination)</label>
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{copy('To (Destination)', 'Hadi (Mwisho)')}</label>
                                     <select
                                         required
                                         className="flex h-12 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm"
                                         value={form.to_location_id}
                                         onChange={e => setForm({ ...form, to_location_id: e.target.value })}
                                     >
-                                        <option value="">-- Select Destination --</option>
+                                        <option value="">-- {copy('Select Destination', 'Chagua Mwisho')} --</option>
                                         {locations.map(loc => {
                                             const qty = locationStockForSelectedItem(loc.id);
                                             return (
@@ -334,7 +336,7 @@ export default function Transfers({ merchant }) {
                                     </select>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Quantity</label>
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{copy('Quantity', 'Kiasi')}</label>
                                     <input
                                         required
                                         type="number"
@@ -347,7 +349,7 @@ export default function Transfers({ merchant }) {
                                 </div>
                                 <div className="md:col-span-2 lg:col-span-2 flex items-end">
                                     <Button type="submit" className="w-full bg-brand-600 hover:bg-brand-700 text-white rounded-xl h-12 font-black">
-                                        Create Transfer Request
+                                        {copy('Create Transfer Request', 'Tengeneza ombi la uhamishaji')}
                                     </Button>
                                 </div>
                             </form>
@@ -388,12 +390,12 @@ export default function Transfers({ merchant }) {
                                     {/* Middle: Route */}
                                     <div className="p-6 flex-1 flex items-center justify-center gap-6 border-y md:border-y-0 md:border-x border-brand-50">
                                         <div className="text-center">
-                                            <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">From</p>
+                                            <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">{copy('From', 'Kutoka')}</p>
                                             <p className="text-sm font-bold">{t.from_location?.name}</p>
                                         </div>
                                         <ArrowRight className="h-5 w-5 text-brand-200" />
                                         <div className="text-center">
-                                            <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">To</p>
+                                            <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">{copy('To', 'Hadi')}</p>
                                             <p className="text-sm font-bold">{t.to_location?.name}</p>
                                         </div>
                                     </div>
@@ -404,28 +406,28 @@ export default function Transfers({ merchant }) {
                                             {t.status}
                                         </span>
                                         <div className="text-[10px] text-muted-foreground text-right space-y-0.5">
-                                            <p><span className="font-bold">Requested:</span> {fmtDateTime(t.created_at)}</p>
-                                            <p><span className="font-bold">Dispatched:</span> {fmtDateTime(t.dispatched_at)}</p>
-                                            <p><span className="font-bold">Received:</span> {fmtDateTime(t.received_at)}</p>
-                                            <p><span className="font-bold">Requested by:</span> {t.requested_by?.user?.name || '—'}</p>
-                                            <p><span className="font-bold">Dispatched by:</span> {t.dispatched_by?.user?.name || '—'}</p>
-                                            <p><span className="font-bold">Received by:</span> {t.received_by?.user?.name || '—'}</p>
+                                            <p><span className="font-bold">{copy('Requested:', 'Imeombwa:')}</span> {fmtDateTime(t.created_at)}</p>
+                                            <p><span className="font-bold">{copy('Dispatched:', 'Imetumwa:')}</span> {fmtDateTime(t.dispatched_at)}</p>
+                                            <p><span className="font-bold">{copy('Received:', 'Imepokelewa:')}</span> {fmtDateTime(t.received_at)}</p>
+                                            <p><span className="font-bold">{copy('Requested by:', 'Imeombwa na:')}</span> {t.requested_by?.user?.name || '—'}</p>
+                                            <p><span className="font-bold">{copy('Dispatched by:', 'Imetumwa na:')}</span> {t.dispatched_by?.user?.name || '—'}</p>
+                                            <p><span className="font-bold">{copy('Received by:', 'Imepokelewa na:')}</span> {t.received_by?.user?.name || '—'}</p>
                                         </div>
 
                                         <div className="flex items-center gap-2">
                                             {t.status === 'PENDING' && (
                                                 <>
-                                                    <Button variant="outline" size="sm" className="rounded-lg text-xs font-bold text-red-600" onClick={() => handleAction(t.id, 'cancel')}>Cancel</Button>
+                                                    <Button variant="outline" size="sm" className="rounded-lg text-xs font-bold text-red-600" onClick={() => handleAction(t.id, 'cancel')}>{copy('Cancel', 'Ghairi')}</Button>
                                                     {shopDispatchRequired ? (
                                                         <Button
                                                             size="sm"
                                                             className="rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
                                                             onClick={() => router.visit(`/merchant/${merchant.username}/retail/storekeeper`)}
                                                         >
-                                                            Verify at {t.from_location?.name}
+                                                            {copy('Verify at', 'Thibitisha kwenye')} {t.from_location?.name}
                                                         </Button>
                                                     ) : (
-                                                        <Button size="sm" className="rounded-lg text-xs font-bold bg-brand-600 text-white" onClick={() => handleAction(t.id, 'dispatch')}>Dispatch</Button>
+                                                        <Button size="sm" className="rounded-lg text-xs font-bold bg-brand-600 text-white" onClick={() => handleAction(t.id, 'dispatch')}>{copy('Dispatch', 'Tuma')}</Button>
                                                     )}
                                                 </>
                                             )}
@@ -436,15 +438,15 @@ export default function Transfers({ merchant }) {
                                                         className="rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
                                                         onClick={() => router.visit(`/merchant/${merchant.username}/retail/storekeeper`)}
                                                     >
-                                                        Verify at {t.to_location?.name}
+                                                        {copy('Verify at', 'Thibitisha kwenye')} {t.to_location?.name}
                                                     </Button>
                                                 ) : (
-                                                    <Button size="sm" className="rounded-lg text-xs font-bold bg-green-600 text-white" onClick={() => handleAction(t.id, 'receive')}>Confirm Receipt</Button>
+                                                    <Button size="sm" className="rounded-lg text-xs font-bold bg-green-600 text-white" onClick={() => handleAction(t.id, 'receive')}>{copy('Confirm Receipt', 'Thibitisha Mapokezi')}</Button>
                                                 )
                                             )}
                                             {t.status === 'RECEIVED' && (
                                                 <div className="flex items-center gap-1 text-[10px] font-bold text-green-600">
-                                                    <CheckCircle2 className="h-3 w-3" /> Handshake Complete
+                                                    <CheckCircle2 className="h-3 w-3" /> {copy('Handshake Complete', 'Uthibitisho umekamilika')}
                                                 </div>
                                             )}
                                         </div>
@@ -458,8 +460,8 @@ export default function Transfers({ merchant }) {
                     {transfers.length === 0 && !loading && (
                         <div className="py-20 text-center border-2 border-dashed border-brand-100 rounded-3xl">
                             <ArrowRightLeft className="h-16 w-16 text-brand-100 mx-auto mb-4" />
-                            <h2 className="text-xl font-bold text-gray-400">No stock movements yet</h2>
-                            <p className="text-muted-foreground mt-2">Inventory transfers will appear here once requested.</p>
+                            <h2 className="text-xl font-bold text-gray-400">{copy('No stock movements yet', 'Hakuna uhamishaji wa stock bado')}</h2>
+                            <p className="text-muted-foreground mt-2">{copy('Inventory transfers will appear here once requested.', 'Uhamishaji wa stock utaonekana hapa ukiombwa.')}</p>
                         </div>
                     )}
                 </div>

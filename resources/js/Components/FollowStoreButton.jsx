@@ -3,6 +3,7 @@ import { router, usePage } from '@inertiajs/react';
 import axios from 'axios';
 import { Bell, Check, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 export default function FollowStoreButton({
     merchantSlug,
@@ -12,9 +13,10 @@ export default function FollowStoreButton({
     variant = 'default',
     className = '',
     showCount = true,
-    labelFollow = 'Follow store',
-    labelFollowing = 'Following',
+    labelFollow = null,
+    labelFollowing = null,
 }) {
+    const { t } = useLocale();
     const { auth } = usePage().props;
     const [isFollowing, setIsFollowing] = useState(Boolean(initialFollowing));
     const [followersCount, setFollowersCount] = useState(Number(initialCount || 0));
@@ -55,9 +57,9 @@ export default function FollowStoreButton({
 
             setIsFollowing(Boolean(response.data?.is_following));
             setFollowersCount(Number(response.data?.followers_count || 0));
-            toast.success(isFollowing ? 'Store unfollowed.' : 'Store followed. You will get important updates.');
+            toast.success(isFollowing ? t('sharedUi.storeUnfollowed') : t('sharedUi.storeFollowed'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not update follow status.');
+            toast.error(error.response?.data?.message || t('sharedUi.followFailed'));
         } finally {
             setLoading(false);
         }
@@ -73,8 +75,8 @@ export default function FollowStoreButton({
                     toggleFollow();
                 }}
                 disabled={loading}
-                title={isFollowing ? 'Following store' : 'Follow store'}
-                aria-label={isFollowing ? 'Following store' : 'Follow store'}
+                title={isFollowing ? t('sharedUi.followingStore') : t('sharedUi.followStore')}
+                aria-label={isFollowing ? t('sharedUi.followingStore') : t('sharedUi.followStore')}
                 className={`inline-flex h-6 w-6 items-center justify-center rounded-full border-2 border-background text-white shadow-sm transition-transform hover:scale-105 disabled:cursor-wait disabled:opacity-70 ${isFollowing ? 'bg-neutral-900' : 'bg-brand-600'} ${className}`}
             >
                 {loading ? (
@@ -103,7 +105,7 @@ export default function FollowStoreButton({
             ) : (
                 <Bell className="h-4 w-4" />
             )}
-            <span>{isFollowing ? labelFollowing : labelFollow}</span>
+            <span>{isFollowing ? (labelFollowing || t('sharedUi.followingStore')) : (labelFollow || t('sharedUi.followStore'))}</span>
             {showCount && followersCount > 0 && (
                 <span className={isFollowing ? 'text-muted-foreground' : 'text-white/80'}>
                     {formatFollowerCount(followersCount)}

@@ -219,7 +219,7 @@ Route::get('/product/{product}', function (Product $product) {
     // Ensure available_stock is included
     $product->append('available_stock');
     $kycEnforcementMode = (string) AdminSetting::get('kyc_enforcement_mode', 'off');
-    $product->setAttribute('verification_required_for_listing', $kycEnforcementMode === 'listings_and_withdrawals');
+    $product->setAttribute('verification_required_for_listing', $kycEnforcementMode === 'listings_and_provider_payouts');
     $groupSaleSlug = trim((string) request()->query('group_sale', ''));
     if ($groupSaleSlug !== '') {
         $groupSale = \App\Models\MerchantGroupSaleCampaign::query()
@@ -805,6 +805,12 @@ $welcomePage = function (Request $request) {
 Route::get('/welcome', $welcomePage)->name('login');
 Route::get('/login', $welcomePage)->name('login.page');
 
+Route::get('/legal', [\App\Http\Controllers\LegalPageController::class, 'index'])->name('legal.index');
+Route::get('/legal/{document}', [\App\Http\Controllers\LegalPageController::class, 'show'])
+    ->where('document', '[a-z0-9-]+')
+    ->name('legal.document');
+Route::post('/locale', [\App\Http\Controllers\LocaleController::class, 'update'])->name('locale.update');
+
 Route::get('/terms', function () {
     $seo = SeoMeta::staticPage('Terms of Service', 'Read the Takeer terms of service for buyers, sellers, creators, and businesses.', '/terms');
 
@@ -915,6 +921,9 @@ Route::post('/api/payments/selcom/payin-callback', [\App\Http\Controllers\Api\Pa
 Route::post('/api/payments/selcom/payout-callback', [\App\Http\Controllers\Api\Payments\SelcomCallbackController::class, 'payout'])
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
     ->name('payments.selcom.payout-callback');
+Route::post('/api/payments/selcom/refund-callback', [\App\Http\Controllers\Api\Payments\SelcomCallbackController::class, 'refund'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
+    ->name('payments.selcom.refund-callback');
 
 // ─── GOOGLE OAUTH ───────────────────────────────────────────────────────────
 Route::get('/auth/google/redirect', function () {
@@ -952,10 +961,6 @@ Route::get('/auth/google/callback', function (\Illuminate\Http\Request $request)
             ]);
         } elseif (! $user->email_verified_at) {
             $user->forceFill(['email_verified_at' => now()])->save();
-        }
-
-        if (! $user->wallet) {
-            \App\Models\Wallet::create(['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]);
         }
 
         \Illuminate\Support\Facades\Auth::guard('web')->login($user, true);
@@ -1044,7 +1049,7 @@ Route::middleware('auth')->group(function () {
 
         // This Month Earnings
         $thisMonthEarnings = \App\Models\Order::whereIn('merchant_id', $merchantIds)
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid']) 
+            ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'payout_processing', 'paid_out'])
             ->whereMonth('created_at', \Carbon\Carbon::now()->month)
             ->whereYear('created_at', \Carbon\Carbon::now()->year)
             ->sum('total_paid');
@@ -1052,12 +1057,12 @@ Route::middleware('auth')->group(function () {
         // Weekly Stats for Overview Cards
         $startOfWeek = \Carbon\Carbon::now()->startOfWeek();
         $paymentsThisWeek = \App\Models\Order::whereIn('merchant_id', $merchantIds)
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'payout_processing', 'paid_out'])
             ->where('created_at', '>=', $startOfWeek)
             ->sum('total_paid');
 
         $transactionsThisWeek = \App\Models\Order::whereIn('merchant_id', $merchantIds)
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'payout_processing', 'paid_out'])
             ->where('created_at', '>=', $startOfWeek)
             ->count();
 
@@ -1065,7 +1070,7 @@ Route::middleware('auth')->group(function () {
         $startOfLastWeek = \Carbon\Carbon::now()->subWeek()->startOfWeek();
         $endOfLastWeek = \Carbon\Carbon::now()->subWeek()->endOfWeek();
         $paymentsLastWeek = \App\Models\Order::whereIn('merchant_id', $merchantIds)
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'payout_processing', 'paid_out'])
             ->whereBetween('created_at', [$startOfLastWeek, $endOfLastWeek])
             ->sum('total_paid');
         
@@ -1075,7 +1080,7 @@ Route::middleware('auth')->group(function () {
 
         // Sales Breakdown
         $orders = \App\Models\Order::whereIn('merchant_id', $merchantIds)
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'payout_processing', 'paid_out'])
             ->with('product:id,type')
             ->get(['id', 'purchasable_type', 'product_id', 'quantity']);
 
@@ -1145,12 +1150,12 @@ Route::middleware('auth')->group(function () {
             $activeMerchant->loadMissing('currency');
             $merchantCurrencyCode = $activeMerchant->currency?->code ?: 'TZS';
             $paidOrders = $activeMerchant->orders()
-                ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+                ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'payout_processing', 'paid_out'])
                 ->where('created_at', '>=', now()->subDays(30))
                 ->with('product:id,title,type,digital_delivery_type,digital_content_type')
                 ->get(['id', 'merchant_id', 'product_id', 'purchasable_type', 'purchasable_id', 'payment_status', 'total_paid', 'quantity', 'created_at']);
             $previousPaidOrders = $activeMerchant->orders()
-                ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+                ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'payout_processing', 'paid_out'])
                 ->whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])
                 ->get(['id', 'total_paid']);
 
@@ -1193,7 +1198,7 @@ Route::middleware('auth')->group(function () {
                 $qty = (int) ($order->quantity ?: 1);
 
                 $buckets[$bucket]['revenue'] += $amount;
-                $buckets[$bucket][$order->payment_status === 'resolved_merchant_paid' ? 'released' : 'pending'] += $amount;
+                $buckets[$bucket][$order->payment_status === 'paid_out' ? 'released' : 'pending'] += $amount;
                 $buckets[$bucket]['orders'] += 1;
                 $buckets[$bucket]['units'] += $qty;
 
@@ -1228,16 +1233,16 @@ Route::middleware('auth')->group(function () {
             $transactionTotals = (clone $transactionQuery)
                 ->selectRaw('COALESCE(SUM(gross_amount), 0) as gross, COALESCE(SUM(fee_amount), 0) as fees, COALESCE(SUM(net_amount), 0) as net')
                 ->first();
-            $wallet = $activeMerchant->wallet()->firstOrCreate(
-                ['merchant_id' => $activeMerchant->id],
-                ['user_id' => $activeMerchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
-            );
-            $pendingWithdrawals = \App\Models\WithdrawalRequest::query()
+            $completedProviderPayouts = \App\Models\ProviderPayout::query()
                 ->where('merchant_id', $activeMerchant->id)
-                ->where('status', 'pending')
-                ->sum('amount');
+                ->where('state', 'completed')
+                ->sum('amount_minor');
+            $pendingProviderPayouts = \App\Models\ProviderPayout::query()
+                ->where('merchant_id', $activeMerchant->id)
+                ->whereIn('state', ['created', 'submitted', 'processing'])
+                ->sum('amount_minor');
             $totalRevenue = (float) $paidOrders->sum(fn ($order) => (float) $order->total_paid);
-            $pendingRevenue = (float) $paidOrders->where('payment_status', 'escrow_locked')->sum('total_paid');
+            $pendingRevenue = (float) $paidOrders->whereIn('payment_status', ['pending_fulfillment', 'release_eligible', 'payout_processing'])->sum('total_paid');
             $previousRevenue = (float) $previousPaidOrders->sum(fn ($order) => (float) $order->total_paid);
             $revenueChange = $previousRevenue > 0
                 ? round((($totalRevenue - $previousRevenue) / $previousRevenue) * 100, 1)
@@ -1249,15 +1254,14 @@ Route::middleware('auth')->group(function () {
                 'total_revenue' => $totalRevenue,
                 'total_orders' => $paidOrders->count(),
                 'active_members' => $activeMembers,
-                'released_revenue' => (float) $paidOrders->where('payment_status', 'resolved_merchant_paid')->sum('total_paid'),
+                'released_revenue' => (float) $paidOrders->where('payment_status', 'paid_out')->sum('total_paid'),
                 'pending_revenue' => $pendingRevenue,
                 'estimated_fees' => (float) ($transactionTotals->fees ?? 0),
                 'estimated_net' => (float) (($transactionTotals->net ?? 0) ?: max($totalRevenue - (float) ($transactionTotals->fees ?? 0), 0)),
                 'revenue_change_percent' => $revenueChange,
                 'payouts' => [
-                    'available_balance' => (float) $wallet->balance,
-                    'held_balance' => (float) $wallet->frozen_balance,
-                    'pending_withdrawals' => (float) $pendingWithdrawals,
+                    'provider_payouts_completed' => (float) $completedProviderPayouts / 100,
+                    'provider_payouts_pending' => (float) $pendingProviderPayouts / 100,
                 ],
                 'buckets' => collect($buckets)->map(function ($bucket) use ($totalRevenue) {
                     $bucket['share'] = $totalRevenue > 0 ? round(((float) $bucket['revenue'] / $totalRevenue) * 100, 1) : 0;
@@ -1294,8 +1298,8 @@ Route::middleware('auth')->group(function () {
             'summary' => $activeMerchant ? [
                 'total_products' => $activeMerchant->products()->count(),
                 'orders_today'   => $activeMerchant->orders()->whereDate('created_at', now()->today())->count(),
-                'orders_pending' => $activeMerchant->orders()->whereIn('payment_status', ['awaiting_payment', 'escrow_locked'])->count(),
-                'orders_completed' => $activeMerchant->orders()->whereIn('payment_status', ['resolved_merchant_paid'])->count(),
+                'orders_pending' => $activeMerchant->orders()->whereIn('payment_status', ['awaiting_payment', 'pending_fulfillment', 'payment_confirmed'])->count(),
+                'orders_completed' => $activeMerchant->orders()->whereIn('payment_status', ['paid_out'])->count(),
             ] : null,
             'recentOrders' => $activeMerchant ? $activeMerchant->orders()
                 ->with(['product:id,title,type,url,download_link', 'product.images'])
@@ -1440,8 +1444,8 @@ Route::middleware('auth')->group(function () {
 
         abort_unless($isParticipant, 403);
 
-        $isEscrowOrder = $orderModel->requiresPhysicalFulfillment();
-        $orderFlow = $isEscrowOrder ? 'escrow' : 'instant';
+        $isPhysicalOrder = $orderModel->requiresPhysicalFulfillment();
+        $orderFlow = $isPhysicalOrder ? 'fulfillment' : 'instant';
 
         $actingAs = $request->query('acting_as', 'buyer');
         if ($actingAs === 'merchant') {
@@ -1841,14 +1845,6 @@ Route::middleware('auth')->group(function () {
             ]);
         })->middleware('merchant_permission:team.view');
 
-        Route::get('/wallet', [\App\Http\Controllers\Api\MerchantWalletController::class, 'show'])->middleware('merchant_permission:wallet.view')->name('merchant.wallet');
-        Route::get('/wallet/ledger', [\App\Http\Controllers\Api\MerchantWalletController::class, 'showLedger'])->middleware('merchant_permission:wallet.ledger')->name('merchant.wallet.ledger');
-        Route::get('/wallet/payout-credentials', [\App\Http\Controllers\Api\MerchantPayoutCredentialController::class, 'index'])->middleware('merchant_permission:wallet.view');
-        Route::post('/wallet/payout-credentials', [\App\Http\Controllers\Api\MerchantPayoutCredentialController::class, 'store'])->middleware('merchant_permission:wallet.withdraw');
-        Route::put('/wallet/payout-credentials/{credential}', [\App\Http\Controllers\Api\MerchantPayoutCredentialController::class, 'update'])->middleware('merchant_permission:wallet.withdraw');
-        Route::delete('/wallet/payout-credentials/{credential}', [\App\Http\Controllers\Api\MerchantPayoutCredentialController::class, 'destroy'])->middleware('merchant_permission:wallet.withdraw');
-        Route::post('/wallet/withdraw/quote', [\App\Http\Controllers\Api\MerchantWalletController::class, 'quoteWithdrawal'])->middleware('merchant_permission:wallet.withdraw')->name('merchant.wallet.withdraw.quote');
-        Route::post('/wallet/withdraw', [\App\Http\Controllers\Api\MerchantWalletController::class, 'requestWithdrawal'])->middleware('merchant_permission:wallet.withdraw')->name('merchant.wallet.withdraw');
         Route::get('/platform-subscriptions/retail-operations', function (Merchant $merchant) {
             abort_unless($merchant->isRetailEligible(), 403, 'Retail Operations is only available for verified business accounts with completed business KYC.');
 
@@ -2019,7 +2015,6 @@ Route::middleware('auth')->group(function () {
                 'orderId' => $order->id,
             ]);
         })->middleware('merchant_permission:orders.view');
-        Route::get('/wallet/api/history', [\App\Http\Controllers\Api\MerchantWalletController::class, 'history'])->middleware('merchant_permission:wallet.view,wallet.ledger');
         
         // KYC endpoints
         Route::get('/kyc/api', [\App\Http\Controllers\Api\MerchantKycController::class, 'show'])->middleware('merchant_permission:kyc.view');
@@ -2031,6 +2026,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/verification', function (Merchant $merchant) {
             return Inertia::render('Merchant/VerificationCenter', [
                 'merchantUsername' => $merchant->username,
+                'merchantId' => $merchant->id,
             ]);
         })->middleware('merchant_permission:kyc.view');
 
@@ -2252,6 +2248,15 @@ Route::get('/sitemap.xml', function () {
         url('/feed'),
         url('/welcome'),
         route('search.page'),
+        route('legal.index'),
+        route('legal.document', ['document' => 'buyer-terms']),
+        route('legal.document', ['document' => 'merchant-marketplace-agreement']),
+        route('legal.document', ['document' => 'payment-provider-processing-terms']),
+        route('legal.document', ['document' => 'refund-return-cancellation-dispute-policy']),
+        route('legal.document', ['document' => 'fee-payout-schedule']),
+        route('legal.document', ['document' => 'privacy-notice']),
+        route('legal.document', ['document' => 'restricted-products-services-policy']),
+        route('legal.document', ['document' => 'complaints-redress-procedure']),
         route('terms'),
         route('privacy'),
     ]);
@@ -2334,12 +2339,12 @@ Route::middleware(['auth', 'admin'])->group(function () {
         Route::get('/enquiries', [SupportEnquiryController::class, 'adminIndex']);
         Route::patch('/enquiries/{supportEnquiry:id}', [SupportEnquiryController::class, 'adminUpdate']);
 
-        Route::get('/withdrawals', [AdminSettingsController::class, 'withdrawals']);
-        Route::post('/withdrawals/{withdrawal}/approve', [AdminController::class, 'approveWithdrawal']);
         Route::get('/refunds', [AdminSettingsController::class, 'refunds']);
+        Route::get('/payment-operations', [\App\Http\Controllers\Api\ProviderPaymentOperationsController::class, 'index']);
+        Route::get('/legal/documents', [\App\Http\Controllers\Api\LegalDocumentController::class, 'adminIndex']);
+        Route::post('/legal/documents/{legalDocument}/activate', [\App\Http\Controllers\Api\LegalDocumentController::class, 'activate']);
         Route::post('/refunds/{refund}/approve', [AdminController::class, 'approveRefund']);
         Route::post('/refunds/{refund}/reject', [AdminController::class, 'rejectRefund']);
-        Route::get('/platform-wallet', [AdminSettingsController::class, 'platformWallet']);
         Route::get('/fee-policies', [AdminFeePolicyController::class, 'index']);
         Route::post('/fee-policies', [AdminFeePolicyController::class, 'store']);
         Route::put('/fee-policies/{feePolicy}', [AdminFeePolicyController::class, 'update']);
@@ -2347,12 +2352,6 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
         Route::get('/settings', [AdminSettingsController::class, 'index']);
         Route::put('/settings', [AdminSettingsController::class, 'update']);
-        Route::get('/payment-operations', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'index']);
-        Route::put('/payment-operations/providers/{provider}', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'updateProvider']);
-        Route::put('/payment-operations/countries/{country}', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'updateCountry']);
-        Route::put('/payment-operations/channels/{channel}', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'updateChannel']);
-        Route::post('/payment-operations/channels/{channel}/incidents', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'storeIncident']);
-        Route::post('/payment-operations/incidents/{incident}/resolve', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'resolveIncident']);
 
         Route::get('/users', [AdminSettingsController::class, 'users']);
         Route::post('/users/{user}/toggle-role', [AdminSettingsController::class, 'toggleRole']);
@@ -2507,24 +2506,15 @@ Route::middleware(['auth', 'admin'])->group(function () {
         return Inertia::render('Admin/Services');
     });
 
-    Route::get('/admin/withdrawals', function () {
-        return Inertia::render('Admin/Withdrawals');
-    });
-
     Route::get('/admin/refunds', function () {
         return Inertia::render('Admin/Refunds');
     });
-
-    Route::get('/admin/payout-settings', function () {
-        return Inertia::render('Admin/PayoutSettings');
+    Route::get('/admin/payment-operations', function () {
+        return Inertia::render('Admin/PaymentOperations');
     });
 
     Route::get('/admin/ai-settings', function () {
         return Inertia::render('Admin/AiSettings');
-    });
-
-    Route::get('/admin/platform-wallet', function () {
-        return Inertia::render('Admin/PlatformWallet');
     });
 
     Route::get('/admin/fee-policies', function () {

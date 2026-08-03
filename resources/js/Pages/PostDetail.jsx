@@ -19,8 +19,10 @@ import { trackAttributionEvent } from '@/lib/attribution';
 import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
 import { formatQuantity } from '@/lib/productUnits';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 function CommentItem({ comment, onReply }) {
+    const { copy } = useLocale();
     const [showReplies, setShowReplies] = useState(false);
     const normalizeList = (items) => {
         if (Array.isArray(items)) return items;
@@ -52,7 +54,7 @@ function CommentItem({ comment, onReply }) {
                             className="text-xs font-bold text-muted-foreground hover:text-brand-600 transition-colors flex items-center gap-1"
                         >
                             <CornerDownRight className="h-3 w-3" />
-                            Jibu
+                            {copy('Reply', 'Jibu')}
                         </button>
                     </div>
                 </div>
@@ -98,7 +100,7 @@ function CommentItem({ comment, onReply }) {
                             onClick={() => setShowReplies((prev) => !prev)}
                             className="pl-12 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors"
                         >
-                            {showReplies ? 'Ficha majibu' : `Onyesha majibu (${extraReplies.length})`}
+                            {showReplies ? copy('Hide replies', 'Ficha majibu') : `${copy('Show replies', 'Onyesha majibu')} (${extraReplies.length})`}
                         </button>
                     )}
                 </div>
@@ -107,10 +109,10 @@ function CommentItem({ comment, onReply }) {
     );
 }
 
-const timeAgo = (ts) => {
+const timeAgo = (ts, copy = (english) => english) => {
     if (!ts) return '';
     const s = Math.floor((Date.now() - new Date(ts)) / 1000);
-    if (s < 60) return 'Sasa hivi';
+    if (s < 60) return copy('Just now', 'Sasa hivi');
     if (s < 3600) return `${Math.floor(s / 60)}m`;
     if (s < 86400) return `${Math.floor(s / 3600)}h`;
     return `${Math.floor(s / 86400)}d`;
@@ -223,8 +225,9 @@ function normalizeCommentsPayload(payload) {
 
 export default function PostDetail({ post: initialPost, initialComments, readOnly = false, adminMode = false, backHref = null }) {
     const { auth } = usePage().props;
+    const { copy } = useLocale();
     const LayoutComponent = readOnly ? AdminLayout : AppLayout;
-    const layoutProps = readOnly ? { title: 'Post Monitor', hideTopBar: true } : { hideTabBar: true };
+    const layoutProps = readOnly ? { title: copy('Post monitor', 'Ufuatiliaji wa post'), hideTopBar: true } : { hideTabBar: true };
     const [post, setPost] = useState(initialPost);
     const [comments, setComments] = useState(initialComments || []);
     const [loadingComments, setLoadingComments] = useState(Boolean(!initialComments && !(initialPost?.is_restricted && !initialPost?.has_access)));
@@ -409,7 +412,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
             setCommentsNextUrl(normalized.next);
         } catch (e) {
             if (![401, 403].includes(e.response?.status)) {
-                toast.error(e.response?.data?.message || 'Imeshindwa kupakia maoni.');
+                toast.error(e.response?.data?.message || copy('Unable to load comments.', 'Imeshindwa kupakia maoni.'));
             }
         } finally {
             if (append) {
@@ -510,11 +513,11 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                     ...prev,
                     comment_count: res.data?.comment_count ?? ((prev.comment_count || 0) + 1),
                 }));
-                toast.success(res.data?.message || 'Your comment has been posted.');
+                toast.success(res.data?.message || copy('Your comment has been posted.', 'Maoni yako yamewekwa.'));
             } else {
                 setMyReaction(res.data?.my_reaction || guestEngagement.emoji);
                 setReactionSummary(res.data?.reaction_summary || []);
-                toast.success(res.data?.message || 'Reaction added.');
+                toast.success(res.data?.message || copy('Reaction added.', 'Reaction imewekwa.'));
             }
 
             router.reload({ only: ['auth'], preserveScroll: true, preserveState: true });
@@ -530,7 +533,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const handleSendComment = async () => {
         if (readOnly) return;
         if (isDeleted) {
-            toast.error('Comments are disabled on deleted content.');
+            toast.error(copy('Comments are disabled on deleted content.', 'Maoni yamefungwa kwenye content iliyofutwa.'));
             return;
         }
         if (!commentsEnabled) return;
@@ -560,7 +563,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
             setReplyingTo(null);
             setPost(prev => ({ ...prev, comment_count: prev.comment_count + 1 }));
         } catch (e) {
-            toast.error(e.response?.data?.message || 'Imeshindwa kutuma maoni.');
+                toast.error(e.response?.data?.message || copy('Unable to post comment.', 'Imeshindwa kutuma maoni.'));
         } finally {
             setSubmitting(false);
         }
@@ -569,7 +572,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const handleReact = async (emoji) => {
         if (readOnly) return;
         if (isDeleted) {
-            toast.error('Reactions are disabled on deleted content.');
+            toast.error(copy('Reactions are disabled on deleted content.', 'Reactions zimefungwa kwenye content iliyofutwa.'));
             return;
         }
         if (!reactionsEnabled) return;
@@ -588,7 +591,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
             setReactionSummary(res.data?.reaction_summary || []);
         } catch (e) {
             setMyReaction(myReaction);
-            toast.error(e.response?.data?.message || 'Imeshindwa kuweka reaction.');
+            toast.error(e.response?.data?.message || copy('Unable to add reaction.', 'Imeshindwa kuweka reaction.'));
         }
     };
 
@@ -623,10 +626,10 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                 },
             });
             if (res.data?.post) setPost(res.data.post);
-            toast.success(res.data?.message || 'Post removed.');
+            toast.success(res.data?.message || copy('Post removed.', 'Post imeondolewa.'));
             setShowAdminRemoveModal(false);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to remove post.');
+            toast.error(error.response?.data?.message || copy('Failed to remove post.', 'Imeshindikana kuondoa post.'));
         } finally {
             setAdminAction(null);
         }
@@ -634,15 +637,15 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
 
     const handleAdminRestorePost = async () => {
         if (!adminMode || !isDeleted || adminAction) return;
-        if (!window.confirm('Restore this post to public/admin feeds?')) return;
+        if (!window.confirm(copy('Restore this post to public/admin feeds?', 'Rejesha post hii kwenye feed za umma/admin?'))) return;
 
         setAdminAction('restore');
         try {
             const res = await axios.post(`/admin/api/posts/${post.public_id || post.id}/restore`);
             if (res.data?.post) setPost(res.data.post);
-            toast.success(res.data?.message || 'Post restored.');
+            toast.success(res.data?.message || copy('Post restored.', 'Post imerejeshwa.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to restore post.');
+            toast.error(error.response?.data?.message || copy('Failed to restore post.', 'Imeshindikana kurejesha post.'));
         } finally {
             setAdminAction(null);
         }
@@ -854,9 +857,9 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const attachedProductPriceLabel = (() => {
         if (!attachedProductIsService) return `TZS ${productDisplayPrice.toLocaleString()}`;
         if (attachedProductPriceDisplay === 'hidden' || attachedProductServiceMode === 'showcase_only') return 'Contact provider';
-        if (attachedProductPriceDisplay === 'quote_only' || attachedProductServiceMode === 'request_quote') return 'Quote after request';
-        if (attachedProductPriceDisplay === 'starts_from') return `From TZS ${productDisplayPrice.toLocaleString()}`;
-        if (attachedProductPriceDisplay === 'package') return `TZS ${productDisplayPrice.toLocaleString()} package`;
+        if (attachedProductPriceDisplay === 'quote_only' || attachedProductServiceMode === 'request_quote') return copy('Quote after request', 'Bei baada ya ombi');
+        if (attachedProductPriceDisplay === 'starts_from') return `${copy('From', 'Kuanzia')} TZS ${productDisplayPrice.toLocaleString()}`;
+        if (attachedProductPriceDisplay === 'package') return `TZS ${productDisplayPrice.toLocaleString()} ${copy('package', 'kifurushi')}`;
         return `TZS ${productDisplayPrice.toLocaleString()}${serviceUnitLabels[attachedProductPriceDisplay] || ''}`;
     })();
     const attachedProductSellingStyle = attachedProduct?.type === 'physical'
@@ -866,20 +869,20 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         && (Boolean(attachedProduct?.is_wholesale_enabled) || ['wholesale', 'both'].includes(attachedProductSellingStyle));
     const attachedProductIsWholesaleOnly = attachedProductSellingStyle === 'wholesale';
     const attachedProductWholesaleBadge = attachedProductIsWholesale
-        ? (attachedProductSellingStyle === 'both' ? 'Retail + Wholesale' : 'Wholesale')
+        ? (attachedProductSellingStyle === 'both' ? copy('Retail + wholesale', 'Retail + jumla') : copy('Wholesale', 'Jumla'))
         : '';
     const attachedProductMoqLabel = attachedProductIsWholesale && Number(attachedProduct?.min_order_quantity || 0) > 0
-        ? `MOQ ${formatQuantity(attachedProduct.min_order_quantity)} ${attachedProduct?.unit_type?.symbol || attachedProduct?.unit_type?.name || 'units'}`
+        ? `MOQ ${formatQuantity(attachedProduct.min_order_quantity)} ${attachedProduct?.unit_type?.symbol || attachedProduct?.unit_type?.name || copy('units', 'vitengo')}`
         : '';
     const attachedProductCtaLabel = readOnly
-        ? 'View'
+        ? copy('View', 'Tazama')
         : attachedProduct?.has_access
-            ? 'Fungua'
+            ? copy('Open', 'Fungua')
             : attachedProductIsService
-                ? (attachedProductServiceMode === 'book_appointment' ? 'Book' : 'View Service')
+                ? (attachedProductServiceMode === 'book_appointment' ? copy('Book', 'Weka booking') : copy('View service', 'Tazama huduma'))
                 : attachedProductIsWholesaleOnly
-                    ? 'Request quote'
-                    : 'Nunua';
+                    ? copy('Request quote', 'Omba bei')
+                    : copy('Buy', 'Nunua');
     const productHasDiscount = attachedProduct
         ? !attachedProductIsService && Number(attachedProduct.discounted_price) > 0 && Number(attachedProduct.discounted_price) < Number(attachedProduct.price)
         : false;
@@ -932,7 +935,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         <div className="mb-1 flex flex-wrap items-center gap-1.5">
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-100">
                                 <ShieldCheck className="h-3 w-3" />
-                                SafePay
+                                PSP payment
                             </span>
                             {attachedProductIsWholesale && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-slate-950 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white ring-1 ring-slate-800">
@@ -1009,7 +1012,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
 
     return (
         <LayoutComponent {...layoutProps}>
-            <Head title={`${post.merchant.name} - Chapisho`} />
+            <Head title={`${post.merchant.name} - ${copy('Post', 'Chapisho')}`} />
 
             <div className="max-w-[600px] mx-auto pb-40">
                 {/* Header Navigation */}
@@ -1031,7 +1034,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                             <ChevronLeft className="h-6 w-6" />
                         </button>
                         <h1 className="font-black text-base uppercase tracking-tight truncate flex-1">
-                            Chapisho la <Link
+                            {copy('Post by', 'Chapisho la')} <Link
                                 href={`/u/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                                 className="hover:text-brand-600 transition-colors"
                             >
@@ -1058,11 +1061,11 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     <Eye className="h-4 w-4 shrink-0" />
                                 )}
                                 <span className="text-xs font-black uppercase tracking-widest">
-                                    {isDeleted ? 'Removed post' : 'Live post'}
+                                    {isDeleted ? copy('Removed post', 'Post imeondolewa') : copy('Live post', 'Post iko live')}
                                 </span>
                                 {deletedAtLabel && (
                                     <span className="text-xs font-semibold text-rose-800/80">
-                                        Removed {deletedAtLabel}
+                                        {copy('Removed', 'Iliondolewa')} {deletedAtLabel}
                                     </span>
                                 )}
                             </div>
@@ -1070,7 +1073,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 {isRestricted && (
                                     <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-800">
                                         <Lock className="h-3 w-3" />
-                                        Restricted
+                                        {copy('Restricted', 'Imezuiwa')}
                                     </span>
                                 )}
                                 <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-slate-700">
@@ -1092,7 +1095,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black uppercase tracking-wider text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
                                 >
                                     {adminAction === 'restore' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
-                                    Restore Post
+                                    {copy('Restore post', 'Rejesha post')}
                                 </button>
                             ) : (
                                 <button
@@ -1102,14 +1105,14 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-black uppercase tracking-wider text-rose-800 hover:bg-rose-100 disabled:opacity-60"
                                 >
                                     {adminAction === 'delete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                                    Remove Post
+                                    {copy('Remove post', 'Ondoa post')}
                                 </button>
                             )}
                             <Link
                                 href={`/admin/merchants/${post.merchant?.id || post.merchant_id}`}
                                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-100"
                             >
-                                View Merchant
+                                {copy('View merchant', 'Angalia merchant')}
                             </Link>
                         </div>
                     </div>
@@ -1118,13 +1121,13 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                 {post.removed_notice && !adminMode && (
                     <div className="mx-5 mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-6 text-center">
                         <Trash2 className="mx-auto h-8 w-8 text-rose-600" />
-                        <h2 className="mt-3 text-lg font-black text-rose-950">This post was removed</h2>
+                        <h2 className="mt-3 text-lg font-black text-rose-950">{copy('This post was removed', 'Post hii imeondolewa')}</h2>
                         <p className="mt-2 text-sm leading-6 text-rose-800">
-                            This post is no longer available because it violated Takeer rules.
+                            {copy('This post is no longer available because it violated Takeer rules.', 'Post hii haipatikani tena kwa sababu ilikiuka kanuni za Takeer.')}
                         </p>
                         {post.moderation?.public_reason && (
                             <p className="mt-3 rounded-xl bg-white/40 px-3 py-2 text-sm font-semibold text-rose-900">
-                                Reason: {post.moderation.public_reason}
+                                {copy('Reason', 'Sababu')}: {post.moderation.public_reason}
                             </p>
                         )}
                     </div>
@@ -1161,7 +1164,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 @{post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}
                             </Link>
                             <span className="h-1 w-1 rounded-full bg-muted-foreground opacity-30" />
-                            <p className="text-xs text-muted-foreground">{timeAgo(post.created_at)}</p>
+                            <p className="text-xs text-muted-foreground">{timeAgo(post.created_at, copy)}</p>
                         </div>
                     </div>
                     {(post.merchant_profile?.successful_sales || post.merchant_profile?.unsuccessful_sales) && (
@@ -1239,8 +1242,8 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     <Loader2 className="h-10 w-10 animate-spin text-brand-500" />
                                 </div>
                                 <div className="text-center">
-                                    <p className="font-black text-base text-foreground">Inafungua content yako...</p>
-                                    <p className="text-sm text-muted-foreground mt-1">Subiri kidogo, malipo yanakaguliwa</p>
+                                    <p className="font-black text-base text-foreground">{copy('Opening your content...', 'Inafungua content yako...')}</p>
+                                    <p className="text-sm text-muted-foreground mt-1">{copy('Please wait while your payment is reviewed.', 'Subiri kidogo, malipo yanakaguliwa')}</p>
                                 </div>
                             </div>
                         ) : (
@@ -1358,7 +1361,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                             {offeringGroupTemplate === 'menu_board' ? (
                                 <div className="bg-white px-5 py-5">
                                     <div className="mb-4 flex items-center justify-between gap-3 border-b border-dashed border-orange-200 pb-3">
-                                        <p className="font-serif text-2xl font-black text-orange-950">Today&apos;s menu</p>
+                                        <p className="font-serif text-2xl font-black text-orange-950">{copy("Today's menu", 'Menu ya leo')}</p>
                                         <span className="text-[10px] font-black uppercase tracking-widest text-orange-700">{offeringGroupLayout.replace(/_/g, ' ')}</span>
                                     </div>
                                     <div className="space-y-4">
@@ -1389,13 +1392,13 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                                         </p>
                                                     </div>
                                                     <p className="text-base font-black text-orange-700">
-                                                        {Number(item.price || 0) > 0 ? `TZS ${Number(item.price || 0).toLocaleString()}` : 'Quote'}
+                                                        {Number(item.price || 0) > 0 ? `TZS ${Number(item.price || 0).toLocaleString()}` : copy('Quote', 'Quote')}
                                                     </p>
                                                 </div>
                                             );
                                         })}
                                         {offeringGroupItems.length === 0 && (
-                                            <p className="rounded-xl bg-orange-50 px-3 py-3 text-sm font-bold text-orange-900">Open to view this menu.</p>
+                                            <p className="rounded-xl bg-orange-50 px-3 py-3 text-sm font-bold text-orange-900">{copy('Open to view this menu.', 'Fungua kuona menu hii.')}</p>
                                         )}
                                     </div>
                                 </div>
@@ -1441,7 +1444,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                         <Crown className="h-7 w-7 text-emerald-700" />
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Subscription</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">{copy('Subscription', 'Subscription')}</p>
                                         <p className="text-2xl font-black leading-tight truncate">{promotableItem?.name || promotableItem?.title || 'Membership'}</p>
                                     </div>
                                 </div>
@@ -1454,15 +1457,15 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                             <div className="mt-4">
                                 {hasActiveSubscriptionMembership ? (
                                     <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">Membership active</p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">{copy('Membership active', 'Membership iko active')}</p>
                                         <p className="mt-1 text-lg font-black tabular-nums">{subscriptionTimeLeft}</p>
                                         {subscriptionEndsLabel && (
-                                            <p className="mt-1 text-xs font-semibold text-muted-foreground">Ends {subscriptionEndsLabel}</p>
+                                            <p className="mt-1 text-xs font-semibold text-muted-foreground">{copy('Ends', 'Inaisha')} {subscriptionEndsLabel}</p>
                                         )}
                                     </div>
                                 ) : (
                                     <div className="rounded-xl border border-emerald-100 bg-white px-4 py-3">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Renewal</p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">{copy('Renewal', 'Renewal')}</p>
                                         <p className="mt-1 text-base font-black">{subscriptionCadence}</p>
                                     </div>
                                 )}
@@ -1482,7 +1485,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 }}
                                 className="w-full h-12 rounded-xl bg-emerald-600 text-white text-base font-extrabold hover:bg-emerald-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20"
                             >
-                                <Crown className="h-5 w-5" /> {hasActiveSubscriptionMembership ? 'Renew access' : 'View Membership'}
+                                <Crown className="h-5 w-5" /> {hasActiveSubscriptionMembership ? copy('Renew access', 'Ongeza muda wa access') : copy('View membership', 'Angalia membership')}
                             </button>
                             {hasActiveSubscriptionMembership && (
                                 <button
@@ -1506,15 +1509,15 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         {isCourseBundle && courseModuleGroups.length > 0 ? (
                             <div className="p-4 space-y-3">
                                 <div className="rounded-xl border border-sky-100 bg-white/85 px-4 py-3 dark:border-sky-900/50 dark:bg-slate-900/80">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Course Curriculum</p>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">{copy('Course curriculum', 'Mtaala wa kozi')}</p>
                                     <div className="mt-3 grid grid-cols-2 gap-3 text-center">
                                         <div className="rounded-lg bg-sky-50 px-3 py-3 dark:bg-sky-950/40">
                                             <p className="text-2xl font-black text-sky-900 dark:text-sky-100">{courseModuleGroups.length}</p>
-                                            <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">Modules</p>
+                                            <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">{copy('Modules', 'Modules')}</p>
                                         </div>
                                         <div className="rounded-lg bg-sky-50 px-3 py-3 dark:bg-sky-950/40">
                                             <p className="text-2xl font-black text-sky-900 dark:text-sky-100">{bundleItemsCount}</p>
-                                            <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">Lessons</p>
+                                            <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">{copy('Lessons', 'Masomo')}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -1560,7 +1563,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                             )}
                                             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent p-3">
                                                 <p className="text-sm font-black text-white truncate">{item.title}</p>
-                                                <p className="text-xs font-bold text-white/90">{price > 0 ? `TZS ${price.toLocaleString()}` : 'Free'}</p>
+                                                <p className="text-xs font-bold text-white/90">{price > 0 ? `TZS ${price.toLocaleString()}` : copy('Free', 'Bure')}</p>
                                                 {href && (
                                                     <span className="mt-1 inline-flex h-6 min-w-16 items-center justify-center rounded-full border border-white/80 px-2 text-xs font-black text-white">
                                                         Open
@@ -1606,7 +1609,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 }}
                                 className="w-full h-12 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 dark:from-sky-500 dark:to-cyan-400 text-white text-base font-extrabold hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-sky-500/25"
                             >
-                                <Boxes className="h-5 w-5" /> {isCourseBundle ? (readOnly ? 'View Course' : 'Open Course') : (readOnly ? 'View Bundle' : 'Open Bundle')}
+                                <Boxes className="h-5 w-5" /> {isCourseBundle ? (readOnly ? copy('View course', 'Angalia kozi') : copy('Open course', 'Fungua kozi')) : (readOnly ? copy('View bundle', 'Angalia bundle') : copy('Open bundle', 'Fungua bundle'))}
                             </button>
                         </div>
                     </div>
@@ -1634,8 +1637,8 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                                 <div className="min-h-[320px] bg-zinc-950 flex flex-col items-center justify-center gap-3 px-6 text-center">
                                                     <Loader2 className="h-8 w-8 text-white/70 animate-spin" />
                                                     <div>
-                                                        <p className="text-base font-semibold text-white">Processing video...</p>
-                                                        <p className="mt-1 text-sm text-white/55">Playback will be ready shortly.</p>
+                                        <p className="text-base font-semibold text-white">{copy('Processing video...', 'Inachakata video...')}</p>
+                                        <p className="mt-1 text-sm text-white/55">{copy('Playback will be ready shortly.', 'Video itakuwa tayari muda mfupi.')}</p>
                                                     </div>
                                                 </div>
                                             ) : isVideo ? (
@@ -1740,7 +1743,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                             type="button"
                                             onClick={() => setShowReactionPicker(true)}
                                             className="inline-flex items-center justify-center rounded-full h-8 w-8 border border-border bg-background hover:bg-accent text-muted-foreground shrink-0"
-                                            aria-label="More reactions"
+                                            aria-label={copy('More reactions', 'Maoni zaidi')}
                                         >
                                             <MoreHorizontal className="h-4 w-4" />
                                         </button>
@@ -1794,7 +1797,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                                        <h3 className="font-black text-sm uppercase tracking-wider">Choose Reaction</h3>
+                                        <h3 className="font-black text-sm uppercase tracking-wider">{copy('Choose reaction', 'Chagua reaction')}</h3>
                                         <button type="button" onClick={() => setShowReactionPicker(false)} className="h-8 w-8 rounded-full hover:bg-accent flex items-center justify-center">
                                             <X className="h-4 w-4" />
                                         </button>
@@ -1820,7 +1823,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                                 type="text"
                                                 value={customReaction}
                                                 onChange={(e) => setCustomReaction(e.target.value)}
-                                                placeholder="Use any emoji"
+                                                placeholder={copy('Use any emoji', 'Tumia emoji yoyote')}
                                                 className="flex-1 h-10 rounded-xl border border-border px-3 text-sm"
                                                 maxLength={16}
                                             />
@@ -1848,13 +1851,13 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 <div className="h-14 w-14 bg-accent rounded-full flex items-center justify-center mx-auto mb-4">
                                     <Unlock className="h-7 w-7 text-muted-foreground/60" />
                                 </div>
-                                <p className="text-muted-foreground text-sm font-bold uppercase tracking-tight">Maoni yamefungwa</p>
-                                <p className="text-xs text-muted-foreground/70 mt-1">Fungua post hii kuona na kuandika maoni.</p>
+                                <p className="text-muted-foreground text-sm font-bold uppercase tracking-tight">{copy('Comments are closed', 'Maoni yamefungwa')}</p>
+                                <p className="text-xs text-muted-foreground/70 mt-1">{copy('Open this post to view and write comments.', 'Fungua post hii kuona na kuandika maoni.')}</p>
                             </div>
                         ) : loadingComments ? (
                             <div className="flex flex-col items-center justify-center py-12 gap-3">
                                 <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
-                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Inapakia maoni...</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{copy('Loading comments...', 'Inapakia maoni...')}</p>
                             </div>
                         ) : comments.length > 0 ? (
                             <div className="divide-y divide-border/50">
@@ -1876,8 +1879,8 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 <div className="h-16 w-16 bg-accent rounded-full flex items-center justify-center mx-auto mb-4">
                                     <MessageCircle className="h-8 w-8 text-muted/40" />
                                 </div>
-                                <p className="text-muted-foreground text-sm font-bold uppercase tracking-tight">Hakuna maoni bado</p>
-                                <p className="text-xs text-muted-foreground/60 mt-1">Kuwa wa kwanza kutoa maoni yako...</p>
+                                <p className="text-muted-foreground text-sm font-bold uppercase tracking-tight">{copy('No comments yet', 'Hakuna maoni bado')}</p>
+                                <p className="text-xs text-muted-foreground/60 mt-1">{copy('Be the first to comment...', 'Kuwa wa kwanza kutoa maoni yako...')}</p>
                             </div>
                         )}
 
@@ -1907,7 +1910,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     <p className="truncate text-brand-900 font-medium">
                                         Unamjibu <span className="font-black text-brand-600">@{replyingTo.user.name}</span>
                                     </p>
-                                    <button onClick={() => setReplyingTo(null)} className="font-black text-brand-600 uppercase tracking-tighter hover:text-brand-700">Ghairi</button>
+                                    <button onClick={() => setReplyingTo(null)} className="font-black text-brand-600 uppercase tracking-tighter hover:text-brand-700">{copy('Cancel', 'Ghairi')}</button>
                                 </motion.div>
                             )}
                         </AnimatePresence>
@@ -1923,7 +1926,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     value={commentText}
                                     onChange={e => setCommentText(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleSendComment()}
-                                    placeholder={replyingTo ? "Andika jibu lako..." : "Andika maoni yako..."}
+                                    placeholder={replyingTo ? copy('Write your reply...', 'Andika jibu lako...') : copy('Write your comment...', 'Andika maoni yako...')}
                                     className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground h-7 font-medium"
                                 />
                                 <button
@@ -1960,7 +1963,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     <p className="text-[10px] font-black uppercase tracking-widest text-brand-600">
                                         {guestEngagement.action === 'comment' ? 'Post your comment' : 'Add your reaction'}
                                     </p>
-                                    <h3 className="text-lg font-black tracking-tight">Confirm with phone</h3>
+                                    <h3 className="text-lg font-black tracking-tight">{copy('Confirm with phone', 'Thibitisha kwa simu')}</h3>
                                 </div>
                                 <button type="button" onClick={closeGuestEngagement} className="h-9 w-9 rounded-full hover:bg-accent flex items-center justify-center">
                                     <X className="h-4 w-4" />
@@ -1970,7 +1973,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                             <div className="p-5 space-y-4">
                                 {guestEngagement.action === 'comment' ? (
                                     <div className="rounded-2xl border border-border bg-accent/40 p-4">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Your comment</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">{copy('Your comment', 'Maoni yako')}</p>
                                         <p className="text-sm font-semibold leading-relaxed text-foreground break-words">
                                             {guestEngagement.text}
                                         </p>
@@ -1984,24 +1987,24 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 {guestEngagement.step === 'identity' ? (
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">Name</label>
+                                            <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{copy('Name', 'Jina')}</label>
                                             <input
                                                 type="text"
                                                 value={guestEngagement.name}
                                                 onChange={(e) => updateGuestEngagement({ name: e.target.value, error: '' })}
                                                 className="mt-1 w-full h-12 rounded-2xl border border-border bg-background px-4 text-sm font-semibold outline-none focus:border-brand-400"
-                                                placeholder="Your name"
+                                                placeholder={copy('Your name', 'Jina lako')}
                                                 maxLength={80}
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">Phone number</label>
+                                            <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{copy('Phone number', 'Namba ya simu')}</label>
                                             <input
                                                 type="tel"
                                                 value={guestEngagement.phone}
                                                 onChange={(e) => updateGuestEngagement({ phone: e.target.value, error: '' })}
                                                 className="mt-1 w-full h-12 rounded-2xl border border-border bg-background px-4 text-sm font-semibold outline-none focus:border-brand-400"
-                                                placeholder="+255..."
+                                                placeholder={copy('+255...', '+255...')}
                                             />
                                         </div>
                                     </div>
@@ -2014,7 +2017,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                             </p>
                                         </div>
                                         <div>
-                                            <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">OTP code</label>
+                                            <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{copy('OTP code', 'OTP code')}</label>
                                             <input
                                                 type="text"
                                                 inputMode="numeric"
@@ -2052,7 +2055,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                         className="flex-1 h-12 rounded-2xl bg-brand-600 text-white text-sm font-black hover:bg-brand-700 disabled:opacity-60 flex items-center justify-center gap-2"
                                     >
                                         {(guestEngagement.sending || guestEngagement.verifying) && <Loader2 className="h-4 w-4 animate-spin" />}
-                                        {guestEngagement.step === 'identity' ? 'Send OTP' : 'Confirm and post'}
+                                        {guestEngagement.step === 'identity' ? copy('Send OTP', 'Tuma OTP') : copy('Confirm and post', 'Thibitisha na chapisha')}
                                     </button>
                                 </div>
                             </div>
@@ -2079,8 +2082,8 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         >
                             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
                                 <div>
-                                    <h3 className="text-sm font-black uppercase tracking-widest text-rose-900">Remove Post</h3>
-                                    <p className="mt-1 text-xs text-muted-foreground">Choose the reason the merchant and public notice should show.</p>
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-rose-900">{copy('Remove post', 'Ondoa post')}</h3>
+                                    <p className="mt-1 text-xs text-muted-foreground">{copy('Choose the reason shown to the merchant and in the public notice.', 'Chagua sababu itakayoonyeshwa kwa muuzaji na kwenye tangazo la umma.')}</p>
                                 </div>
                                 <button
                                     type="button"
@@ -2093,7 +2096,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                             </div>
                             <div className="p-5 space-y-4">
                                 <div className="space-y-2">
-                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Reason</p>
+                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Reason', 'Sababu')}</p>
                                     <div className="grid gap-2 sm:grid-cols-2">
                                         {moderationReasons.map((reason) => (
                                             <button
@@ -2111,7 +2114,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground" htmlFor="moderation-public-reason">Public reason</label>
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground" htmlFor="moderation-public-reason">{copy('Public reason', 'Sababu ya umma')}</label>
                                     <input
                                         id="moderation-public-reason"
                                         value={moderationPublicReason}
@@ -2121,13 +2124,13 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground" htmlFor="moderation-internal-note">Internal note</label>
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground" htmlFor="moderation-internal-note">{copy('Internal note', 'Maelezo ya ndani')}</label>
                                     <textarea
                                         id="moderation-internal-note"
                                         value={moderationInternalNote}
                                         onChange={(event) => setModerationInternalNote(event.target.value)}
                                         className="min-h-[90px] w-full rounded-xl border border-border px-3 py-2 text-sm"
-                                        placeholder="Optional admin-only context..."
+                                        placeholder={copy('Optional admin-only context...', 'Maelezo ya hiari kwa admin pekee...')}
                                         maxLength={2000}
                                     />
                                 </div>

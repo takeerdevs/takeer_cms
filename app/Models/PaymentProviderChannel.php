@@ -57,19 +57,9 @@ class PaymentProviderChannel extends Model
         return $this->belongsTo(PaymentProvider::class, 'payment_provider_id');
     }
 
-    public function payoutCredentials(): HasMany
-    {
-        return $this->hasMany(MerchantPayoutCredential::class, 'payment_provider_channel_id');
-    }
-
     public function incidents(): HasMany
     {
         return $this->hasMany(PaymentChannelIncident::class);
-    }
-
-    public function treasuryAccounts(): HasMany
-    {
-        return $this->hasMany(ProviderTreasuryAccount::class, 'payment_provider_channel_id');
     }
 
     public function isAvailable(): bool

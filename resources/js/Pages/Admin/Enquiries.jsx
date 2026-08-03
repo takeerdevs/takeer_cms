@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Head } from '@inertiajs/react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 import { CheckCircle2, LifeBuoy, MessageSquare, RefreshCw, Search } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import { Card, CardContent } from '@/Components/ui/Card';
@@ -9,6 +10,7 @@ import { Button } from '@/Components/ui/Button';
 import { cn } from '@/lib/utils';
 
 export default function Enquiries() {
+    const { copy } = useLocale();
     const [enquiries, setEnquiries] = useState([]);
     const [summary, setSummary] = useState({});
     const [categories, setCategories] = useState({});
@@ -34,7 +36,7 @@ export default function Enquiries() {
                 total: res.data?.enquiries?.total || 0,
             });
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to load enquiries.');
+            toast.error(error.response?.data?.message || copy('Failed to load enquiries.', 'Imeshindikana kupakia maulizo.'));
         } finally {
             setLoading(false);
         }
@@ -59,17 +61,17 @@ export default function Enquiries() {
                 setEnquiries((current) => current.map((item) => item.id === fresh.id ? fresh : item));
             }
             setSummary(res.data?.summary || summary);
-            toast.success('Enquiry updated.');
+            toast.success(copy('Enquiry updated.', 'Swali limesasishwa.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not update enquiry.');
+            toast.error(error.response?.data?.message || copy('Could not update enquiry.', 'Imeshindikana kusasisha swali.'));
         } finally {
             setSavingId(null);
         }
     };
 
     return (
-        <AdminLayout title="Support Enquiries">
-            <Head title="Support Enquiries | Takeer Admin" />
+        <AdminLayout title={copy('Support Enquiries', 'Maulizo ya Usaidizi')}>
+            <Head title={`${copy('Support Enquiries', 'Maulizo ya Usaidizi')} | Takeer Admin`} />
 
             <div className="space-y-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -78,8 +80,8 @@ export default function Enquiries() {
                             <LifeBuoy className="h-6 w-6" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-black text-slate-900">Support Enquiries</h1>
-                            <p className="mt-1 text-sm text-slate-600">Track help requests from buyers, merchants, and visitors.</p>
+                            <h1 className="text-2xl font-black text-slate-900">{copy('Support Enquiries', 'Maulizo ya Usaidizi')}</h1>
+                            <p className="mt-1 text-sm text-slate-600">{copy('Track help requests from buyers, merchants, and visitors.', 'Fuatilia maombi ya msaada kutoka kwa wanunuzi, wauzaji na wageni.')}</p>
                         </div>
                     </div>
                     <Button variant="outline" onClick={() => load(meta.current_page)} disabled={loading}>
@@ -102,14 +104,14 @@ export default function Enquiries() {
                     <CardContent className="p-4">
                         <div className="grid gap-2 lg:grid-cols-[150px_190px_1fr_auto]">
                             <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm">
-                                <option value="all">All statuses</option>
-                                <option value="new">New</option>
-                                <option value="open">Open</option>
-                                <option value="resolved">Resolved</option>
-                                <option value="closed">Closed</option>
+                                <option value="all">{copy('All statuses', 'Hali zote')}</option>
+                                <option value="new">{copy('New', 'Jipya')}</option>
+                                <option value="open">{copy('Open', 'Wazi')}</option>
+                                <option value="resolved">{copy('Resolved', 'Limetatuliwa')}</option>
+                                <option value="closed">{copy('Closed', 'Limefungwa')}</option>
                             </select>
                             <select value={category} onChange={(e) => setCategory(e.target.value)} className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm">
-                                <option value="all">All categories</option>
+                                <option value="all">{copy('All categories', 'Kategoria zote')}</option>
                                 {categoryOptions.map(([key, label]) => (
                                     <option key={key} value={key}>{label}</option>
                                 ))}
@@ -119,7 +121,7 @@ export default function Enquiries() {
                                 onChange={(e) => setSearch(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && load(1)}
                                 className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
-                                placeholder="Search reference, contact, order, subject..."
+                            placeholder={copy('Search reference, contact, order, subject...', 'Tafuta kumbukumbu, mawasiliano, oda, mada...')}
                             />
                             <Button variant="outline" onClick={() => load(1)}>
                                 <Search className="mr-2 h-4 w-4" />
@@ -132,12 +134,12 @@ export default function Enquiries() {
                 <Card className="border-slate-200 bg-white">
                     <CardContent className="p-0">
                         {loading ? (
-                            <div className="py-14 text-center text-sm font-semibold text-slate-500">Loading enquiries...</div>
+                            <div className="py-14 text-center text-sm font-semibold text-slate-500">{copy('Loading enquiries...', 'Inapakia maulizo...')}</div>
                         ) : enquiries.length === 0 ? (
                             <div className="py-14 text-center">
                                 <CheckCircle2 className="mx-auto h-9 w-9 text-emerald-600" />
-                                <p className="mt-3 font-black text-slate-900">No enquiries found.</p>
-                                <p className="mt-1 text-sm text-slate-500">Support requests will appear here when users submit them.</p>
+                                <p className="mt-3 font-black text-slate-900">{copy('No enquiries found.', 'Hakuna maulizo yaliyopatikana.')}</p>
+                                <p className="mt-1 text-sm text-slate-500">{copy('Support requests will appear here when users submit them.', 'Maombi ya msaada yataonekana hapa watumiaji watakapoyatuma.')}</p>
                             </div>
                         ) : (
                             <div className="divide-y divide-slate-100">
@@ -158,8 +160,8 @@ export default function Enquiries() {
                 <div className="flex items-center justify-between">
                     <p className="text-sm text-slate-500">Showing page {meta.current_page} of {meta.last_page} · {meta.total} enquiries</p>
                     <div className="flex gap-2">
-                        <Button variant="outline" disabled={meta.current_page <= 1 || loading} onClick={() => load(meta.current_page - 1)}>Previous</Button>
-                        <Button variant="outline" disabled={meta.current_page >= meta.last_page || loading} onClick={() => load(meta.current_page + 1)}>Next</Button>
+                        <Button variant="outline" disabled={meta.current_page <= 1 || loading} onClick={() => load(meta.current_page - 1)}>{copy('Previous', 'Iliyotangulia')}</Button>
+                        <Button variant="outline" disabled={meta.current_page >= meta.last_page || loading} onClick={() => load(meta.current_page + 1)}>{copy('Next', 'Inayofuata')}</Button>
                     </div>
                 </div>
             </div>
@@ -188,10 +190,10 @@ function EnquiryRow({ enquiry, categories, saving, onUpdate }) {
                     <p className="mt-1 text-sm font-semibold text-slate-500">{categories[enquiry.category] || enquiry.category}</p>
                     <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{enquiry.message}</p>
                     <div className="mt-4 grid gap-2 rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-600 md:grid-cols-2">
-                        <p><span className="font-black text-slate-900">Name:</span> {enquiry.name || enquiry.user?.name || '-'}</p>
-                        <p><span className="font-black text-slate-900">Order:</span> {enquiry.order_reference || '-'}</p>
-                        <p><span className="font-black text-slate-900">Email:</span> {enquiry.email || enquiry.user?.email || '-'}</p>
-                        <p><span className="font-black text-slate-900">Phone:</span> {enquiry.phone || enquiry.user?.phone_number || '-'}</p>
+                        <p><span className="font-black text-slate-900">{copy('Name:', 'Jina:')}</span> {enquiry.name || enquiry.user?.name || '-'}</p>
+                        <p><span className="font-black text-slate-900">{copy('Order:', 'Oda:')}</span> {enquiry.order_reference || '-'}</p>
+                        <p><span className="font-black text-slate-900">{copy('Email:', 'Barua pepe:')}</span> {enquiry.email || enquiry.user?.email || '-'}</p>
+                        <p><span className="font-black text-slate-900">{copy('Phone:', 'Simu:')}</span> {enquiry.phone || enquiry.user?.phone_number || '-'}</p>
                     </div>
                 </div>
 
@@ -202,10 +204,10 @@ function EnquiryRow({ enquiry, categories, saving, onUpdate }) {
                         disabled={saving}
                         className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold"
                     >
-                        <option value="new">New</option>
-                        <option value="open">Open</option>
-                        <option value="resolved">Resolved</option>
-                        <option value="closed">Closed</option>
+                        <option value="new">{copy('New', 'Jipya')}</option>
+                        <option value="open">{copy('Open', 'Wazi')}</option>
+                        <option value="resolved">{copy('Resolved', 'Limetatuliwa')}</option>
+                        <option value="closed">{copy('Closed', 'Limefungwa')}</option>
                     </select>
                     <select
                         value={enquiry.priority || 'normal'}
@@ -213,15 +215,15 @@ function EnquiryRow({ enquiry, categories, saving, onUpdate }) {
                         disabled={saving}
                         className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold"
                     >
-                        <option value="normal">Normal</option>
-                        <option value="high">High</option>
-                        <option value="urgent">Urgent</option>
+                        <option value="normal">{copy('Normal', 'Kawaida')}</option>
+                        <option value="high">{copy('High', 'Juu')}</option>
+                        <option value="urgent">{copy('Urgent', 'Dharura')}</option>
                     </select>
                     <textarea
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                         className="min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                        placeholder="Internal note"
+                        placeholder={copy('Internal note', 'Maelezo ya ndani')}
                     />
                     <Button className="w-full bg-slate-900 text-white hover:bg-slate-800" disabled={saving} onClick={() => onUpdate(enquiry, { internal_note: note })}>
                         <MessageSquare className="mr-2 h-4 w-4" />
@@ -237,10 +239,20 @@ function EnquiryRow({ enquiry, categories, saving, onUpdate }) {
 }
 
 function Metric({ label, value, tone }) {
+    const { copy } = useLocale();
+    const translations = {
+        Total: 'Jumla',
+        New: 'Jipya',
+        Open: 'Wazi',
+        Resolved: 'Limetatuliwa',
+        Closed: 'Limefungwa',
+        High: 'Juu',
+        Urgent: 'Dharura',
+    };
     return (
         <Card className="border-slate-200 bg-white">
             <CardContent className="p-4">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy(label, translations[label] || label)}</p>
                 <p className={`mt-2 text-3xl font-black ${tone}`}>{value}</p>
             </CardContent>
         </Card>

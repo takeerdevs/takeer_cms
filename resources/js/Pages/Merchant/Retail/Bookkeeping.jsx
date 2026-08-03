@@ -36,6 +36,7 @@ import {
     DialogTitle
 } from '@/Components/ui/Dialog';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const emptyForm = {
     entry_type: 'expense',
@@ -203,7 +204,7 @@ const paymentMethods = [
     ['bank', 'Bank'],
     ['mobile_money', 'Mobile Money'],
     ['card', 'Card'],
-    ['takeer_wallet', 'Takeer Wallet'],
+    ['external_psp', 'External PSP'],
     ['director_loan', 'Loan from Director'],
     ['other', 'Other'],
 ];
@@ -237,7 +238,60 @@ const reconciliationStatuses = [
     ['needs_review', 'Needs review'],
 ];
 
+const bookkeepingTranslations = {
+    'Bookkeeping': 'Utunzaji wa hesabu',
+    'Business records for income, expenses, receipts etc.': 'Rekodi za biashara za mapato, matumizi, risiti na kadhalika.',
+    'Add Record': 'Ongeza rekodi',
+    'Audit-supportive records': 'Rekodi zinazosaidia ukaguzi',
+    'Every create, edit, and void action is written to the business audit trail with user, staff, timestamp, and before/after values.': 'Kila kitendo cha kuunda, kuhariri au kubatilisha huandikwa kwenye kumbukumbu ya ukaguzi ya biashara pamoja na mtumiaji, mhudumu, muda na thamani za kabla/baada.',
+    'Quick actions': 'Vitendo vya haraka',
+    'Audit readiness': 'Utayari wa ukaguzi',
+    'Pending review': 'Inasubiri ukaguzi',
+    'Unmatched': 'Haijaunganishwa',
+    'Missing refs': 'Marejeo yaliyokosekana',
+    'Adjustments': 'Marekebisho',
+    'Statement lines': 'Mistari ya taarifa',
+    'Lock reviewed month': 'Funga mwezi uliokaguliwa',
+    'Locking...': 'Inafunga...',
+    'Lock': 'Funga',
+    'Locked months reject edits, voids, and back-dated records.': 'Miezi iliyofungwa inakataa marekebisho, ubatilishaji na rekodi zenye tarehe za nyuma.',
+    'Income': 'Mapato',
+    'Expenses': 'Matumizi',
+    'Tax Paid': 'Kodi iliyolipwa',
+    'Director Loans': 'Mikopo ya mkurugenzi',
+    'Missing Proofs': 'Uthibitisho uliokosekana',
+    'Needs attention': 'Inahitaji uangalizi',
+    'What is due soon, overdue, pending, or shared from the business records.': 'Kinachokaribia kulipwa, kilichochelewa, kinachosubiri au kilichoshirikiwa kutoka kwenye rekodi za biashara.',
+    'Due Soon': 'Inadaiwa hivi karibuni',
+    'Overdue': 'Imechelewa',
+    'Bills Due': 'Bili zinazodaiwa',
+    'Payroll Pending': 'Mishahara inayosubiri',
+    'Share Links': 'Viungo vya kushiriki',
+    'Compliance Estimate': 'Makadirio ya uzingatiaji',
+    'Bill Estimate': 'Makadirio ya bili',
+    'Payroll Estimate': 'Makadirio ya mishahara',
+    'Receivables & payables': 'Madeni ya kudai na kulipa',
+    'Overdue AR': 'AR iliyochelewa',
+    'Overdue AP': 'AP iliyochelewa',
+    'Opening position': 'Hali ya mwanzo',
+    'Cash/Bank/Mobile': 'Fedha/Benki/Mkononi',
+    'Stock Value': 'Thamani ya stoo',
+    'Receivable': 'Deni la kudai',
+    'Payable': 'Deni la kulipa',
+    'Audit exports': 'Uhamishaji wa ukaguzi',
+    'Statement reconciliation': 'Upatanisho wa taarifa',
+    'Records': 'Rekodi',
+    'Loading records...': 'Inapakia rekodi...',
+    'No bookkeeping records yet.': 'Hakuna rekodi za hesabu bado.',
+    'Apply': 'Tumia',
+    'Search reference, vendor, category...': 'Tafuta rejeo, muuzaji, kategoria...',
+    'Opening': 'Salio la mwanzo', 'Invoice': 'Ankara', 'Bill': 'Bili', 'Adjust': 'Rekebisha', 'Statement': 'Taarifa ya akaunti', 'Reminder': 'Kikumbusho', 'Payroll': 'Mishahara', 'Share': 'Shiriki', 'To Collect': 'Ya kukusanya', 'To Pay': 'Ya kulipa', 'AR CSV': 'AR CSV', 'AP CSV': 'AP CSV', 'Recent open items': 'Vipengele vya wazi vya hivi karibuni', 'No due date': 'Hakuna tarehe ya mwisho', 'No invoice': 'Hakuna invoice', General: 'Jumla', Settle: 'Lipa', 'Capture starting cash, bank, stock, receivables, payables, and director loan balances.': 'Weka salio la mwanzo la cash, benki, stock, madeni ya kudai, madeni ya kulipa na mkopo wa mkurugenzi.', 'No unmatched statement lines.': 'Hakuna mistari ya taarifa isiyolinganishwa.', 'Choose bookkeeping record': 'Chagua rekodi ya hesabu', 'No proof attached': 'Hakuna uthibitisho uliowekwa', 'View proof': 'Angalia uthibitisho', Approve: 'Kubali', Match: 'Linganisha', 'Proof attached': 'Uthibitisho umewekwa', 'Reference only': 'Rejeo pekee', 'Missing proof': 'Uthibitisho umekosekana', 'Needs replacement': 'Inahitaji kubadilishwa', 'Approved': 'Imekubaliwa', Rejected: 'Imekataliwa', 'Matched': 'Imeunganishwa', 'Needs review': 'Inahitaji ukaguzi', 'Voided': 'Ilibatilishwa', 'No counterparty': 'Hakuna mhusika mwingine', 'No reference number': 'Hakuna namba ya rejeo', 'Recorded by': 'Imerekodiwa na', Owner: 'Mmiliki', 'Cancel': 'Ghairi', 'Save': 'Hifadhi', 'Saving...': 'Inahifadhi...', 'Save Record': 'Hifadhi rekodi', 'Save Opening Balance': 'Hifadhi salio la mwanzo', 'Opening balances': 'Salio la mwanzo', 'Business reminder': 'Kikumbusho cha biashara', 'Recurring bill': 'Bili ya mara kwa mara', 'Payroll lite': 'Payroll rahisi', 'Share bookkeeping records': 'Shiriki rekodi za hesabu', 'Adjustment entry': 'Rekodi ya marekebisho', 'Statement import': 'Uingizaji wa taarifa', 'Add statement line': 'Ongeza mstari wa taarifa', 'Compliance item': 'Kipengele cha compliance', 'Add compliance item': 'Ongeza kipengele cha compliance', 'Share link': 'Kiungo cha kushiriki', 'New receivable': 'Deni jipya la kudai', 'New payable': 'Deni jipya la kulipa', 'Record collection': 'Rekodi ukusanyaji', 'Record payment': 'Rekodi malipo', 'Record Settlement': 'Rekodi malipo', 'Adjustment': 'Marekebisho', 'Business compliance setup': 'Mipangilio ya compliance ya biashara', 'Upcoming obligations': 'Wajibu unaokuja', 'Recurring bills': 'Bili za mara kwa mara', 'Shared access': 'Ufikiaji ulioshirikiwa', 'No compliance items added yet.': 'Hakuna vipengele vya compliance vilivyoongezwa bado.', 'No reminders yet.': 'Hakuna vikumbusho bado.', 'No recurring bills yet.': 'Hakuna bili za mara kwa mara bado.', 'No payroll records yet.': 'Hakuna rekodi za payroll bado.', 'No share links yet.': 'Hakuna viungo vya kushiriki bado.', Done: 'Imekamilika', Pay: 'Lipa', 'Posting...': 'Inawekwa...', Paid: 'Imelipwa', Copy: 'Nakili', Revoke: 'Batilisha', 'no expiry': 'bila kuisha', expires: 'inaisha', views: 'mionekano', 'Repeats every': 'Hujirudia kila', 'set date': 'weka tarehe', 'Custom worker': 'Mfanyakazi maalum', Employee: 'Mfanyakazi', Contractor: 'Mkandarasi', Casual: 'Wa muda', Weekly: 'Kila wiki', Monthly: 'Kila mwezi', Quarterly: 'Kila robo mwaka', Yearly: 'Kila mwaka', 'Does not repeat': 'Haijirudii', Days: 'Siku', Weeks: 'Wiki', Months: 'Miezi', Years: 'Miaka', 'Accountant': 'Mhasibu', Auditor: 'Mkaguzi', 'Tax Authority': 'Mamlaka ya kodi', Advisor: 'Mshauri', Other: 'Nyingine', 'Receivable / customer invoice': 'Deni la kudai / invoice ya mteja', 'Payable / supplier bill': 'Deni la kulipa / bili ya supplier', 'Add custom category...': 'Ongeza kategoria maalum...', 'Upload invoice/bill': 'Pakia invoice/bili', 'Upload proof': 'Pakia uthibitisho', 'None': 'Hakuna', 'All statuses': 'Hali zote', 'All proofs': 'Uthibitisho wote', 'All reviews': 'Ukaguzi wote', 'All matching': 'Ulinganishaji wote', 'EFD Receipt': 'Risiti ya EFD', 'Bank Transaction': 'Muamala wa benki', 'Mobile Money Ref': 'Rejeo la pesa za simu', 'TRA Payment': 'Malipo ya TRA', Contract: 'Mkataba', Cash: 'Cash', Bank: 'Benki', 'Mobile Money': 'Pesa za simu', Card: 'Kadi', 'External PSP': 'PSP wa nje', 'Loan from Director': 'Mkopo kutoka kwa mkurugenzi', 'Director Loan': 'Mkopo wa mkurugenzi', 'Tax Payment': 'Malipo ya kodi', 'Transaction Date': 'Tarehe ya muamala', 'Payment Method': 'Njia ya malipo', Counterparty: 'Mhusika mwingine', 'Reference Type': 'Aina ya rejeo', 'Reference Number': 'Namba ya rejeo', 'Tax Type': 'Aina ya kodi', 'Tax Period': 'Kipindi cha kodi', 'Proof Status': 'Hali ya uthibitisho', Reconciliation: 'Upatanisho', 'Statement Reference': 'Rejeo la taarifa', 'Proof Attachment': 'Kiambatisho cha uthibitisho', Description: 'Maelezo', 'As Of Date': 'Kufikia tarehe', 'Cash Balance': 'Salio la cash', 'Bank Balance': 'Salio la benki', 'Mobile Money Balance': 'Salio la pesa za simu', 'Director Loan Balance': 'Salio la mkopo wa mkurugenzi', 'Accounts Receivable': 'Madeni ya kudai', 'Accounts Payable': 'Madeni ya kulipa', Note: 'Maelezo', Title: 'Kichwa', Authority: 'Mamlaka', 'Due Date': 'Tarehe ya mwisho', Repeats: 'Hujirudia', 'Repeat Until': 'Rudia hadi', 'Estimated Amount': 'Kiasi kinachokadiriwa', Currency: 'Sarafu', 'Remind Days Before': 'Kumbusha siku kabla', Reference: 'Rejeo', 'Sector Tags': 'Lebo za sekta', 'Applies When': 'Inatumika wakati', Vendor: 'Muuzaji', Frequency: 'Marudio', 'Next Due Date': 'Tarehe inayofuata ya mwisho', 'Team Member': 'Mshiriki wa timu', 'Worker Name': 'Jina la mfanyakazi', 'Worker Type': 'Aina ya mfanyakazi', 'Job Title': 'Cheo cha kazi', 'Gross Amount': 'Kiasi ghafi', Deductions: 'Makato', 'Pay Period': 'Kipindi cha malipo', 'Pay Date': 'Tarehe ya malipo', 'Payroll Proof': 'Uthibitisho wa payroll', 'Recipient Name': 'Jina la mpokeaji', 'Recipient Role': 'Jukumu la mpokeaji', 'From Date': 'Kuanzia tarehe', 'To Date': 'Hadi tarehe', 'Expires At': 'Inaisha', PIN: 'PIN', 'Include proof links': 'Jumuisha viungo vya uthibitisho', 'Allow CSV download': 'Ruhusu kupakua CSV', Impact: 'Athari', Reason: 'Sababu', Account: 'Akaunti', 'Reason Note': 'Maelezo ya sababu', 'Source Type': 'Aina ya chanzo', 'Source Name': 'Jina la chanzo', Date: 'Tarehe', 'Money Movement': 'Mwelekeo wa pesa', 'Screenshot / Proof': 'Picha ya skrini / uthibitisho',
+};
+
+const bookkeepingLabel = (copy, value) => copy(value, bookkeepingTranslations[value] || value);
+
 export default function Bookkeeping({ merchant }) {
+    const { copy } = useLocale();
     const [payload, setPayload] = useState(null);
     const [loading, setLoading] = useState(true);
     const [filters, setFilters] = useState({ q: '', type: '', status: 'active', proof_status: '', review_status: '', reconciliation_status: '' });
@@ -295,7 +349,7 @@ export default function Bookkeeping({ merchant }) {
             });
             setPayload(res.data);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to load bookkeeping records.');
+            toast.error(error.response?.data?.message || copy('Failed to load bookkeeping records.', 'Imeshindikana kupakia rekodi za hesabu.'));
         } finally {
             setLoading(false);
         }
@@ -382,17 +436,17 @@ export default function Bookkeeping({ merchant }) {
                 await window.axios.post(`/api/retail/bookkeeping/${editingEntry.id}`, formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 });
-                toast.success('Record updated with audit history.');
+                toast.success(copy('Record updated with audit history.', 'Rekodi imesasishwa pamoja na historia ya ukaguzi.'));
             } else {
                 await window.axios.post('/api/retail/bookkeeping', formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 });
-                toast.success('Record saved.');
+                toast.success(copy('Record saved.', 'Rekodi imehifadhiwa.'));
             }
             setIsFormOpen(false);
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not save record.');
+            toast.error(error.response?.data?.message || copy('Could not save record.', 'Imeshindikana kuhifadhi rekodi.'));
         } finally {
             setSaving(false);
         }
@@ -405,12 +459,12 @@ export default function Bookkeeping({ merchant }) {
                 reason: voidReason,
                 merchant_id: merchant.id,
             });
-            toast.success('Record voided and preserved in audit trail.');
+            toast.success(copy('Record voided and preserved in audit trail.', 'Rekodi imebatilishwa na kuhifadhiwa kwenye kumbukumbu ya ukaguzi.'));
             setVoidingEntry(null);
             setVoidReason('');
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not void record.');
+            toast.error(error.response?.data?.message || copy('Could not void record.', 'Imeshindikana kubatilisha rekodi.'));
         }
     };
 
@@ -420,10 +474,10 @@ export default function Bookkeeping({ merchant }) {
                 merchant_id: merchant.id,
                 review_status: reviewStatus,
             });
-            toast.success('Review status updated.');
+            toast.success(copy('Review status updated.', 'Hali ya ukaguzi imesasishwa.'));
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not update review status.');
+            toast.error(error.response?.data?.message || copy('Could not update review status.', 'Imeshindikana kusasisha hali ya ukaguzi.'));
         }
     };
 
@@ -434,10 +488,10 @@ export default function Bookkeeping({ merchant }) {
                 reconciliation_status: reconciliationStatus,
                 statement_reference: entry.statement_reference || entry.reference_number || '',
             });
-            toast.success('Reconciliation status updated.');
+            toast.success(copy('Reconciliation status updated.', 'Hali ya reconciliation imesasishwa.'));
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not update reconciliation status.');
+            toast.error(error.response?.data?.message || copy('Could not update reconciliation status.', 'Imeshindikana kusasisha hali ya reconciliation.'));
         }
     };
 
@@ -449,10 +503,10 @@ export default function Bookkeeping({ merchant }) {
                 period_key: periodKey,
                 note: 'Period reviewed and locked from Retail Ops Bookkeeping.',
             });
-            toast.success(`${periodKey} locked.`);
+            toast.success(`${periodKey} ${copy('locked.', 'imefungwa.')}`);
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not lock period.');
+            toast.error(error.response?.data?.message || copy('Could not lock period.', 'Imeshindikana kufunga kipindi.'));
         } finally {
             setLocking(false);
         }
@@ -482,11 +536,11 @@ export default function Bookkeeping({ merchant }) {
                 merchant_id: merchant.id,
                 ...openingForm,
             });
-            toast.success('Opening balances saved.');
+            toast.success(copy('Opening balances saved.', 'Opening balances zimehifadhiwa.'));
             setIsOpeningOpen(false);
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not save opening balances.');
+            toast.error(error.response?.data?.message || copy('Could not save opening balances.', 'Imeshindikana kuhifadhi salio la mwanzo.'));
         } finally {
             setSavingOpening(false);
         }
@@ -517,11 +571,11 @@ export default function Bookkeeping({ merchant }) {
             await window.axios.post('/api/retail/bookkeeping/account-items', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            toast.success(accountForm.item_type === 'receivable' ? 'Receivable saved.' : 'Payable saved.');
+            toast.success(accountForm.item_type === 'receivable' ? copy('Receivable saved.', 'Deni la kudai limehifadhiwa.') : copy('Payable saved.', 'Deni la kulipa limehifadhiwa.'));
             setIsAccountOpen(false);
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not save account item.');
+            toast.error(error.response?.data?.message || copy('Could not save account item.', 'Imeshindikana kuhifadhi kipengele cha akaunti.'));
         } finally {
             setSavingAccount(false);
         }
@@ -554,11 +608,11 @@ export default function Bookkeeping({ merchant }) {
             await window.axios.post(`/api/retail/bookkeeping/account-items/${settlingItem.id}/settle`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            toast.success(settlingItem.item_type === 'receivable' ? 'Collection recorded.' : 'Payment recorded.');
+            toast.success(settlingItem.item_type === 'receivable' ? copy('Collection recorded.', 'Ukusanyaji umerekodiwa.') : copy('Payment recorded.', 'Malipo yamerekodiwa.'));
             setSettlingItem(null);
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not settle account item.');
+            toast.error(error.response?.data?.message || copy('Could not settle account item.', 'Imeshindikana kulipa kipengele cha akaunti.'));
         } finally {
             setSavingSettlement(false);
         }
@@ -585,11 +639,11 @@ export default function Bookkeeping({ merchant }) {
             await window.axios.post('/api/retail/bookkeeping/adjustments', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            toast.success('Adjustment saved for review.');
+            toast.success(copy('Adjustment saved for review.', 'Adjustment imehifadhiwa kwa review.'));
             setIsAdjustmentOpen(false);
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not save adjustment.');
+            toast.error(error.response?.data?.message || copy('Could not save adjustment.', 'Imeshindikana kuhifadhi marekebisho.'));
         } finally {
             setSavingAdjustment(false);
         }
@@ -610,12 +664,12 @@ export default function Bookkeeping({ merchant }) {
             const res = await window.axios.post('/api/retail/bookkeeping/statements/import', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            toast.success(res.data?.message || 'Statement imported.');
+            toast.success(res.data?.message || copy('Statement imported.', 'Statement imeingizwa.'));
             setIsStatementOpen(false);
             setStatementForm({ ...emptyStatementImport });
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not import statement.');
+            toast.error(error.response?.data?.message || copy('Could not import statement.', 'Imeshindikana kuingiza statement.'));
         } finally {
             setSavingStatement(false);
         }
@@ -637,12 +691,12 @@ export default function Bookkeeping({ merchant }) {
             const res = await window.axios.post('/api/retail/bookkeeping/statements/manual', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            toast.success(res.data?.message || 'Statement line added.');
+            toast.success(res.data?.message || copy('Statement line added.', 'Mstari wa statement umeongezwa.'));
             setIsStatementOpen(false);
             setStatementLineForm({ ...emptyStatementLine });
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not add statement line.');
+            toast.error(error.response?.data?.message || copy('Could not add statement line.', 'Imeshindikana kuongeza mstari wa statement.'));
         } finally {
             setSavingStatement(false);
         }
@@ -657,10 +711,10 @@ export default function Bookkeeping({ merchant }) {
                 merchant_id: merchant.id,
                 entry_id: entryId,
             });
-            toast.success('Statement line matched.');
+            toast.success(copy('Statement line matched.', 'Mstari wa statement ume-matchiwa.'));
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not match statement line.');
+            toast.error(error.response?.data?.message || copy('Could not match statement line.', 'Imeshindikana kulinganisha mstari wa statement.'));
         }
     };
 
@@ -669,10 +723,10 @@ export default function Bookkeeping({ merchant }) {
             await window.axios.post(`/api/retail/bookkeeping/statements/${line.id}/ignore`, {
                 merchant_id: merchant.id,
             });
-            toast.success('Statement line ignored.');
+            toast.success(copy('Statement line ignored.', 'Mstari wa statement umepuuzwa.'));
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not ignore statement line.');
+            toast.error(error.response?.data?.message || copy('Could not ignore statement line.', 'Imeshindikana kupuuza mstari wa statement.'));
         }
     };
 
@@ -688,12 +742,12 @@ export default function Bookkeeping({ merchant }) {
                 estimated_amount: obligationForm.estimated_amount === '' ? null : obligationForm.estimated_amount,
                 currency_code: (obligationForm.currency_code || merchant.currency?.code || 'TZS').toUpperCase(),
             });
-            toast.success('Business reminder saved.');
+            toast.success(copy('Business reminder saved.', 'Kikumbusho cha biashara kimehifadhiwa.'));
             setIsObligationOpen(false);
             setObligationForm({ ...emptyObligation });
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not save reminder.');
+            toast.error(error.response?.data?.message || copy('Could not save reminder.', 'Imeshindikana kuhifadhi kikumbusho.'));
         } finally {
             setSavingObligation(false);
         }
@@ -704,10 +758,10 @@ export default function Bookkeeping({ merchant }) {
             await window.axios.post(`/api/retail/bookkeeping/obligations/${obligation.id}/complete`, {
                 merchant_id: merchant.id,
             });
-            toast.success('Reminder completed.');
+            toast.success(copy('Reminder completed.', 'Kikumbusho kimekamilika.'));
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not complete reminder.');
+            toast.error(error.response?.data?.message || copy('Could not complete reminder.', 'Imeshindikana kukamilisha kikumbusho.'));
         }
     };
 
@@ -719,12 +773,12 @@ export default function Bookkeeping({ merchant }) {
                 merchant_id: merchant.id,
                 ...billForm,
             });
-            toast.success('Recurring bill saved.');
+            toast.success(copy('Recurring bill saved.', 'Bili ya mara kwa mara imehifadhiwa.'));
             setIsBillOpen(false);
             setBillForm({ ...emptyRecurringBill });
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not save recurring bill.');
+            toast.error(error.response?.data?.message || copy('Could not save recurring bill.', 'Imeshindikana kuhifadhi bili ya mara kwa mara.'));
         } finally {
             setSavingBill(false);
         }
@@ -737,10 +791,10 @@ export default function Bookkeeping({ merchant }) {
                 merchant_id: merchant.id,
                 transaction_date: new Date().toISOString().slice(0, 10),
             });
-            toast.success('Bill posted to expenses.');
+            toast.success(copy('Bill posted to expenses.', 'Bili imewekwa kwenye expenses.'));
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not post bill.');
+            toast.error(error.response?.data?.message || copy('Could not post bill.', 'Imeshindikana kuweka bili kwenye expenses.'));
         } finally {
             setPayingBillId(null);
         }
@@ -762,12 +816,12 @@ export default function Bookkeeping({ merchant }) {
             await window.axios.post('/api/retail/bookkeeping/payroll', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            toast.success('Payroll record saved.');
+            toast.success(copy('Payroll record saved.', 'Taarifa ya payroll imehifadhiwa.'));
             setIsPayrollOpen(false);
             setPayrollForm({ ...emptyPayroll });
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not save payroll.');
+            toast.error(error.response?.data?.message || copy('Could not save payroll.', 'Imeshindikana kuhifadhi payroll.'));
         } finally {
             setSavingPayroll(false);
         }
@@ -779,10 +833,10 @@ export default function Bookkeeping({ merchant }) {
             await window.axios.post(`/api/retail/bookkeeping/payroll/${payroll.id}/pay`, {
                 merchant_id: merchant.id,
             });
-            toast.success('Payroll posted to expenses.');
+            toast.success(copy('Payroll posted to expenses.', 'Payroll imewekwa kwenye expenses.'));
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not post payroll.');
+            toast.error(error.response?.data?.message || copy('Could not post payroll.', 'Imeshindikana kuweka payroll kwenye expenses.'));
         } finally {
             setPayingPayrollId(null);
         }
@@ -798,12 +852,12 @@ export default function Bookkeeping({ merchant }) {
                 sections: ['summary', 'records', 'proofs', 'reports'],
             });
             await navigator.clipboard?.writeText(res.data?.url || '');
-            toast.success('Share link created and copied.');
+            toast.success(copy('Share link created and copied.', 'Share link imeundwa na kunakiliwa.'));
             setIsShareOpen(false);
             setShareForm({ ...emptyShareLink });
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not create share link.');
+            toast.error(error.response?.data?.message || copy('Could not create share link.', 'Imeshindikana kuunda link ya kushiriki.'));
         } finally {
             setSavingShare(false);
         }
@@ -814,10 +868,10 @@ export default function Bookkeeping({ merchant }) {
             await window.axios.post(`/api/retail/bookkeeping/share-links/${link.id}/revoke`, {
                 merchant_id: merchant.id,
             });
-            toast.success('Share link revoked.');
+            toast.success(copy('Share link revoked.', 'Share link imezuiwa.'));
             fetchEntries();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not revoke share link.');
+            toast.error(error.response?.data?.message || copy('Could not revoke share link.', 'Imeshindikana kubatilisha link ya kushiriki.'));
         }
     };
 
@@ -877,7 +931,7 @@ export default function Bookkeeping({ merchant }) {
             link.remove();
             window.URL.revokeObjectURL(blobUrl);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not download file.');
+            toast.error(error.response?.data?.message || copy('Could not download file.', 'Imeshindikana kupakua faili.'));
         }
     };
     const entries = payload?.entries?.data || [];
@@ -927,7 +981,7 @@ export default function Bookkeeping({ merchant }) {
         { value: 'audit_accounting', label: 'Audit / accounting compliance' },
         { value: 'custom', label: 'Custom' },
     ];
-    const complianceTypeLabel = (value) => complianceTypes.find((type) => type.value === value)?.label || value;
+    const complianceTypeLabel = (value) => bookkeepingLabel(copy, complianceTypes.find((type) => type.value === value)?.label || value);
     const complianceCatalogItems = recommendedSetup.filter((item) => complianceCatalogFilter === 'all' || item.type === complianceCatalogFilter);
     const selectedPayrollStaff = staffDirectory.find((staff) => String(staff.id) === String(payrollForm.merchant_staff_id));
     const handlePayrollStaffChange = (staffId) => {
@@ -956,7 +1010,7 @@ export default function Bookkeeping({ merchant }) {
 
     return (
         <AppLayout>
-            <Head title="Bookkeeping | Takeer Retail Ops" />
+            <Head title={`${copy('Bookkeeping', 'Utunzaji wa hesabu')} | Takeer Retail Ops`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-24">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-start gap-3">
@@ -970,17 +1024,17 @@ export default function Bookkeeping({ merchant }) {
                         </Button>
                         <div>
                             <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
-                                Bookkeeping <BookOpenCheck className="h-8 w-8 text-brand-600" />
+                                {copy('Bookkeeping', 'Utunzaji wa hesabu')} <BookOpenCheck className="h-8 w-8 text-brand-600" />
                             </h1>
                             <p className="text-sm text-muted-foreground">
-                                Business records for income, expenses, receipts etc.
+                                {copy('Business records for income, expenses, receipts etc.', 'Rekodi za biashara za mapato, matumizi, risiti na kadhalika.')}
                             </p>
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button className="rounded-xl bg-brand-600 hover:bg-brand-700 text-white" onClick={openCreate}>
                             <Plus className="h-4 w-4 mr-2" />
-                            Add Record
+                            {copy('Add record', 'Ongeza rekodi')}
                         </Button>
                     </div>
                 </div>
@@ -990,15 +1044,15 @@ export default function Bookkeeping({ merchant }) {
                         <ShieldCheck className="h-5 w-5" />
                     </div>
                     <div>
-                        <p className="text-sm font-black text-emerald-950">Audit-supportive records</p>
+                        <p className="text-sm font-black text-emerald-950">{copy('Audit-supportive records', 'Rekodi zinazosaidia ukaguzi')}</p>
                         <p className="text-xs font-semibold text-emerald-800 mt-1">
-                            Every create, edit, and void action is written to the business audit trail with user, staff, timestamp, and before/after values.
+                            {copy('Every create, edit, and void action is written to the business audit trail with user, staff, timestamp, and before/after values.', 'Kila kitendo cha kuunda, kuhariri au kubatilisha huandikwa kwenye kumbukumbu ya ukaguzi ya biashara pamoja na mtumiaji, mhudumu, muda na thamani za kabla/baada.')}
                         </p>
                     </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Quick actions</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Quick actions', 'Vitendo vya haraka')}</p>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 mt-3">
                         <QuickAction onClick={openOpeningBalance} icon={Calculator} label="Opening" />
                         <QuickAction onClick={() => openAccountItem('receivable')} icon={ClipboardList} label="Invoice" />
@@ -1013,7 +1067,7 @@ export default function Bookkeeping({ merchant }) {
 
                 <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Audit readiness</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Audit readiness', 'Utayari wa ukaguzi')}</p>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-3">
                             <ReadinessStat label="Pending review" value={summary.pending_review || 0} />
                             <ReadinessStat label="Unmatched" value={summary.unmatched || 0} />
@@ -1025,16 +1079,16 @@ export default function Bookkeeping({ merchant }) {
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
                         <div className="flex items-center gap-2">
                             <LockKeyhole className="h-4 w-4 text-slate-600" />
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Lock reviewed month</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Lock reviewed month', 'Funga mwezi uliokaguliwa')}</p>
                         </div>
                         <div className="flex gap-2 mt-3">
                             <Input type="month" value={periodKey} onChange={(e) => setPeriodKey(e.target.value)} className="rounded-xl" />
                             <Button variant="outline" className="rounded-xl shrink-0" onClick={handleLockPeriod} disabled={locking}>
-                                {locking ? 'Locking...' : 'Lock'}
+                                {locking ? copy('Locking...', 'Inafunga...') : copy('Lock', 'Funga')}
                             </Button>
                         </div>
                         <p className="text-[10px] font-semibold text-slate-500 mt-2">
-                            Locked months reject edits, voids, and back-dated records.
+                            {copy('Locked months reject edits, voids, and back-dated records.', 'Miezi iliyofungwa inakataa marekebisho, ubatilishaji na rekodi zenye tarehe za nyuma.')}
                         </p>
                     </div>
                 </div>
@@ -1050,9 +1104,9 @@ export default function Bookkeeping({ merchant }) {
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Needs attention</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Needs attention', 'Inahitaji uangalizi')}</p>
                             <p className="text-xs font-semibold text-slate-500 mt-1">
-                                What is due soon, overdue, pending, or shared from the business records.
+                                {copy('What is due soon, overdue, pending, or shared from the business records.', 'Kinachokaribia kulipwa, kilichochelewa, kinachosubiri au kilichoshirikiwa kutoka kwenye rekodi za biashara.')}
                             </p>
                         </div>
                     </div>
@@ -1140,7 +1194,7 @@ export default function Bookkeeping({ merchant }) {
                                     actionLabel="Copy"
                                     onAction={() => {
                                         navigator.clipboard?.writeText(item.url);
-                                        toast.success('Share link copied.');
+                            toast.success(copy('Share link copied.', 'Kiungo cha kushiriki kimenakiliwa.'));
                                     }}
                                     secondaryLabel={item.status === 'active' ? 'Revoke' : null}
                                     onSecondary={() => handleShareRevoke(item)}
@@ -1152,7 +1206,7 @@ export default function Bookkeeping({ merchant }) {
 
                 <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4">
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Receivables & payables</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Receivables & payables', 'Madeni ya kudai na kulipa')}</p>
                         <div className="grid grid-cols-2 gap-3 mt-3">
                             <ReadinessStat label="To Collect" value={formatCurrency(accountSummary.receivable_open)} />
                             <ReadinessStat label="To Pay" value={formatCurrency(accountSummary.payable_open)} />
@@ -1162,7 +1216,7 @@ export default function Bookkeeping({ merchant }) {
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
                         <div className="flex items-center justify-between gap-3">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Recent open items</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Recent open items', 'Vipengele vya wazi vya hivi karibuni')}</p>
                             <div className="flex gap-2">
                                 <ReportLink onDownload={() => downloadFile(reportUrl('accounts-receivable'), 'accounts-receivable.csv')} label="AR CSV" compact />
                                 <ReportLink onDownload={() => downloadFile(reportUrl('accounts-payable'), 'accounts-payable.csv')} label="AP CSV" compact />
@@ -1170,7 +1224,7 @@ export default function Bookkeeping({ merchant }) {
                         </div>
                         <div className="divide-y mt-2">
                             {accountItems.length === 0 ? (
-                                <p className="py-8 text-center text-sm text-muted-foreground">No receivables or payables yet.</p>
+                                <p className="py-8 text-center text-sm text-muted-foreground">{copy('No receivables or payables yet.', 'Hakuna madeni ya kudai au kulipa bado.')}</p>
                             ) : accountItems.map((item) => (
                                 <div key={item.id} className="py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                     <div className="min-w-0">
@@ -1181,7 +1235,7 @@ export default function Bookkeeping({ merchant }) {
                                             <span className="text-xs font-bold text-slate-400">{item.due_date?.slice(0, 10) || 'No due date'}</span>
                                         </div>
                                         <p className="font-black text-slate-950 mt-1 truncate">{item.counterparty}</p>
-                                        <p className="text-xs font-semibold text-muted-foreground truncate">{item.invoice_number || 'No invoice'} • {item.category || 'General'}</p>
+                                        <p className="text-xs font-semibold text-muted-foreground truncate">{item.invoice_number || copy('No invoice', 'Hakuna invoice')} • {item.category || copy('General', 'Jumla')}</p>
                                     </div>
                                     <div className="flex items-center justify-between gap-3">
                                         <div className="text-right">
@@ -1191,7 +1245,7 @@ export default function Bookkeeping({ merchant }) {
                                         {item.status === 'open' && (
                                             <Button variant="outline" size="sm" className="rounded-xl text-emerald-700" onClick={() => openSettlement(item)}>
                                                 <CheckCircle2 className="h-4 w-4 mr-1" />
-                                                Settle
+                                                {copy('Settle', 'Lipa')}
                                             </Button>
                                         )}
                                     </div>
@@ -1205,13 +1259,13 @@ export default function Bookkeeping({ merchant }) {
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
                         <div className="flex items-center justify-between gap-3">
                             <div>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Opening position</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Opening position', 'Hali ya mwanzo')}</p>
                                 <p className="text-xs font-semibold text-slate-500 mt-1">
-                                    Capture starting cash, bank, stock, receivables, payables, and director loan balances.
+                                    {copy('Capture starting cash, bank, stock, receivables, payables, and director loan balances.', 'Weka salio la mwanzo la cash, benki, stock, madeni ya kudai, madeni ya kulipa na mkopo wa mkurugenzi.')}
                                 </p>
                             </div>
                             <Button variant="outline" className="rounded-xl shrink-0" onClick={openOpeningBalance}>
-                                Edit
+                                {copy('Edit', 'Hariri')}
                             </Button>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
@@ -1222,9 +1276,9 @@ export default function Bookkeeping({ merchant }) {
                         </div>
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Audit exports</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Audit exports', 'Uhamishaji wa ukaguzi')}</p>
                         <button type="button" onClick={() => downloadFile(auditPackUrl, 'retail-bookkeeping-audit-pack.zip')} className="mt-3 h-10 rounded-xl border border-emerald-200 bg-emerald-50 px-3 flex items-center justify-between gap-2 text-xs font-black text-emerald-800 hover:bg-emerald-100 w-full">
-                            <span>Download audit pack ZIP</span>
+                            <span>{copy('Download audit pack ZIP', 'Pakua kifurushi cha ukaguzi ZIP')}</span>
                             <Download className="h-4 w-4 shrink-0" />
                         </button>
                         <div className="grid grid-cols-2 gap-2 mt-3">
@@ -1251,15 +1305,15 @@ export default function Bookkeeping({ merchant }) {
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Statement reconciliation</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Statement reconciliation', 'Upatanisho wa taarifa')}</p>
                             <p className="text-xs font-semibold text-slate-500 mt-1">
-                                Import bank statement files or add mobile-money lines from SMS/app history with screenshot proof.
+                                {copy('Import bank statement files or add mobile-money lines from SMS/app history with screenshot proof.', 'Ingiza faili za taarifa za benki au ongeza mistari ya pesa za simu kutoka SMS/historia ya programu pamoja na picha ya skrini ya uthibitisho.')}
                             </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <ReportLink onDownload={() => downloadFile(reportUrl('statement-lines'), 'statement-lines.csv')} label="Statement Lines" compact />
                             <Button variant="outline" className="rounded-xl" onClick={() => setIsStatementOpen(true)}>
-                                Add / Import
+                                {copy('Add / import', 'Ongeza / ingiza')}
                             </Button>
                         </div>
                     </div>
@@ -1270,7 +1324,7 @@ export default function Bookkeeping({ merchant }) {
                     </div>
                     <div className="divide-y mt-3">
                         {statementLines.length === 0 ? (
-                            <p className="py-8 text-center text-sm text-muted-foreground">No unmatched statement lines.</p>
+                            <p className="py-8 text-center text-sm text-muted-foreground">{copy('No unmatched statement lines.', 'Hakuna mistari ya taarifa isiyolinganishwa.')}</p>
                         ) : statementLines.map((line) => (
                             <div key={line.id} className="py-3 grid grid-cols-1 lg:grid-cols-[1fr_280px_auto] gap-3 lg:items-center">
                                 <div className="min-w-0">
@@ -1283,7 +1337,7 @@ export default function Bookkeeping({ merchant }) {
                                     </div>
                                     <p className="font-black text-slate-950 mt-1 truncate">{formatCurrency(line.amount)}</p>
                                     <p className="text-xs font-semibold text-muted-foreground truncate">
-                                        {line.counterparty || line.description || 'Statement line'}{line.attachment_original_name ? ' • proof attached' : ''}
+                                        {line.counterparty || line.description || copy('Statement line', 'Mstari wa taarifa')}{line.attachment_original_name ? ` • ${copy('proof attached', 'ushahidi umeambatanishwa')}` : ''}
                                     </p>
                                     {(statementSuggestions[line.id] || []).length > 0 && (
                                         <div className="mt-2 flex flex-wrap gap-2">
@@ -1311,7 +1365,7 @@ export default function Bookkeeping({ merchant }) {
                                     onChange={(e) => setMatchingEntryIds((prev) => ({ ...prev, [line.id]: e.target.value }))}
                                     className="h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold bg-white"
                                 >
-                                    <option value="">Choose bookkeeping record</option>
+                                    <option value="">{copy('Choose bookkeeping record', 'Chagua rekodi ya hesabu')}</option>
                                     {statementCandidates.map((entry) => (
                                         <option key={entry.id} value={entry.id}>
                                             #{entry.id} • {entry.transaction_date?.slice(0, 10)} • {entry.category} • {formatCurrency(entry.amount)}
@@ -1340,7 +1394,7 @@ export default function Bookkeeping({ merchant }) {
                                 onChange={(e) => setFilters((prev) => ({ ...prev, q: e.target.value }))}
                                 onKeyDown={(e) => e.key === 'Enter' && fetchEntries()}
                                 className="pl-9 rounded-xl"
-                                placeholder="Search reference, vendor, category..."
+                                placeholder={copy('Search reference, vendor, category...', 'Tafuta rejeo, muuzaji, kategoria...')}
                             />
                         </div>
                         <select
@@ -1348,9 +1402,9 @@ export default function Bookkeeping({ merchant }) {
                             onChange={(e) => setFilters((prev) => ({ ...prev, type: e.target.value }))}
                             className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white"
                         >
-                            <option value="">All types</option>
+                            <option value="">{copy('All types', 'Aina zote')}</option>
                             {Object.entries(typeLabels).map(([value, label]) => (
-                                <option key={value} value={value}>{label}</option>
+                                <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>
                             ))}
                         </select>
                         <select
@@ -1358,18 +1412,18 @@ export default function Bookkeeping({ merchant }) {
                             onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
                             className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white"
                         >
-                            <option value="active">Active</option>
-                            <option value="voided">Voided</option>
-                            <option value="">All statuses</option>
+                            <option value="active">{copy('Active', 'Hai')}</option>
+                            <option value="voided">{copy('Voided', 'Iliyobatilishwa')}</option>
+                            <option value="">{copy('All statuses', 'Hali zote')}</option>
                         </select>
                         <select
                             value={filters.proof_status}
                             onChange={(e) => setFilters((prev) => ({ ...prev, proof_status: e.target.value }))}
                             className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white"
                         >
-                            <option value="">All proofs</option>
+                            <option value="">{copy('All proofs', 'Uthibitisho wote')}</option>
                             {proofStatuses.map(([value, label]) => (
-                                <option key={value} value={value}>{label}</option>
+                                <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>
                             ))}
                         </select>
                         <select
@@ -1377,9 +1431,9 @@ export default function Bookkeeping({ merchant }) {
                             onChange={(e) => setFilters((prev) => ({ ...prev, review_status: e.target.value }))}
                             className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white"
                         >
-                            <option value="">All reviews</option>
+                            <option value="">{copy('All reviews', 'Ukaguzi wote')}</option>
                             {reviewStatuses.map(([value, label]) => (
-                                <option key={value} value={value}>{label}</option>
+                                <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>
                             ))}
                         </select>
                         <select
@@ -1387,24 +1441,24 @@ export default function Bookkeeping({ merchant }) {
                             onChange={(e) => setFilters((prev) => ({ ...prev, reconciliation_status: e.target.value }))}
                             className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white"
                         >
-                            <option value="">All matching</option>
+                            <option value="">{copy('All matching', 'Ulinganishaji wote')}</option>
                             {reconciliationStatuses.map(([value, label]) => (
-                                <option key={value} value={value}>{label}</option>
+                                <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>
                             ))}
                         </select>
-                        <Button variant="outline" className="rounded-xl" onClick={fetchEntries}>Apply</Button>
+                        <Button variant="outline" className="rounded-xl" onClick={fetchEntries}>{copy('Apply', 'Tumia')}</Button>
                     </div>
                 </div>
 
                 <Card>
                     <CardHeader className="p-5 border-b">
-                        <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-500">Records</CardTitle>
+                        <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-500">{copy('Records', 'Rekodi')}</CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
                         {loading ? (
-                            <div className="p-10 text-center text-sm text-muted-foreground">Loading records...</div>
+                            <div className="p-10 text-center text-sm text-muted-foreground">{copy('Loading records...', 'Inapakia rekodi...')}</div>
                         ) : entries.length === 0 ? (
-                            <div className="p-10 text-center text-sm text-muted-foreground">No bookkeeping records yet.</div>
+                            <div className="p-10 text-center text-sm text-muted-foreground">{copy('No bookkeeping records yet.', 'Hakuna rekodi za hesabu bado.')}</div>
                         ) : (
                             <div className="divide-y">
                                 {entries.map((entry) => (
@@ -1412,11 +1466,11 @@ export default function Bookkeeping({ merchant }) {
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-600">
-                                                    {typeLabels[entry.entry_type] || entry.entry_type}
+                                                    {bookkeepingLabel(copy, typeLabels[entry.entry_type] || entry.entry_type)}
                                                 </span>
                                                 {entry.status === 'voided' && (
                                                     <span className="rounded-full bg-red-50 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-red-700">
-                                                        Voided
+                                                        {copy('Voided', 'Ilibatilishwa')}
                                                     </span>
                                                 )}
                                                 <StatusPill status={entry.proof_status} labels={Object.fromEntries(proofStatuses)} tone="amber" />
@@ -1426,10 +1480,10 @@ export default function Bookkeeping({ merchant }) {
                                             </div>
                                             <p className="font-black text-slate-950 mt-2 truncate">{entry.category}</p>
                                             <p className="text-xs font-semibold text-muted-foreground mt-1 truncate">
-                                                {entry.counterparty || 'No counterparty'} • {entry.reference_number || 'No reference number'}
+                                                {entry.counterparty || copy('No counterparty', 'Hakuna mhusika mwingine')} • {entry.reference_number || copy('No reference number', 'Hakuna namba ya rejeo')}
                                             </p>
                                             <p className="text-[11px] text-muted-foreground mt-1">
-                                                Recorded by {entry.staff?.user?.name || entry.user?.name || 'Owner'}
+                                                {copy('Recorded by', 'Imerekodiwa na')} {entry.staff?.user?.name || entry.user?.name || copy('Owner', 'Mmiliki')}
                                             </p>
                                         </div>
                                         <div className="flex items-center justify-between gap-4 md:justify-end">
@@ -1437,22 +1491,22 @@ export default function Bookkeeping({ merchant }) {
                                                 <p className="text-lg font-black text-slate-950">{formatCurrency(entry.amount)}</p>
                                                 {entry.attachment_url ? (
                                                     <a href={entry.attachment_url} target="_blank" rel="noreferrer" className="text-[10px] font-black text-brand-600 hover:underline">
-                                                        View proof
+                                                        {copy('View proof', 'Angalia uthibitisho')}
                                                     </a>
                                                 ) : (
-                                                    <p className="text-[10px] font-bold text-amber-600">No proof attached</p>
+                                                    <p className="text-[10px] font-bold text-amber-600">{copy('No proof attached', 'Hakuna uthibitisho uliowekwa')}</p>
                                                 )}
                                             </div>
                                             {entry.status === 'active' && (
                                                 <div className="flex flex-wrap justify-end gap-1">
                                                     {entry.review_status !== 'approved' && (
                                                         <Button variant="outline" size="sm" className="rounded-xl text-emerald-700" onClick={() => handleReview(entry, 'approved')}>
-                                                            Approve
+                                                            {copy('Approve', 'Kubali')}
                                                         </Button>
                                                     )}
                                                     {entry.reconciliation_status !== 'matched' && (
                                                         <Button variant="outline" size="sm" className="rounded-xl text-sky-700" onClick={() => handleReconcile(entry, 'matched')}>
-                                                            Match
+                                                            {copy('Match', 'Linganisha')}
                                                         </Button>
                                                     )}
                                                     <Button variant="outline" size="icon" className="rounded-xl" onClick={() => openEdit(entry)}>
@@ -1484,7 +1538,7 @@ export default function Bookkeeping({ merchant }) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5">
                             <Field label="Type">
                                 <select value={form.entry_type} onChange={(e) => setForm({ ...form, entry_type: e.target.value, category: payload?.categories?.[e.target.value]?.[0] || '' })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    {Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    {Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Category">
@@ -1500,40 +1554,40 @@ export default function Bookkeeping({ merchant }) {
                             </Field>
                             <Field label="Payment Method">
                                 <select value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    {paymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    {paymentMethods.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Counterparty">
-                                <Input value={form.counterparty} onChange={(e) => setForm({ ...form, counterparty: e.target.value })} placeholder="Vendor, customer, TRA, director..." />
+                                <Input value={form.counterparty} onChange={(e) => setForm({ ...form, counterparty: e.target.value })} placeholder={copy('Vendor, customer, TRA, director...', 'Muuzaji, mteja, TRA, mkurugenzi...')} />
                             </Field>
                             <Field label="Reference Type">
                                 <select value={form.reference_type} onChange={(e) => setForm({ ...form, reference_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    <option value="">None</option>
-                                    {referenceTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    <option value="">{copy('None', 'Hakuna')}</option>
+                                    {referenceTypes.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Reference Number">
-                                <Input value={form.reference_number} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} placeholder="EFD, bank, mobile money, invoice..." />
+                                <Input value={form.reference_number} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} placeholder={copy('EFD, bank, mobile money, invoice...', 'EFD, benki, pesa za simu, invoice...')} />
                             </Field>
                             <Field label="Tax Type">
-                                <Input value={form.tax_type} onChange={(e) => setForm({ ...form, tax_type: e.target.value })} placeholder="VAT, WHT, PAYE..." />
+                                <Input value={form.tax_type} onChange={(e) => setForm({ ...form, tax_type: e.target.value })} placeholder={copy('VAT, WHT, PAYE...', 'VAT, WHT, PAYE...')} />
                             </Field>
                             <Field label="Tax Period">
-                                <Input value={form.tax_period} onChange={(e) => setForm({ ...form, tax_period: e.target.value })} placeholder="2026-05, Q2 2026..." />
+                                <Input value={form.tax_period} onChange={(e) => setForm({ ...form, tax_period: e.target.value })} placeholder={copy('2026-05, Q2 2026...', '2026-05, Q2 2026...')} />
                             </Field>
                             <Field label="Proof Status">
                                 <select value={form.proof_status} onChange={(e) => setForm({ ...form, proof_status: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    <option value="">Auto</option>
-                                    {proofStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    <option value="">{copy('Auto', 'Otomatiki')}</option>
+                                    {proofStatuses.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Reconciliation">
                                 <select value={form.reconciliation_status} onChange={(e) => setForm({ ...form, reconciliation_status: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    {reconciliationStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    {reconciliationStatuses.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Statement Reference">
-                                <Input value={form.statement_reference} onChange={(e) => setForm({ ...form, statement_reference: e.target.value })} placeholder="Bank statement line, MNO statement ref..." />
+                                <Input value={form.statement_reference} onChange={(e) => setForm({ ...form, statement_reference: e.target.value })} placeholder={copy('Bank statement line, MNO statement ref...', 'Mstari wa taarifa ya benki, rejeo la taarifa ya MNO...')} />
                             </Field>
                             <Field label="Proof Attachment">
                                 <label className="h-10 rounded-xl border border-dashed border-slate-300 px-3 flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer">
@@ -1544,12 +1598,12 @@ export default function Bookkeeping({ merchant }) {
                             </Field>
                             <div className="md:col-span-2">
                                 <Field label="Description">
-                                    <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Short note for your accountant or auditor..." />
+                                    <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={copy('Short note for your accountant or auditor...', 'Maelezo mafupi kwa mhasibu au mkaguzi wako...')} />
                                 </Field>
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={saving}>
                                 {saving ? 'Saving...' : 'Save Record'}
                             </Button>
@@ -1562,7 +1616,7 @@ export default function Bookkeeping({ merchant }) {
                 <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
                     <form onSubmit={handleOpeningSubmit}>
                         <DialogHeader>
-                            <DialogTitle>Opening balances</DialogTitle>
+                        <DialogTitle>{copy('Opening balances', 'Salio la mwanzo')}</DialogTitle>
                             <DialogDescription>
                                 Set the business starting point before tracking daily records and audit exports.
                             </DialogDescription>
@@ -1594,12 +1648,12 @@ export default function Bookkeeping({ merchant }) {
                             </Field>
                             <div className="md:col-span-2">
                                 <Field label="Note">
-                                    <Textarea value={openingForm.note} onChange={(e) => setOpeningForm({ ...openingForm, note: e.target.value })} placeholder="Where these starting figures came from..." />
+                                    <Textarea value={openingForm.note} onChange={(e) => setOpeningForm({ ...openingForm, note: e.target.value })} placeholder={copy('Where these starting figures came from...', 'Chanzo cha takwimu hizi za mwanzo...')} />
                                 </Field>
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsOpeningOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={() => setIsOpeningOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingOpening}>
                                 {savingOpening ? 'Saving...' : 'Save Opening Balances'}
                             </Button>
@@ -1612,12 +1666,12 @@ export default function Bookkeeping({ merchant }) {
                 <DialogContent className="sm:max-w-xl">
                     <form onSubmit={handleObligationSubmit}>
                         <DialogHeader>
-                            <DialogTitle>Business reminder</DialogTitle>
-                            <DialogDescription>Track filings, renewals, returns, and custom company obligations.</DialogDescription>
+                            <DialogTitle>{copy('Business reminder', 'Kikumbusho cha biashara')}</DialogTitle>
+                            <DialogDescription>{copy('Track filings, renewals, returns, and custom company obligations.', 'Fuatilia filings, renewals, returns na wajibu maalum wa kampuni.')}</DialogDescription>
                         </DialogHeader>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5">
                             <Field label="Title">
-                                <Input value={obligationForm.title} onChange={(e) => setObligationForm({ ...obligationForm, title: e.target.value })} placeholder="Annual return estimate" required />
+                                <Input value={obligationForm.title} onChange={(e) => setObligationForm({ ...obligationForm, title: e.target.value })} placeholder={copy('Annual return estimate', 'Makadirio ya annual return')} required />
                             </Field>
                             <Field label="Type">
                                 <select value={obligationForm.obligation_type} onChange={(e) => setObligationForm({ ...obligationForm, obligation_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
@@ -1644,7 +1698,7 @@ export default function Bookkeeping({ merchant }) {
                                     />
                                     <select value={obligationForm.recurrence_frequency} onChange={(e) => setObligationForm({ ...obligationForm, recurrence_frequency: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
                                         {recurrenceFrequencies.map((frequency) => (
-                                            <option key={frequency.value} value={frequency.value}>{frequency.label}</option>
+                                            <option key={frequency.value} value={frequency.value}>{bookkeepingLabel(copy, frequency.label)}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -1658,7 +1712,7 @@ export default function Bookkeeping({ merchant }) {
                                     <select
                                         value={obligationForm.currency_code || currency}
                                         onChange={(e) => setObligationForm({ ...obligationForm, currency_code: e.target.value })}
-                                        aria-label="Currency"
+                                        aria-label={copy('Currency', 'Sarafu')}
                                         className="h-10 rounded-xl border border-slate-200 bg-white px-2 text-sm font-black uppercase text-center"
                                     >
                                         {currencyOptions.map((option) => (
@@ -1673,15 +1727,15 @@ export default function Bookkeeping({ merchant }) {
                                 <Input type="number" min="0" max="365" value={obligationForm.remind_days_before} onChange={(e) => setObligationForm({ ...obligationForm, remind_days_before: e.target.value })} />
                             </Field>
                             <Field label="Reference">
-                                <Input value={obligationForm.reference_number} onChange={(e) => setObligationForm({ ...obligationForm, reference_number: e.target.value })} placeholder="Filing ref or account number" />
+                                <Input value={obligationForm.reference_number} onChange={(e) => setObligationForm({ ...obligationForm, reference_number: e.target.value })} placeholder={copy('Filing ref or account number', 'Rejeo la filing au namba ya akaunti')} />
                             </Field>
                             {!obligationForm.template_key && (
                                 <>
                                     <Field label="Sector Tags">
-                                        <Input value={(obligationForm.sector_tags || []).join(', ')} onChange={(e) => setObligationForm({ ...obligationForm, sector_tags: parseTags(e.target.value) })} placeholder="pharmacy, employer, importer..." />
+                                        <Input value={(obligationForm.sector_tags || []).join(', ')} onChange={(e) => setObligationForm({ ...obligationForm, sector_tags: parseTags(e.target.value) })} placeholder={copy('pharmacy, employer, importer...', 'pharmacy, mwajiri, importer...')} />
                                     </Field>
                                     <Field label="Applies When">
-                                        <Input value={obligationForm.applies_when || ''} onChange={(e) => setObligationForm({ ...obligationForm, applies_when: e.target.value })} placeholder="VAT registered, has employees..." />
+                                        <Input value={obligationForm.applies_when || ''} onChange={(e) => setObligationForm({ ...obligationForm, applies_when: e.target.value })} placeholder={copy('VAT registered, has employees...', 'Amesajiliwa VAT, ana wafanyakazi...')} />
                                     </Field>
                                 </>
                             )}
@@ -1705,7 +1759,7 @@ export default function Bookkeeping({ merchant }) {
                             )}
                         </div>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsObligationOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={() => setIsObligationOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingObligation}>{savingObligation ? 'Saving...' : 'Save Reminder'}</Button>
                         </DialogFooter>
                     </form>
@@ -1715,8 +1769,8 @@ export default function Bookkeeping({ merchant }) {
             <Dialog open={isComplianceCatalogOpen} onOpenChange={setIsComplianceCatalogOpen}>
                 <DialogContent className="sm:max-w-2xl">
                     <DialogHeader>
-                        <DialogTitle>Add compliance item</DialogTitle>
-                        <DialogDescription>Choose only the filings, licences, certificates, or payments that apply to this business.</DialogDescription>
+                        <DialogTitle>{copy('Add compliance item', 'Ongeza kipengele cha compliance')}</DialogTitle>
+                        <DialogDescription>{copy('Choose only the filings, licences, certificates, or payments that apply to this business.', 'Chagua filings, licences, certificates au malipo yanayoihusu biashara hii pekee.')}</DialogDescription>
                     </DialogHeader>
                     <div className="flex gap-2 overflow-x-auto pt-4">
                         <button
@@ -1740,7 +1794,7 @@ export default function Bookkeeping({ merchant }) {
                     <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
                         {complianceCatalogItems.length === 0 ? (
                             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
-                                <p className="text-sm font-bold text-slate-700">No matching country defaults configured yet.</p>
+                                <p className="text-sm font-bold text-slate-700">{copy('No matching country defaults configured yet.', 'Hakuna defaults za nchi hii zilizowekwa bado.')}</p>
                             </div>
                         ) : complianceCatalogItems.map((item) => (
                             <div key={item.key} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -1770,7 +1824,7 @@ export default function Bookkeeping({ merchant }) {
                         ))}
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setIsComplianceCatalogOpen(false)}>Cancel</Button>
+                        <Button type="button" variant="outline" onClick={() => setIsComplianceCatalogOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                         <Button type="button" className="bg-brand-600 hover:bg-brand-700 text-white" onClick={openCustomReminder}>
                             <Plus className="h-4 w-4 mr-1" />
                             Custom
@@ -1783,8 +1837,8 @@ export default function Bookkeeping({ merchant }) {
                 <DialogContent className="sm:max-w-xl">
                     <form onSubmit={handleBillSubmit}>
                         <DialogHeader>
-                            <DialogTitle>Recurring bill</DialogTitle>
-                            <DialogDescription>Set rent, hosting, utilities, subscriptions, and other repeat expenses.</DialogDescription>
+                            <DialogTitle>{copy('Recurring bill', 'Bili ya mara kwa mara')}</DialogTitle>
+                            <DialogDescription>{copy('Set rent, hosting, utilities, subscriptions, and other repeat expenses.', 'Weka rent, hosting, utilities, subscriptions na matumizi mengine ya mara kwa mara.')}</DialogDescription>
                         </DialogHeader>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5">
                             <Field label="Vendor">
@@ -1800,10 +1854,10 @@ export default function Bookkeeping({ merchant }) {
                             </Field>
                             <Field label="Frequency">
                                 <select value={billForm.frequency} onChange={(e) => setBillForm({ ...billForm, frequency: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    <option value="weekly">Weekly</option>
-                                    <option value="monthly">Monthly</option>
-                                    <option value="quarterly">Quarterly</option>
-                                    <option value="yearly">Yearly</option>
+                                    <option value="weekly">{copy('Weekly', 'Kila wiki')}</option>
+                                    <option value="monthly">{copy('Monthly', 'Kila mwezi')}</option>
+                                    <option value="quarterly">{copy('Quarterly', 'Kila robo mwaka')}</option>
+                                    <option value="yearly">{copy('Yearly', 'Kila mwaka')}</option>
                                 </select>
                             </Field>
                             <Field label="Next Due Date">
@@ -1811,12 +1865,12 @@ export default function Bookkeeping({ merchant }) {
                             </Field>
                             <Field label="Payment Method">
                                 <select value={billForm.payment_method} onChange={(e) => setBillForm({ ...billForm, payment_method: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    {paymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    {paymentMethods.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                         </div>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsBillOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={() => setIsBillOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingBill}>{savingBill ? 'Saving...' : 'Save Bill'}</Button>
                         </DialogFooter>
                     </form>
@@ -1827,13 +1881,13 @@ export default function Bookkeeping({ merchant }) {
                 <DialogContent className="sm:max-w-xl">
                     <form onSubmit={handlePayrollSubmit}>
                         <DialogHeader>
-                            <DialogTitle>Payroll lite</DialogTitle>
-                            <DialogDescription>Record simple staff or contractor payments and attach payslips, worksheets, or payment proof when available.</DialogDescription>
+                            <DialogTitle>{copy('Payroll lite', 'Payroll rahisi')}</DialogTitle>
+                            <DialogDescription>{copy('Record simple staff or contractor payments and attach payslips, worksheets, or payment proof when available.', 'Rekodi malipo rahisi ya wafanyakazi au wakandarasi na ambatanisha payslips, worksheets au uthibitisho wa malipo unapopatikana.')}</DialogDescription>
                         </DialogHeader>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5">
                             <Field label="Team Member">
                                 <select value={payrollForm.merchant_staff_id} onChange={(e) => handlePayrollStaffChange(e.target.value)} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    <option value="">Custom worker</option>
+                                    <option value="">{copy('Custom worker', 'Mfanyakazi maalum')}</option>
                                     {staffDirectory.map((staff) => (
                                         <option key={staff.id} value={staff.id}>
                                             {staff.name} {staff.job_title ? `- ${staff.job_title}` : `- ${staff.access_role}`}
@@ -1846,13 +1900,13 @@ export default function Bookkeeping({ merchant }) {
                             </Field>
                             <Field label="Worker Type">
                                 <select value={payrollForm.worker_type} onChange={(e) => setPayrollForm({ ...payrollForm, worker_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    <option value="employee">Employee</option>
-                                    <option value="contractor">Contractor</option>
-                                    <option value="casual">Casual</option>
+                                    <option value="employee">{copy('Employee', 'Mfanyakazi')}</option>
+                                    <option value="contractor">{copy('Contractor', 'Mkandarasi')}</option>
+                                    <option value="casual">{copy('Casual', 'Wa muda')}</option>
                                 </select>
                             </Field>
                             <Field label="Job Title">
-                                <Input value={payrollForm.role} onChange={(e) => setPayrollForm({ ...payrollForm, role: e.target.value })} placeholder="Pharmacist, driver, cleaner..." />
+                                <Input value={payrollForm.role} onChange={(e) => setPayrollForm({ ...payrollForm, role: e.target.value })} placeholder={copy('Pharmacist, driver, cleaner...', 'Mfamasia, dereva, msafishaji...')} />
                             </Field>
                             <Field label="Gross Amount">
                                 <Input type="number" min="0.01" step="0.01" value={payrollForm.gross_amount} onChange={(e) => setPayrollForm({ ...payrollForm, gross_amount: e.target.value })} required />
@@ -1867,7 +1921,7 @@ export default function Bookkeeping({ merchant }) {
                                 <Input type="date" value={payrollForm.pay_date} onChange={(e) => setPayrollForm({ ...payrollForm, pay_date: e.target.value })} required />
                             </Field>
                             <Field label="Reference">
-                                <Input value={payrollForm.reference_number} onChange={(e) => setPayrollForm({ ...payrollForm, reference_number: e.target.value })} placeholder="Bank or mobile money ref" />
+                                <Input value={payrollForm.reference_number} onChange={(e) => setPayrollForm({ ...payrollForm, reference_number: e.target.value })} placeholder={copy('Bank or mobile money ref', 'Rejeo la benki au pesa za simu')} />
                             </Field>
                             <Field label="Tax Type">
                                 <Input value={payrollForm.tax_type} onChange={(e) => setPayrollForm({ ...payrollForm, tax_type: e.target.value })} />
@@ -1883,7 +1937,7 @@ export default function Bookkeeping({ merchant }) {
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsPayrollOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={() => setIsPayrollOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingPayroll}>{savingPayroll ? 'Saving...' : 'Save Payroll'}</Button>
                         </DialogFooter>
                     </form>
@@ -1894,8 +1948,8 @@ export default function Bookkeeping({ merchant }) {
                 <DialogContent className="sm:max-w-xl">
                     <form onSubmit={handleShareSubmit}>
                         <DialogHeader>
-                            <DialogTitle>Share bookkeeping records</DialogTitle>
-                            <DialogDescription>Create a secure read-only link for an accountant, advisor, auditor, or tax officer.</DialogDescription>
+                            <DialogTitle>{copy('Share bookkeeping records', 'Shiriki rekodi za hesabu')}</DialogTitle>
+                            <DialogDescription>{copy('Create a secure read-only link for an accountant, advisor, auditor, or tax officer.', 'Unda link salama ya kusoma tu kwa mhasibu, mshauri, mkaguzi au afisa wa kodi.')}</DialogDescription>
                         </DialogHeader>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5">
                             <Field label="Recipient Name">
@@ -1903,11 +1957,11 @@ export default function Bookkeeping({ merchant }) {
                             </Field>
                             <Field label="Recipient Role">
                                 <select value={shareForm.recipient_role} onChange={(e) => setShareForm({ ...shareForm, recipient_role: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    <option value="accountant">Accountant</option>
-                                    <option value="auditor">Auditor</option>
-                                    <option value="tax_authority">Tax Authority</option>
-                                    <option value="advisor">Advisor</option>
-                                    <option value="other">Other</option>
+                                    <option value="accountant">{copy('Accountant', 'Mhasibu')}</option>
+                                    <option value="auditor">{copy('Auditor', 'Mkaguzi')}</option>
+                                    <option value="tax_authority">{copy('Tax Authority', 'Mamlaka ya kodi')}</option>
+                                    <option value="advisor">{copy('Advisor', 'Mshauri')}</option>
+                                    <option value="other">{copy('Other', 'Nyingine')}</option>
                                 </select>
                             </Field>
                             <Field label="From Date">
@@ -1920,19 +1974,19 @@ export default function Bookkeeping({ merchant }) {
                                 <Input type="datetime-local" value={shareForm.expires_at} onChange={(e) => setShareForm({ ...shareForm, expires_at: e.target.value })} />
                             </Field>
                             <Field label="PIN">
-                                <Input value={shareForm.pin} onChange={(e) => setShareForm({ ...shareForm, pin: e.target.value })} placeholder="Optional 4+ digit PIN" />
+                                <Input value={shareForm.pin} onChange={(e) => setShareForm({ ...shareForm, pin: e.target.value })} placeholder={copy('Optional 4+ digit PIN', 'PIN ya hiari yenye tarakimu 4+')} />
                             </Field>
                             <label className="rounded-xl border border-slate-200 px-3 py-2 flex items-center gap-2 text-sm font-bold text-slate-700">
                                 <input type="checkbox" checked={shareForm.include_proofs} onChange={(e) => setShareForm({ ...shareForm, include_proofs: e.target.checked })} />
-                                Include proof links
+                                {copy('Include proof links', 'Jumuisha viungo vya uthibitisho')}
                             </label>
                             <label className="rounded-xl border border-slate-200 px-3 py-2 flex items-center gap-2 text-sm font-bold text-slate-700">
                                 <input type="checkbox" checked={shareForm.allow_downloads} onChange={(e) => setShareForm({ ...shareForm, allow_downloads: e.target.checked })} />
-                                Allow CSV download
+                                {copy('Allow CSV download', 'Ruhusu kupakua CSV')}
                             </label>
                         </div>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsShareOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={() => setIsShareOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingShare}>{savingShare ? 'Creating...' : 'Create Link'}</Button>
                         </DialogFooter>
                     </form>
@@ -1960,16 +2014,16 @@ export default function Bookkeeping({ merchant }) {
                                     }}
                                     className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full"
                                 >
-                                    <option value="receivable">Receivable / customer invoice</option>
-                                    <option value="payable">Payable / supplier bill</option>
+                                    <option value="receivable">{copy('Receivable / customer invoice', 'Deni la kudai / invoice ya mteja')}</option>
+                                    <option value="payable">{copy('Payable / supplier bill', 'Deni la kulipa / bili ya supplier')}</option>
                                 </select>
                             </Field>
                             <Field label="Counterparty">
-                                <Input value={accountForm.counterparty} onChange={(e) => setAccountForm({ ...accountForm, counterparty: e.target.value })} placeholder="Customer or supplier name" required />
+                                <Input value={accountForm.counterparty} onChange={(e) => setAccountForm({ ...accountForm, counterparty: e.target.value })} placeholder={copy('Customer or supplier name', 'Jina la mteja au supplier')} required />
                             </Field>
                             <Field label="Category">
                                 {accountCategoryCustom ? (
-                                    <Input value={accountForm.category} onChange={(e) => setAccountForm({ ...accountForm, category: e.target.value })} placeholder="Type custom category" autoFocus />
+                                    <Input value={accountForm.category} onChange={(e) => setAccountForm({ ...accountForm, category: e.target.value })} placeholder={copy('Type custom category', 'Andika kategoria maalum')} autoFocus />
                                 ) : (
                                     <select
                                         value={accountForm.category}
@@ -1984,7 +2038,7 @@ export default function Bookkeeping({ merchant }) {
                                         className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full"
                                     >
                                         {accountCategoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
-                                        <option value="__custom">Add custom category...</option>
+                                        <option value="__custom">{copy('Add custom category...', 'Ongeza kategoria maalum...')}</option>
                                     </select>
                                 )}
                             </Field>
@@ -1992,7 +2046,7 @@ export default function Bookkeeping({ merchant }) {
                                 <Input type="number" min="0.01" step="0.01" value={accountForm.amount} onChange={(e) => setAccountForm({ ...accountForm, amount: e.target.value })} required />
                             </Field>
                             <Field label="Invoice / Bill Number">
-                                <Input value={accountForm.invoice_number} onChange={(e) => setAccountForm({ ...accountForm, invoice_number: e.target.value })} placeholder="INV-001, supplier bill..." />
+                                <Input value={accountForm.invoice_number} onChange={(e) => setAccountForm({ ...accountForm, invoice_number: e.target.value })} placeholder={copy('INV-001, supplier bill...', 'INV-001, bili ya supplier...')} />
                             </Field>
                             <Field label="Issue Date">
                                 <Input type="date" value={accountForm.issue_date} onChange={(e) => setAccountForm({ ...accountForm, issue_date: e.target.value })} required />
@@ -2003,18 +2057,18 @@ export default function Bookkeeping({ merchant }) {
                             <Field label="Attachment">
                                 <label className="h-10 rounded-xl border border-dashed border-slate-300 px-3 flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer">
                                     <Upload className="h-4 w-4" />
-                                    {accountForm.attachment?.name || 'Upload invoice/bill'}
+                                    {accountForm.attachment?.name || copy('Upload invoice/bill', 'Pakia invoice/bili')}
                                     <input type="file" className="hidden" onChange={(e) => setAccountForm({ ...accountForm, attachment: e.target.files?.[0] || null })} />
                                 </label>
                             </Field>
                             <div className="md:col-span-2">
                                 <Field label="Description">
-                                    <Textarea value={accountForm.description} onChange={(e) => setAccountForm({ ...accountForm, description: e.target.value })} placeholder="Short note..." />
+                                    <Textarea value={accountForm.description} onChange={(e) => setAccountForm({ ...accountForm, description: e.target.value })} placeholder={copy('Short note...', 'Maelezo mafupi...')} />
                                 </Field>
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsAccountOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={() => setIsAccountOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingAccount}>
                                 {savingAccount ? 'Saving...' : 'Save'}
                             </Button>
@@ -2041,30 +2095,30 @@ export default function Bookkeeping({ merchant }) {
                             </Field>
                             <Field label="Payment Method">
                                 <select value={settlementForm.payment_method} onChange={(e) => setSettlementForm({ ...settlementForm, payment_method: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    {paymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    {paymentMethods.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Reference Type">
                                 <select value={settlementForm.reference_type} onChange={(e) => setSettlementForm({ ...settlementForm, reference_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    <option value="">None</option>
-                                    {referenceTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    <option value="">{copy('None', 'Hakuna')}</option>
+                                    {referenceTypes.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Reference Number">
-                                <Input value={settlementForm.reference_number} onChange={(e) => setSettlementForm({ ...settlementForm, reference_number: e.target.value })} placeholder="Receipt, bank, mobile money ref..." />
+                                <Input value={settlementForm.reference_number} onChange={(e) => setSettlementForm({ ...settlementForm, reference_number: e.target.value })} placeholder={copy('Receipt, bank, mobile money ref...', 'Risiti, benki, rejeo la pesa za simu...')} />
                             </Field>
                             <Field label="Reconciliation">
                                 <select value={settlementForm.reconciliation_status} onChange={(e) => setSettlementForm({ ...settlementForm, reconciliation_status: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    {reconciliationStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    {reconciliationStatuses.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Statement Reference">
-                                <Input value={settlementForm.statement_reference} onChange={(e) => setSettlementForm({ ...settlementForm, statement_reference: e.target.value })} placeholder="Bank or mobile statement ref..." />
+                                <Input value={settlementForm.statement_reference} onChange={(e) => setSettlementForm({ ...settlementForm, statement_reference: e.target.value })} placeholder={copy('Bank or mobile statement ref...', 'Rejeo la taarifa ya benki au simu...')} />
                             </Field>
                             <Field label="Proof Attachment">
                                 <label className="h-10 rounded-xl border border-dashed border-slate-300 px-3 flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer">
                                     <Upload className="h-4 w-4" />
-                                    {settlementForm.attachment?.name || 'Upload proof'}
+                                    {settlementForm.attachment?.name || copy('Upload proof', 'Pakia uthibitisho')}
                                     <input type="file" className="hidden" onChange={(e) => setSettlementForm({ ...settlementForm, attachment: e.target.files?.[0] || null })} />
                                 </label>
                             </Field>
@@ -2075,7 +2129,7 @@ export default function Bookkeeping({ merchant }) {
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setSettlingItem(null)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={() => setSettlingItem(null)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingSettlement}>
                                 {savingSettlement ? 'Saving...' : 'Record Settlement'}
                             </Button>
@@ -2088,24 +2142,24 @@ export default function Bookkeeping({ merchant }) {
                 <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
                     <form onSubmit={handleAdjustmentSubmit}>
                         <DialogHeader>
-                            <DialogTitle>Adjustment entry</DialogTitle>
+                            <DialogTitle>{copy('Adjustment entry', 'Rekodi ya marekebisho')}</DialogTitle>
                             <DialogDescription>
-                                Record accountant corrections, stock differences, write-offs, bank charges, depreciation, and opening corrections.
+                                {copy('Record accountant corrections, stock differences, write-offs, bank charges, depreciation, and opening corrections.', 'Rekodi marekebisho ya mhasibu, tofauti za stock, write-offs, gharama za benki, depreciation na marekebisho ya mwanzo.')}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5">
                             <Field label="Impact">
                                 <select value={adjustmentForm.entry_type} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, entry_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    {Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    {Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Reason">
                                 <select value={adjustmentForm.adjustment_reason} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, adjustment_reason: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    {adjustmentReasons.map((reason) => <option key={reason.value} value={reason.value}>{reason.label}</option>)}
+                                    {adjustmentReasons.map((reason) => <option key={reason.value} value={reason.value}>{bookkeepingLabel(copy, reason.label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Account">
-                                <Input value={adjustmentForm.adjustment_account} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, adjustment_account: e.target.value })} placeholder="Inventory, bank, expense, tax..." required />
+                                <Input value={adjustmentForm.adjustment_account} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, adjustment_account: e.target.value })} placeholder={copy('Inventory, bank, expense, tax...', 'Inventory, benki, matumizi, kodi...')} required />
                             </Field>
                             <Field label="Amount">
                                 <Input type="number" min="0.01" step="0.01" value={adjustmentForm.amount} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, amount: e.target.value })} required />
@@ -2114,30 +2168,30 @@ export default function Bookkeeping({ merchant }) {
                                 <Input type="date" value={adjustmentForm.transaction_date} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, transaction_date: e.target.value })} required />
                             </Field>
                             <Field label="Counterparty">
-                                <Input value={adjustmentForm.counterparty} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, counterparty: e.target.value })} placeholder="Optional vendor, customer, bank..." />
+                                <Input value={adjustmentForm.counterparty} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, counterparty: e.target.value })} placeholder={copy('Optional vendor, customer, bank...', 'Muuzaji, mteja au benki wa hiari...')} />
                             </Field>
                             <Field label="Reference Type">
                                 <select value={adjustmentForm.reference_type} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reference_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    <option value="">None</option>
-                                    {referenceTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    <option value="">{copy('None', 'Hakuna')}</option>
+                                    {referenceTypes.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Reference Number">
-                                <Input value={adjustmentForm.reference_number} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reference_number: e.target.value })} placeholder="Journal ref, invoice, statement ref..." />
+                                <Input value={adjustmentForm.reference_number} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reference_number: e.target.value })} placeholder={copy('Journal ref, invoice, statement ref...', 'Rejeo la journal, invoice, rejeo la statement...')} />
                             </Field>
                             <Field label="Proof Status">
                                 <select value={adjustmentForm.proof_status} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, proof_status: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    <option value="">Auto proof status</option>
-                                    {proofStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    <option value="">{copy('Auto proof status', 'Hali ya uthibitisho otomatiki')}</option>
+                                    {proofStatuses.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Reconciliation">
                                 <select value={adjustmentForm.reconciliation_status} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reconciliation_status: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    {reconciliationStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    {reconciliationStatuses.map(([value, label]) => <option key={value} value={value}>{bookkeepingLabel(copy, label)}</option>)}
                                 </select>
                             </Field>
                             <Field label="Statement Reference">
-                                <Input value={adjustmentForm.statement_reference} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, statement_reference: e.target.value })} placeholder="Statement line or reconciliation ref..." />
+                                <Input value={adjustmentForm.statement_reference} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, statement_reference: e.target.value })} placeholder={copy('Statement line or reconciliation ref...', 'Mstari wa statement au rejeo la reconciliation...')} />
                             </Field>
                             <Field label="Attachment">
                                 <label className="h-10 rounded-xl border border-dashed border-slate-300 px-3 flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer">
@@ -2148,12 +2202,12 @@ export default function Bookkeeping({ merchant }) {
                             </Field>
                             <div className="md:col-span-2">
                                 <Field label="Reason Note">
-                                    <Textarea value={adjustmentForm.description} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, description: e.target.value })} placeholder="Explain why this correction is needed..." required />
+                                    <Textarea value={adjustmentForm.description} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, description: e.target.value })} placeholder={copy('Explain why this correction is needed...', 'Eleza kwa nini marekebisho haya yanahitajika...')} required />
                                 </Field>
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsAdjustmentOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={() => setIsAdjustmentOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingAdjustment}>
                                 {savingAdjustment ? 'Saving...' : 'Save Adjustment'}
                             </Button>
@@ -2165,7 +2219,7 @@ export default function Bookkeeping({ merchant }) {
             <Dialog open={isStatementOpen} onOpenChange={setIsStatementOpen}>
                 <DialogContent className="sm:max-w-2xl">
                     <DialogHeader>
-                        <DialogTitle>Add statement lines</DialogTitle>
+                        <DialogTitle>{copy('Add statement lines', 'Ongeza mistari ya statement')}</DialogTitle>
                         <DialogDescription>
                             Upload a bank/card statement file, or add a mobile-money line from SMS/app history with proof.
                         </DialogDescription>
@@ -2184,10 +2238,10 @@ export default function Bookkeeping({ merchant }) {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5">
                                 <Field label="Source Type">
                                     <select value={statementLineForm.source_type} onChange={(e) => setStatementLineForm({ ...statementLineForm, source_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                        <option value="mobile_money">Mobile Money</option>
-                                        <option value="bank">Bank</option>
-                                        <option value="card">Card</option>
-                                        <option value="other">Other</option>
+                                        <option value="mobile_money">{copy('Mobile Money', 'Pesa za simu')}</option>
+                                        <option value="bank">{copy('Bank', 'Benki')}</option>
+                                        <option value="card">{copy('Card', 'Kadi')}</option>
+                                        <option value="other">{copy('Other', 'Nyingine')}</option>
                                     </select>
                                 </Field>
                                 <Field label="Source Name">
@@ -2198,22 +2252,22 @@ export default function Bookkeeping({ merchant }) {
                                 </Field>
                                 <Field label="Money Movement">
                                     <select value={statementLineForm.line_type} onChange={(e) => setStatementLineForm({ ...statementLineForm, line_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                        <option value="credit">Money In</option>
-                                        <option value="debit">Money Out</option>
+                                        <option value="credit">{copy('Money In', 'Pesa inayoingia')}</option>
+                                        <option value="debit">{copy('Money Out', 'Pesa inayotoka')}</option>
                                     </select>
                                 </Field>
                                 <Field label="Amount">
                                     <Input type="number" min="0" step="0.01" value={statementLineForm.amount} onChange={(e) => setStatementLineForm({ ...statementLineForm, amount: e.target.value })} required />
                                 </Field>
                                 <Field label="Reference">
-                                    <Input value={statementLineForm.reference_number} onChange={(e) => setStatementLineForm({ ...statementLineForm, reference_number: e.target.value })} placeholder="Transaction ID or SMS ref..." />
+                                    <Input value={statementLineForm.reference_number} onChange={(e) => setStatementLineForm({ ...statementLineForm, reference_number: e.target.value })} placeholder={copy('Transaction ID or SMS ref...', 'ID ya muamala au rejeo la SMS...')} />
                                 </Field>
                                 <Field label="Counterparty">
-                                    <Input value={statementLineForm.counterparty} onChange={(e) => setStatementLineForm({ ...statementLineForm, counterparty: e.target.value })} placeholder="Customer, supplier, agent..." />
+                                    <Input value={statementLineForm.counterparty} onChange={(e) => setStatementLineForm({ ...statementLineForm, counterparty: e.target.value })} placeholder={copy('Customer, supplier, agent...', 'Mteja, supplier, agent...')} />
                                 </Field>
                                 <div className="md:col-span-2">
                                     <Field label="Note">
-                                        <Textarea value={statementLineForm.description} onChange={(e) => setStatementLineForm({ ...statementLineForm, description: e.target.value })} placeholder="Paste a short narration from the SMS or app history..." />
+                                        <Textarea value={statementLineForm.description} onChange={(e) => setStatementLineForm({ ...statementLineForm, description: e.target.value })} placeholder={copy('Paste a short narration from the SMS or app history...', 'Bandika maelezo mafupi kutoka SMS au historia ya programu...')} />
                                     </Field>
                                 </div>
                                 <div className="md:col-span-2">
@@ -2227,7 +2281,7 @@ export default function Bookkeeping({ merchant }) {
                                 </div>
                             </div>
                             <DialogFooter>
-                                <Button type="button" variant="outline" onClick={() => setIsStatementOpen(false)}>Cancel</Button>
+                                <Button type="button" variant="outline" onClick={() => setIsStatementOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                                 <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingStatement}>
                                     {savingStatement ? 'Saving...' : 'Add Statement Line'}
                                 </Button>
@@ -2238,10 +2292,10 @@ export default function Bookkeeping({ merchant }) {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5">
                                 <Field label="Source Type">
                                     <select value={statementForm.source_type} onChange={(e) => setStatementForm({ ...statementForm, source_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                        <option value="bank">Bank</option>
-                                        <option value="mobile_money">Mobile Money</option>
-                                        <option value="card">Card</option>
-                                        <option value="other">Other</option>
+                                        <option value="bank">{copy('Bank', 'Benki')}</option>
+                                        <option value="mobile_money">{copy('Mobile Money', 'Pesa za simu')}</option>
+                                        <option value="card">{copy('Card', 'Kadi')}</option>
+                                        <option value="other">{copy('Other', 'Nyingine')}</option>
                                     </select>
                                 </Field>
                                 <Field label="Source Name">
@@ -2261,7 +2315,7 @@ export default function Bookkeeping({ merchant }) {
                                 </div>
                             </div>
                             <DialogFooter>
-                                <Button type="button" variant="outline" onClick={() => setIsStatementOpen(false)}>Cancel</Button>
+                                <Button type="button" variant="outline" onClick={() => setIsStatementOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                                 <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingStatement || !statementForm.statement}>
                                     {savingStatement ? 'Importing...' : 'Import Statement File'}
                                 </Button>
@@ -2274,16 +2328,16 @@ export default function Bookkeeping({ merchant }) {
             <Dialog open={Boolean(voidingEntry)} onOpenChange={(open) => !open && setVoidingEntry(null)}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Void record</DialogTitle>
+                        <DialogTitle>{copy('Void record', 'Batisha rekodi')}</DialogTitle>
                         <DialogDescription>
-                            Voided records stay visible in exports and audit history. Add the reason for traceability.
+                            {copy('Voided records stay visible in exports and audit history. Add the reason for traceability.', 'Rekodi zilizobatilishwa zitaendelea kuonekana kwenye exports na historia ya ukaguzi. Ongeza sababu kwa ufuatiliaji.')}
                         </DialogDescription>
                     </DialogHeader>
-                    <Textarea value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="Reason for voiding this record..." />
+                    <Textarea value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder={copy('Reason for voiding this record...', 'Sababu ya kubatilisha rekodi hii...')} />
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setVoidingEntry(null)}>Cancel</Button>
+                        <Button variant="outline" onClick={() => setVoidingEntry(null)}>{copy('Cancel', 'Ghairi')}</Button>
                         <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleVoid} disabled={!voidReason.trim()}>
-                            Void Record
+                            {copy('Void record', 'Batisha rekodi')}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -2293,20 +2347,22 @@ export default function Bookkeeping({ merchant }) {
 }
 
 function ReportLink({ onDownload, label, compact = false }) {
+    const { copy } = useLocale();
     return (
         <button type="button" onClick={onDownload} className={`${compact ? 'h-8' : 'h-10'} rounded-xl border border-slate-200 px-3 flex items-center justify-between gap-2 text-xs font-black text-slate-700 hover:bg-slate-50 w-full`}>
-            <span className="truncate">{label}</span>
+            <span className="truncate">{bookkeepingLabel(copy, label)}</span>
             <Download className="h-4 w-4 shrink-0 text-slate-400" />
         </button>
     );
 }
 
 function SummaryTile({ icon: Icon, label, value, color }) {
+    const { copy } = useLocale();
     return (
         <Card className="shadow-sm">
             <CardContent className="p-4">
                 <Icon className={`h-5 w-5 ${color}`} />
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-3">{label}</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-3">{bookkeepingLabel(copy, label)}</p>
                 <p className={`text-lg font-black mt-1 ${color}`}>{value}</p>
             </CardContent>
         </Card>
@@ -2314,38 +2370,41 @@ function SummaryTile({ icon: Icon, label, value, color }) {
 }
 
 function QuickAction({ onClick, icon: Icon, label }) {
+    const { copy } = useLocale();
     return (
         <button type="button" onClick={onClick} className="h-20 rounded-xl border border-slate-200 bg-slate-50 px-3 flex flex-col items-center justify-center gap-2 text-xs font-black text-slate-700 hover:bg-white hover:border-brand-200">
             <Icon className="h-5 w-5 text-brand-600" />
-            <span>{label}</span>
+            <span>{bookkeepingLabel(copy, label)}</span>
         </button>
     );
 }
 
 function ReadinessStat({ label, value }) {
+    const { copy } = useLocale();
     return (
         <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
             <p className="text-lg font-black text-slate-950">{value}</p>
-            <p className="text-[10px] font-bold text-slate-500 mt-1">{label}</p>
+            <p className="text-[10px] font-bold text-slate-500 mt-1">{bookkeepingLabel(copy, label)}</p>
         </div>
     );
 }
 
 function BusinessList({ title, empty, items, render, actionLabel = null, onAction = null }) {
+    const { copy } = useLocale();
     return (
         <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
             <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{title}</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{bookkeepingLabel(copy, title)}</p>
                 {actionLabel && (
                     <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl px-2 text-[10px]" onClick={onAction}>
                         <Plus className="mr-1 h-3 w-3" />
-                        {actionLabel}
+                        {bookkeepingLabel(copy, actionLabel)}
                     </Button>
                 )}
             </div>
             <div className="divide-y divide-slate-200/70 mt-2">
                 {items.length === 0 ? (
-                    <p className="py-5 text-center text-xs font-semibold text-slate-500">{empty}</p>
+                    <p className="py-5 text-center text-xs font-semibold text-slate-500">{bookkeepingLabel(copy, empty)}</p>
                 ) : items.map(render)}
             </div>
         </div>
@@ -2353,6 +2412,7 @@ function BusinessList({ title, empty, items, render, actionLabel = null, onActio
 }
 
 function BusinessRow({ title, meta, actionLabel, onAction, disabled = false, secondaryLabel = null, onSecondary = null }) {
+    const { copy } = useLocale();
     return (
         <div className="py-2 flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -2362,11 +2422,11 @@ function BusinessRow({ title, meta, actionLabel, onAction, disabled = false, sec
             <div className="flex gap-1 shrink-0">
                 {secondaryLabel && (
                     <Button type="button" variant="outline" size="sm" className="rounded-xl text-red-600" onClick={onSecondary}>
-                        {secondaryLabel}
+                        {bookkeepingLabel(copy, secondaryLabel)}
                     </Button>
                 )}
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={onAction} disabled={disabled}>
-                    {actionLabel}
+                    {bookkeepingLabel(copy, actionLabel)}
                 </Button>
             </div>
         </div>
@@ -2374,6 +2434,7 @@ function BusinessRow({ title, meta, actionLabel, onAction, disabled = false, sec
 }
 
 function StatusPill({ status, labels, tone }) {
+    const { copy } = useLocale();
     if (!status) return null;
 
     const tones = {
@@ -2384,15 +2445,16 @@ function StatusPill({ status, labels, tone }) {
 
     return (
         <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${tones[tone] || 'bg-slate-100 text-slate-600'}`}>
-            {labels[status] || status}
+            {bookkeepingLabel(copy, labels[status] || status)}
         </span>
     );
 }
 
 function Field({ label, children }) {
+    const { copy } = useLocale();
     return (
         <label className="space-y-1.5 block">
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{bookkeepingLabel(copy, label)}</span>
             {children}
         </label>
     );

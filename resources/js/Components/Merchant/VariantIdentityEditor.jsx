@@ -1,5 +1,6 @@
 import React from 'react';
 import { Input } from '@/Components/ui/Input';
+import { useLocale } from '@/lib/i18n';
 
 export default function VariantIdentityEditor({
     variant,
@@ -9,6 +10,7 @@ export default function VariantIdentityEditor({
     generatedName,
     suggestions,
 }) {
+    const { copy } = useLocale();
     const updateName = (name) => {
         setVariants((prev) => prev.map((row, idx) => idx === index ? { ...row, name } : row));
     };
@@ -20,7 +22,7 @@ export default function VariantIdentityEditor({
                     <p className="font-semibold text-slate-900">{variant.name || generatedName || `Variant ${index + 1}`}</p>
                     {generatedName && (
                         <p className="text-[11px] font-medium text-slate-500">
-                            Generated: {generatedName}
+                            {copy('Generated:', 'Imetengenezwa:')} {generatedName}
                         </p>
                     )}
                 </div>
@@ -44,16 +46,16 @@ export default function VariantIdentityEditor({
             <div className="space-y-2 rounded-xl border border-brand-100 bg-brand-50/40 p-3">
                 <div className="grid gap-2 sm:grid-cols-[1.4fr_0.8fr]">
                     <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-slate-700">Jina la kuuza kwa mteja</label>
+                        <label className="text-[11px] font-semibold text-slate-700">{copy('Buyer-facing name', 'Jina la kuuza kwa mteja')}</label>
                         <Input
                             className="h-10 bg-white"
-                            placeholder={generatedName || 'Mfano: Family pack, Robo kilo, Carton ya 12'}
+                            placeholder={generatedName || copy('Example: Family pack, quarter kilo, carton of 12', 'Mfano: Family pack, Robo kilo, Carton ya 12')}
                             value={variant.name || ''}
                             onChange={(e) => updateName(e.target.value)}
                         />
                     </div>
                     <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-slate-700">Mifano ya haraka</label>
+                        <label className="text-[11px] font-semibold text-slate-700">{copy('Quick examples', 'Mifano ya haraka')}</label>
                         <div className="flex flex-wrap gap-1.5">
                             {suggestions.map((suggestion) => (
                                 <button

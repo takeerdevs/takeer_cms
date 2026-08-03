@@ -21,7 +21,7 @@ class SendPickupDeadlineReminders extends Command
             ->with(['buyer:id,phone_number', 'merchant.country', 'merchant.user:id,phone_number', 'delivery:id,order_id,delivery_type'])
             ->whereNotNull('pickup_deadline_at')
             ->where('pickup_deadline_at', '>', now())
-            ->whereIn('payment_status', ['awaiting_merchant_confirmation', 'escrow_locked'])
+            ->whereIn('payment_status', ['pending_fulfillment', 'payment_confirmed'])
             ->whereIn('pickup_status', ['ready_for_pickup', 'extension_requested'])
             ->whereHas('delivery', fn ($query) => $query->where('delivery_type', 'self_pickup'))
             ->orderBy('pickup_deadline_at')

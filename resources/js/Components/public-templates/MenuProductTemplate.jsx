@@ -20,8 +20,10 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Button } from '@/Components/ui/Button';
 import { cn } from '@/lib/utils';
 import { productCardPriceLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 export default function MenuProductTemplate({ product }) {
+    const { t, copy } = useLocale();
     const [quantity, setQuantity] = useState(1);
     const [selectedVariantId, setSelectedVariantId] = useState('');
     const details = product?.module_details || {};
@@ -76,7 +78,7 @@ export default function MenuProductTemplate({ product }) {
                             type="button"
                             onClick={() => window.history.back()}
                             className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 backdrop-blur transition hover:bg-black/50"
-                            aria-label="Go back"
+                            aria-label={t('template.goBack')}
                         >
                             <ArrowLeft className="h-5 w-5" />
                         </button>
@@ -85,7 +87,7 @@ export default function MenuProductTemplate({ product }) {
                             <div className="mb-3 flex flex-wrap items-center gap-2">
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-black uppercase tracking-wide backdrop-blur">
                                     <Utensils className="h-3.5 w-3.5" />
-                                    Menu item
+                                    {t('template.menuItemDetails')}
                                 </span>
                                 {details?.section && (
                                     <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black uppercase tracking-wide backdrop-blur">
@@ -121,7 +123,7 @@ export default function MenuProductTemplate({ product }) {
                 <main className="mx-auto grid max-w-5xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_360px] md:p-8">
                     <div className="space-y-5">
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                            <p className="text-sm leading-7 text-slate-700">{product.description || product.attributes?.suggested_description || 'Freshly prepared menu item.'}</p>
+                            <p className="text-sm leading-7 text-slate-700">{product.description || product.attributes?.suggested_description || t('publicCommerce.material')}</p>
                             {tags.length > 0 && (
                                 <div className="mt-4 flex flex-wrap gap-2">
                                     {tags.map((tag) => (
@@ -136,7 +138,7 @@ export default function MenuProductTemplate({ product }) {
 
                         {optionGroups.length > 0 && (
                             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                                <h2 className="text-sm font-black uppercase tracking-wide text-slate-500">Item details</h2>
+                                <h2 className="text-sm font-black uppercase tracking-wide text-slate-500">{t('template.menuItemDetails')}</h2>
                                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                     {optionGroups.map(([label, value]) => (
                                         <div key={label} className="rounded-xl bg-slate-50 p-3">
@@ -150,7 +152,7 @@ export default function MenuProductTemplate({ product }) {
 
                         {addOns.length > 0 && (
                             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                                <h2 className="text-sm font-black uppercase tracking-wide text-slate-500">Available add-ons</h2>
+                                <h2 className="text-sm font-black uppercase tracking-wide text-slate-500">{t('template.availableAddOns')}</h2>
                                 <div className="mt-4 divide-y divide-slate-100">
                                     {addOns.map((item, index) => (
                                         <div key={`${item.name}-${index}`} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
@@ -172,8 +174,8 @@ export default function MenuProductTemplate({ product }) {
                                         <Store className="h-5 w-5 text-slate-600" />
                                     </div>
                                     <div>
-                                        <p className="font-black">{merchant?.display_name || 'View restaurant'}</p>
-                                        <p className="text-sm text-slate-500">See more menu items from this business</p>
+                                        <p className="font-black">{merchant?.display_name || copy('View restaurant', 'Tazama mgahawa')}</p>
+                                        <p className="text-sm text-slate-500">{t('template.seeMoreMenu')}</p>
                                     </div>
                                 </div>
                                 <ChevronRight className="h-5 w-5 text-slate-400" />
@@ -185,7 +187,7 @@ export default function MenuProductTemplate({ product }) {
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
                             <div className="flex items-start justify-between gap-3">
                                 <div>
-                                    <p className="text-xs font-black uppercase tracking-wide text-slate-500">Price</p>
+                                    <p className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.price')}</p>
                                     <p className="mt-1 text-3xl font-black text-brand-700">
                                         {hasVariants && selectedVariant ? `TZS ${Number(selectedVariant.price || 0).toLocaleString()}` : productCardPriceLabel(product, price)}
                                     </p>
@@ -193,16 +195,16 @@ export default function MenuProductTemplate({ product }) {
                                 {inStock ? (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-800">
                                         <BadgeCheck className="h-3.5 w-3.5" />
-                                        Available
+                                        {t('template.available')}
                                     </span>
                                 ) : (
-                                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-500">Sold out</span>
+                                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-500">{t('template.soldOut')}</span>
                                 )}
                             </div>
 
                             {hasVariants && (
                                 <div className="mt-5 space-y-2">
-                                    <p className="text-xs font-black uppercase tracking-wide text-slate-500">Choose option</p>
+                                    <p className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.chooseOption')}</p>
                                     {variants.map((variant) => {
                                         const selected = String(selectedVariant?.id || '') === String(variant.id);
                                         const label = Object.values(variant.attributes || {}).filter(Boolean).join(' / ') || variant.sku || 'Option';
@@ -236,14 +238,14 @@ export default function MenuProductTemplate({ product }) {
 
                             <div className="mt-4 rounded-xl bg-slate-950 p-4 text-white">
                                 <div className="flex items-center justify-between text-sm">
-                                    <span className="font-bold text-white/70">Total</span>
+                                    <span className="font-bold text-white/70">{t('template.total')}</span>
                                     <span className="text-xl font-black">TZS {Number(total || 0).toLocaleString()}</span>
                                 </div>
                             </div>
 
                             <Button className="mt-4 h-12 w-full rounded-xl text-base font-black" disabled={!inStock} onClick={openCheckout}>
                                 <Zap className="mr-2 h-5 w-5" />
-                                {inStock ? 'Add to order' : 'Unavailable'}
+                                {inStock ? t('template.addToOrder') : t('template.notAvailable')}
                             </Button>
                         </section>
 
@@ -251,8 +253,8 @@ export default function MenuProductTemplate({ product }) {
                             <div className="flex gap-3">
                                 <ChefHat className="mt-0.5 h-5 w-5 shrink-0" />
                                 <div>
-                                    <p className="font-black">Prepared by the merchant</p>
-                                    <p className="mt-1 text-sm text-orange-900/75">Confirm delivery, pickup, or table service details during checkout or directly with the business.</p>
+                                    <p className="font-black">{t('template.preparedByMerchant')}</p>
+                                    <p className="mt-1 text-sm text-orange-900/75">{t('template.confirmMenu')}</p>
                                 </div>
                             </div>
                         </section>
@@ -262,12 +264,12 @@ export default function MenuProductTemplate({ product }) {
                 <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:hidden">
                     <div className="mx-auto flex max-w-5xl items-center gap-3">
                         <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold uppercase text-slate-500">Total</p>
+                            <p className="text-xs font-bold uppercase text-slate-500">{t('template.total')}</p>
                             <p className="truncate text-lg font-black text-brand-700">TZS {Number(total || 0).toLocaleString()}</p>
                         </div>
                         <Button className="h-12 rounded-xl font-black" disabled={!inStock} onClick={openCheckout}>
                             <ShoppingBag className="mr-2 h-4 w-4" />
-                            Order
+                            {t('template.addToOrder')}
                         </Button>
                     </div>
                 </div>

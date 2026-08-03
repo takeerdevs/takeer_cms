@@ -48,14 +48,14 @@ class RetailDashboardController extends Controller
         }
         
         // 1. Ledger Metrics
-        $takeerBalance = Order::where('merchant_id', $merchant->id)
-            ->where('payment_mode', 'online_escrow')
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+        $onlineSalesTotal = Order::where('merchant_id', $merchant->id)
+            ->where('payment_mode', 'online_psp')
+            ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'])
             ->sum('total_paid');
 
         $inHandRevenue = Order::where('merchant_id', $merchant->id)
             ->whereIn('payment_mode', ['cash', 'merchant_mm'])
-            ->where('payment_status', 'resolved_merchant_paid')
+            ->where('payment_status', 'payment_confirmed')
             ->whereDate('created_at', now()->today())
             ->sum('total_paid');
 
@@ -65,7 +65,7 @@ class RetailDashboardController extends Controller
                 $q->whereNull('approval_status')
                     ->orWhere('approval_status', 'approved');
             })
-            ->whereNotIn('payment_status', ['failed', 'resolved_buyer_refunded'])
+            ->whereNotIn('payment_status', ['failed', 'refunded'])
             ->get(['counter_total', 'grand_total', 'total_paid'])
             ->sum(fn(Order $order) => $this->outstandingBalance($order));
 
@@ -115,7 +115,7 @@ class RetailDashboardController extends Controller
         // 3. Location Breakdown
         $locationRevenue = Order::where('merchant_id', $merchant->id)
             ->where('source', 'pos')
-            ->where('payment_status', 'resolved_merchant_paid')
+            ->where('payment_status', 'payment_confirmed')
             ->join('pos_sale_items', 'orders.id', '=', 'pos_sale_items.order_id')
             ->selectRaw('location_id, sum(price_at_sale) as total')
             ->groupBy('location_id')
@@ -176,7 +176,7 @@ class RetailDashboardController extends Controller
 
         return response()->json([
             'metrics' => [
-                'takeer_balance' => (float) $takeerBalance,
+                'online_sales_total' => (float) $onlineSalesTotal,
                 'today_in_hand' => (float) $inHandRevenue,
                 'outstanding_credit' => (float) $outstandingCredit,
             ],
@@ -330,7 +330,7 @@ class RetailDashboardController extends Controller
                 $q->whereNull('approval_status')
                     ->orWhere('approval_status', 'approved');
             })
-            ->whereNotIn('payment_status', ['failed', 'resolved_buyer_refunded'])
+            ->whereNotIn('payment_status', ['failed', 'refunded'])
             ->with(['posStaff.user', 'posItems.product', 'posItems.variant'])
             ->latest();
 
@@ -446,7 +446,7 @@ class RetailDashboardController extends Controller
 
             $order->update([
                 'total_paid' => $newPaid,
-                'payment_status' => $isSettled ? 'resolved_merchant_paid' : 'pending',
+                'payment_status' => $isSettled ? 'payment_confirmed' : 'pending',
             ]);
 
             RetailAuditLog::create([

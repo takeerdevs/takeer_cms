@@ -2,11 +2,11 @@
 
 namespace App\Services;
 
-use App\Models\MerchantPayoutCredential;
+use App\Models\MarketplaceSellerPaymentProfile;
+use App\Models\Merchant;
 use App\Models\PaymentChannelIncident;
 use App\Models\PaymentProviderChannel;
 use App\Models\PulseNotification;
-use App\Models\WithdrawalRequest;
 
 class PaymentChannelIncidentService
 {
@@ -34,15 +34,13 @@ class PaymentChannelIncidentService
         $incident->loadMissing('channel.provider');
         $channel = $incident->channel;
 
-        $merchantIds = collect()
-            ->merge(MerchantPayoutCredential::query()
-                ->where('payment_provider_channel_id', $channel->id)
-                ->where('status', 'active')
-                ->pluck('merchant_id'))
-            ->merge(WithdrawalRequest::query()
-                ->where('payment_provider_channel_id', $channel->id)
-                ->whereIn('status', ['pending', 'approved'])
-                ->pluck('merchant_id'))
+        $merchantIds = MarketplaceSellerPaymentProfile::query()
+            ->where('payment_provider_id', $channel->payment_provider_id)
+            ->whereIn('status', ['active', 'pending_verification'])
+            ->pluck('merchant_id')
+            ->merge(Merchant::query()
+                ->whereHas('orders.settlement', fn ($query) => $query->where('payment_provider_id', $channel->payment_provider_id))
+                ->pluck('id'))
             ->filter()
             ->unique()
             ->values();
@@ -50,14 +48,7 @@ class PaymentChannelIncidentService
         $notified = [];
 
         foreach ($merchantIds as $merchantId) {
-            $credential = MerchantPayoutCredential::query()
-                ->with('merchant.user')
-                ->where('merchant_id', $merchantId)
-                ->where('payment_provider_channel_id', $channel->id)
-                ->where('status', 'active')
-                ->first();
-
-            $merchant = $credential?->merchant ?: \App\Models\Merchant::query()->with('user')->find($merchantId);
+            $merchant = Merchant::query()->with('user')->find($merchantId);
             if (! $merchant?->user_id) {
                 continue;
             }
@@ -70,18 +61,17 @@ class PaymentChannelIncidentService
                     'subject_type' => PaymentChannelIncident::class,
                     'subject_id' => $incident->id,
                     'event_type' => 'payment_channel_incident',
-                    'icon' => 'wallet',
+                    'icon' => 'credit-card',
                     'tone' => $incident->severity === 'major' ? 'red' : 'amber',
-                    'eyebrow' => 'Payout issue',
+                    'eyebrow' => 'Provider issue',
                     'title' => $incident->title,
                     'body' => $incident->message ?: "We are currently experiencing issues with {$channel->name}.",
                     'meta' => trim(($channel->provider?->name ?: 'Provider') . ' · ' . $channel->country_code . ' · ' . strtoupper($channel->method)),
-                    'href' => "/merchant/{$merchant->username}/wallet",
+                    'href' => "/merchant/{$merchant->username}/overview",
                     'status' => $incident->status,
                     'payload' => [
                         'payment_provider_channel_id' => $channel->id,
                         'payment_provider_channel_key' => $channel->key,
-                        'merchant_payout_credential_id' => $credential?->id,
                     ],
                     'occurred_at' => now(),
                 ]

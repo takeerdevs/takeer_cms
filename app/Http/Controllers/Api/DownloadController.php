@@ -744,7 +744,7 @@ class DownloadController extends Controller
             return response()->json(['message' => 'Hii si bidhaa ya kimtandao.'], 400);
         }
 
-        if (!in_array($order->payment_status, ['escrow_locked', 'resolved_merchant_paid'])) {
+        if (!in_array($order->payment_status, ['payment_confirmed', 'release_eligible', 'paid_out'])) {
             return response()->json(['message' => 'Tafadhali kamilisha malipo kwanza.'], 402);
         }
 

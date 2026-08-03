@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocale } from '@/lib/i18n';
 import { ExternalLink, FileVideo, Info, Loader2, Play, ShoppingBag, Volume2, VolumeX } from 'lucide-react';
 
 const VIDEO_EXTENSION_RE = /\.(mp4|m4v|mov|webm|ogg)(\?|#|$)/i;
@@ -24,6 +25,7 @@ const mediaKind = (item) => {
 };
 
 function AutoplayVideoThumb({ src, poster, className, onAspect, onReady, autoPlay = true }) {
+    const { copy } = useLocale();
     const videoRef = React.useRef(null);
     const mutedRef = React.useRef(true);
     const [muted, setMuted] = React.useState(true);
@@ -113,7 +115,7 @@ function AutoplayVideoThumb({ src, poster, className, onAspect, onReady, autoPla
             {autoPlay ? (
                 <button
                     type="button"
-                    aria-label={muted ? 'Unmute video' : 'Mute video'}
+                    aria-label={muted ? copy('Unmute video', 'Washa sauti ya video') : copy('Mute video', 'Nyamazisha video')}
                     onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -174,6 +176,7 @@ function HotspotPreviewOverlay({ hotspots = [] }) {
 }
 
 function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspect = null, fit = 'cover', autoPlayVideo = true, hotspots = [] }) {
+    const { copy } = useLocale();
     if (!item) return null;
     const video = mediaKind(item) === 'video';
     const src = typeof item === 'string' ? item : item?.processed_url ?? item?.url ?? item?.preview;
@@ -195,8 +198,8 @@ function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspe
                     {processing ? (
                         <div className="w-full h-full bg-zinc-950 flex flex-col items-center justify-center gap-2 px-4 text-center">
                             <Loader2 className="h-7 w-7 text-white/70 animate-spin" />
-                            <span className="text-sm font-semibold text-white">Processing video...</span>
-                            <span className="text-[11px] text-white/55">Playback will be ready shortly.</span>
+                            <span className="text-sm font-semibold text-white">{copy('Processing video...', 'Video inachakatwa...')}</span>
+                            <span className="text-[11px] text-white/55">{copy('Playback will be ready shortly.', 'Itakuwa tayari kuchezwa muda mfupi.')}</span>
                         </div>
                     ) : (
                         <>
@@ -221,7 +224,7 @@ function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspe
                             )}
                             {!src && (
                                 <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-white/90">
-                                    Video
+                                    {copy('Video', 'Video')}
                                 </span>
                             )}
                         </>

@@ -8,6 +8,7 @@ import axios from 'axios';
 import AddressPickerModal from './AddressPickerModal';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter } from '@/Components/ui/Drawer';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { useLocale } from '@/lib/i18n';
 
 const MAP_CONTAINER_STYLE = {
     width: '100%',
@@ -190,6 +191,7 @@ export default function UserAddressManager({
     productOriginCountryIds = [],
     destinationCountryId = null,
 }) {
+    const { t, copy } = useLocale();
     const [addresses, setAddresses] = useState([]);
     const [loading, setLoading] = useState(!isGuest);
     const [isMapOpen, setIsMapOpen] = useState(false);
@@ -221,7 +223,7 @@ export default function UserAddressManager({
             const res = await axios.get('/api/me/addresses');
             setAddresses(res.data.addresses);
         } catch (e) {
-            toast.error('Imeshindwa kupata anuani zako.');
+            toast.error(t('addressUi.loadFailed'));
         } finally {
             setLoading(false);
         }
@@ -292,7 +294,7 @@ export default function UserAddressManager({
             });
             setForwarders(flattened);
         } catch (e) {
-            toast.error('Imeshindwa kupata orodha ya mawakala.');
+            toast.error(t('addressUi.forwardersLoadFailed'));
         }
     };
 
@@ -341,34 +343,34 @@ export default function UserAddressManager({
     const handleSetDefault = async (id) => {
         try {
             await axios.post(`/api/me/addresses/${id}/set-default`);
-            toast.success('Anuani imewekwa kama chaguo msingi!');
+            toast.success(t('addressUi.defaultSet'));
             fetchAddresses();
         } catch (e) {
-            toast.error('Imeshindwa kubadili chaguo msingi.');
+            toast.error(t('addressUi.defaultFailed'));
         }
     };
 
     const handleDelete = async (address) => {
-        if (!window.confirm('Una uhakika unataka kufuta anuani hii?')) return;
+        if (!window.confirm(copy('Are you sure you want to delete this address?', 'Una uhakika unataka kufuta anuani hii?'))) return;
 
         if (isGuest || String(address.id || '').startsWith('guest-')) {
             setAddresses((current) => current.filter((item) => item.id !== address.id));
             if (selectedId === address.id) {
                 onSelect?.(null);
             }
-            toast.success('Anuani imefutwa!');
+            toast.success(t('addressUi.deleted'));
             return;
         }
 
         try {
             await axios.delete(`/api/me/addresses/${address.id}`);
-            toast.success('Anuani imefutwa!');
+            toast.success(t('addressUi.deleted'));
             if (selectedId === address.id) {
                 onSelect?.(null);
             }
             fetchAddresses();
         } catch (e) {
-            toast.error('Imeshindwa kufuta anuani.');
+            toast.error(t('addressUi.deleteFailed'));
         }
     };
 
@@ -399,13 +401,13 @@ export default function UserAddressManager({
                 name: data.address.split(',')[0],
                 is_default: addresses.length === 0,
             });
-            toast.success('Anuani mpya imeongezwa!');
+            toast.success(t('addressUi.saved'));
             fetchAddresses();
             if (mode === 'select') {
                 onSelect?.(res.data.address);
             }
         } catch (e) {
-            toast.error('Imeshindwa kuhifadhi anuani.');
+            toast.error(t('addressUi.saveFailed'));
         }
     };
 
@@ -442,7 +444,7 @@ export default function UserAddressManager({
                 city_id: selectedForwarder.city_id || selectedForwarder.city_record?.id || undefined,
                 is_default: addresses.length === 0,
             });
-            toast.success(`Anuani ya ${selectedForwarder.name} imeongezwa!`);
+            toast.success(t('addressUi.forwarderSaved'));
             setIsForwarderPickerOpen(false);
             setSelectedForwarder(null);
             setSelectedTransportMode('');
@@ -452,7 +454,7 @@ export default function UserAddressManager({
                 onSelect?.(res.data.address);
             }
         } catch (e) {
-            toast.error('Imeshindwa kuhifadhi wakala.');
+            toast.error(t('addressUi.saveFailed'));
         }
     };
 
@@ -467,7 +469,7 @@ export default function UserAddressManager({
     const handleCreateShipment = async () => {
         if (!shipmentAddress) return;
         if (!shipmentForm.package_description.trim() && !shipmentForm.external_order_ref.trim() && !shipmentForm.tracking_number.trim()) {
-            toast.error('Add package description, seller order number, or tracking number.');
+            toast.error(t('addressUi.shipmentFieldsRequired'));
             return;
         }
 
@@ -496,11 +498,11 @@ export default function UserAddressManager({
                     customer_notes: shipmentForm.notes || null,
                 },
             });
-            toast.success('Shipment request created. The forwarder can now see it as incoming.');
+            toast.success(t('addressUi.shipmentCreated'));
             setShipmentAddress(null);
             setShipmentForm(blankShipmentForm);
         } catch (e) {
-            toast.error(e.response?.data?.message || 'Imeshindwa kutengeneza shipment.');
+            toast.error(e.response?.data?.message || t('addressUi.saveFailed'));
         } finally {
             setShipmentSubmitting(false);
         }
@@ -510,7 +512,7 @@ export default function UserAddressManager({
         return (
             <div className="flex flex-col items-center py-10 text-muted-foreground">
                 <Loader2 className="h-8 w-8 animate-spin mb-2" />
-                <p className="text-sm">Inapakia anuani...</p>
+                <p className="text-sm">{t('addressUi.loading')}</p>
             </div>
         );
     }
@@ -531,11 +533,11 @@ export default function UserAddressManager({
                         onClick={() => {
                             if (mode !== 'select') return;
                             if (isInactiveForwarderRoute) {
-                                toast.error('Route hii ya freight haipo active kwa oda mpya.');
+                                toast.error(copy('This freight route is not active for new orders.', 'Route hii ya freight haipo active kwa oda mpya.'));
                                 return;
                             }
                             if (!eligibility.allowed) {
-                                toast.error(eligibility.reason || 'Forwarder route hii haitumiki kwa bidhaa hii.');
+                                toast.error(eligibility.reason || copy('This forwarder route is not available for this product.', 'Forwarder route hii haitumiki kwa bidhaa hii.'));
                                 return;
                             }
                             onSelect?.(addr);
@@ -553,7 +555,7 @@ export default function UserAddressManager({
                                 <div className="flex items-center gap-2">
                                     <h3 className="font-bold text-foreground truncate">{addr.name || 'Anuani'}</h3>
                                     {addr.is_default && (
-                                        <span className="text-[10px] font-black uppercase tracking-widest bg-brand-600 text-white px-1.5 py-0.5 rounded">Chaguo Msingi</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest bg-brand-600 text-white px-1.5 py-0.5 rounded">{t('addressUi.default')}</span>
                                     )}
                                 </div>
                                 <p className="text-sm text-muted-foreground line-clamp-1">{addr.address_line}</p>
@@ -564,10 +566,10 @@ export default function UserAddressManager({
                                     <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-indigo-600">{transportModeLabel(addr.forwarder_transport_mode)}</p>
                                 )}
                                 {isInactiveForwarderRoute && (
-                                    <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-700">Route inactive</p>
+                                    <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-700">{t('addressUi.inactiveRoute')}</p>
                                 )}
                                 {!isInactiveForwarderRoute && !eligibility.allowed && (
-                                    <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-700">Not for this product route</p>
+                                    <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-700">{t('addressUi.notProductRoute')}</p>
                                 )}
                             </div>
 
@@ -581,7 +583,7 @@ export default function UserAddressManager({
                                             variant="ghost"
                                             className="h-8 w-8 text-muted-foreground hover:text-brand-600"
                                             onClick={(e) => { e.stopPropagation(); handleSetDefault(addr.id); }}
-                                            aria-label="Weka kama chaguo msingi"
+                                            aria-label={copy('Set as default', 'Weka kama chaguo msingi')}
                                         >
                                             <CheckCircle2 className="h-4 w-4" />
                                         </Button>
@@ -605,7 +607,7 @@ export default function UserAddressManager({
                                     variant="ghost"
                                     className={`${mode === 'select' ? 'h-9 w-9 rounded-xl bg-red-50 text-red-600 hover:bg-red-100' : 'h-8 w-8 text-muted-foreground hover:text-red-600'}`}
                                     onClick={(e) => { e.stopPropagation(); handleDelete(addr); }}
-                                    aria-label="Futa anuani"
+                                    aria-label={copy('Delete address', 'Futa anuani')}
                                 >
                                     <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -618,7 +620,7 @@ export default function UserAddressManager({
                 {addresses.length === 0 && (
                     <div className="p-8 border-2 border-dashed border-border rounded-2xl text-center text-muted-foreground">
                         <MapPin className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                        <p className="text-sm font-medium">Hujapata kuhifadhi anuani yoyote.</p>
+                        <p className="text-sm font-medium">{t('addressUi.empty')}</p>
                     </div>
                 )}
             </div>
@@ -631,7 +633,7 @@ export default function UserAddressManager({
                     className="h-12 rounded-xl gap-2 font-bold text-xs uppercase tracking-widest"
                     onClick={() => setIsMapOpen(true)}
                 >
-                    <Plus className="h-4 w-4" /> Ongeza Mahali
+                    <Plus className="h-4 w-4" /> {copy('Add address', 'Ongeza mahali')}
                 </Button>
                 {!isGuest && (
                     <Button
@@ -662,7 +664,7 @@ export default function UserAddressManager({
                             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200" />
                             <div className="flex items-start justify-between gap-4">
                                 <div className="min-w-0">
-                                    <DrawerTitle className="text-2xl font-black tracking-tight text-slate-950">Mawakala wa Kusafirisha</DrawerTitle>
+                                    <DrawerTitle className="text-2xl font-black tracking-tight text-slate-950">{t('addressUi.forwarders')}</DrawerTitle>
                                     <DrawerDescription className="mt-1 text-sm font-semibold leading-6 text-slate-500">
                                         Pata anuani ya wakala wako wa kusafirisha mizigo toka nje.
                                     </DrawerDescription>
@@ -671,7 +673,7 @@ export default function UserAddressManager({
                                     type="button"
                                     onClick={() => setIsForwarderPickerOpen(false)}
                                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
-                                    aria-label="Funga"
+                                    aria-label={copy('Close', 'Funga')}
                                 >
                                     <X className="h-4 w-4" />
                                 </button>
@@ -681,7 +683,7 @@ export default function UserAddressManager({
                                 <div className="mt-4 relative">
                                     <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                                     <Input
-                                        placeholder="Tafuta wakala au nchi..."
+                                            placeholder={t('addressUi.searchForwarders')}
                                         value={forwarderSearchQuery}
                                         onChange={(e) => setForwarderSearchQuery(e.target.value)}
                                         className="h-14 rounded-2xl border-slate-200 bg-slate-50 pl-12 text-base font-bold text-slate-900 shadow-inner shadow-slate-200/40 placeholder:text-slate-400 focus:bg-white"
@@ -727,7 +729,7 @@ export default function UserAddressManager({
                                             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
                                                 <Search className="h-8 w-8" />
                                             </div>
-                                            <p className="text-base font-black text-slate-800">Hakuna wakala aliyepatikana</p>
+                                                <p className="text-base font-black text-slate-800">{t('addressUi.noForwarders')}</p>
                                             <p className="mt-2 max-w-xs text-sm font-semibold leading-6 text-slate-500">
                                                 Jaribu kutafuta kwa jina la wakala au nchi nyingine.
                                             </p>
@@ -741,7 +743,7 @@ export default function UserAddressManager({
                                         onClick={() => { setSelectedForwarder(null); setSelectedTransportMode(''); }}
                                         className="flex items-center gap-2 text-xs font-bold text-brand-600 uppercase tracking-widest hover:translate-x-[-4px] transition-transform"
                                     >
-                                        <ArrowLeft className="h-3 w-3" /> Rudi kwenye orodha
+                                        <ArrowLeft className="h-3 w-3" /> {copy('Back to list', 'Rudi kwenye orodha')}
                                     </button>
 
                                     <div className="p-6 rounded-3xl bg-indigo-600 text-white shadow-xl shadow-indigo-200">
@@ -765,7 +767,7 @@ export default function UserAddressManager({
                                     <div className="grid gap-4">
                                         {(selectedForwarder.transport_modes || []).length > 1 && (
                                             <div className="rounded-3xl border border-slate-200 bg-white p-4">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Chagua njia ya kusafirisha</p>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('addressUi.chooseTransport')}</p>
                                                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                                                     {(selectedForwarder.transport_modes || []).map((mode) => {
                                                         const modeKey = mode.mode || mode;
@@ -805,7 +807,7 @@ export default function UserAddressManager({
 
                                         {(selectedForwarder.transport_modes || []).length === 1 && (
                                             <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">Njia ya kusafirisha</p>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">{copy('Transport method', 'Njia ya kusafirisha')}</p>
                                                 <p className="mt-1 text-sm font-black text-indigo-950">{transportModeSummary(selectedForwarder.transport_modes[0])}</p>
                                                 {paymentTermSummary(selectedForwarder.transport_modes[0]) && (
                                                     <p className="mt-1 text-xs font-bold text-indigo-800">{paymentTermSummary(selectedForwarder.transport_modes[0])}</p>
@@ -833,7 +835,7 @@ export default function UserAddressManager({
                                                     >
                                                         <Marker position={{ lat: parseFloat(selectedForwarder.latitude), lng: parseFloat(selectedForwarder.longitude) }} />
                                                     </GoogleMap>
-                                                ) : <div className="flex h-[180px] items-center justify-center bg-slate-100 text-xs font-bold text-slate-400">Map point not available</div>}
+                                                ) : <div className="flex h-[180px] items-center justify-center bg-slate-100 text-xs font-bold text-slate-400">{t('addressUi.mapUnavailable')}</div>}
                                                 <div className="p-3 bg-muted/20 border-t border-border">
                                                     <p className="whitespace-pre-line text-xs font-bold text-foreground">{selectedForwarder.address_line}</p>
                                                     {selectedForwarder.place_label && (
@@ -847,24 +849,24 @@ export default function UserAddressManager({
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="p-4 rounded-2xl border border-indigo-100 bg-indigo-50/30 space-y-2">
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 flex items-center gap-1.5">
-                                                    <Info className="h-3 w-3" /> Gharama (Rates)
+                                                    <Info className="h-3 w-3" /> {copy('Cost (rates)', 'Gharama (rates)')}
                                                 </p>
                                                 <p className="text-xs font-bold text-indigo-950 leading-relaxed">
-                                                    {selectedForwarder.rates_info || 'Wasiliana na wakala kujua gharama.'}
+                                                    {selectedForwarder.rates_info || copy('Contact the forwarder for rates.', 'Wasiliana na wakala kujua gharama.')}
                                                 </p>
                                             </div>
                                             <div className="p-4 rounded-2xl border border-emerald-100 bg-emerald-50/30 space-y-2">
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 flex items-center gap-1.5">
-                                                    <Phone className="h-3 w-3" /> Mawasiliano
+                                                    <Phone className="h-3 w-3" /> {copy('Contact', 'Mawasiliano')}
                                                 </p>
                                                 <p className="text-xs font-bold text-emerald-950">
-                                                    {selectedForwarder.contact_phone || 'Namba haijawekwa.'}
+                                                    {selectedForwarder.contact_phone || copy('No phone provided.', 'Namba haijawekwa.')}
                                                 </p>
                                             </div>
                                         </div>
 
                                         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Anuani utakayo import</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('addressUi.importAddress')}</p>
                                             <p className="mt-2 whitespace-pre-line text-sm font-black leading-6 text-slate-950">
                                                 {fillAddressTemplate(selectedForwarder.address_template || selectedForwarder.address_line, forwarderInputs) || selectedForwarder.address_preview || selectedForwarder.address_line}
                                             </p>
@@ -874,18 +876,18 @@ export default function UserAddressManager({
                                         {(selectedForwarder.required_fields || []).length > 0 && (
                                         <div className="p-6 rounded-3xl border-2 border-brand-100 bg-brand-50/10 space-y-4">
                                             <div className="space-y-1">
-                                                <h4 className="font-black text-brand-900">Mahitaji ya Wakala</h4>
-                                                <p className="text-xs text-muted-foreground font-medium">Jaza taarifa hizi ili anuani yako iwe kamili na wakala akutambue.</p>
+                                        <h4 className="font-black text-brand-900">{t('addressUi.requirements')}</h4>
+                                        <p className="text-xs text-muted-foreground font-medium">{t('addressUi.requirementsDescription')}</p>
                                             </div>
 
                                             <div className="space-y-4">
                                                 {(selectedForwarder.required_fields || []).map(field => (
                                                     <div key={field} className="space-y-1.5">
                                                         <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">
-                                                            {selectedForwarder.required_field_labels?.[field] || (field === 'customer_id' ? 'ID Yako ya Mteja (Customer ID)' : field.replace(/_/g, ' '))}
+                                                            {selectedForwarder.required_field_labels?.[field] || (field === 'customer_id' ? copy('Your Customer ID', 'ID Yako ya Mteja') : field.replace(/_/g, ' '))}
                                                         </label>
                                                         <Input
-                                                            placeholder={`Ingiza ${selectedForwarder.required_field_labels?.[field] || field.replace(/_/g, ' ')}...`}
+                                                            placeholder={`${copy('Enter', 'Ingiza')} ${selectedForwarder.required_field_labels?.[field] || (field === 'customer_id' ? copy('your Customer ID', 'ID Yako ya Mteja') : field.replace(/_/g, ' '))}...`}
                                                             value={forwarderInputs[field] || ''}
                                                             onChange={(e) => setForwarderInputs(prev => ({ ...prev, [field]: e.target.value }))}
                                                             className="h-12 rounded-xl font-bold border-brand-100 focus:border-brand-500 shadow-sm"
@@ -911,7 +913,7 @@ export default function UserAddressManager({
                                         else setIsForwarderPickerOpen(false);
                                     }}
                                 >
-                                    {selectedForwarder ? 'Rudi' : 'Funga'}
+                                    {selectedForwarder ? copy('Back', 'Rudi') : copy('Close', 'Funga')}
                                 </Button>
                                 <Button
                                     type="button"
@@ -919,7 +921,7 @@ export default function UserAddressManager({
                                     disabled={!selectedForwarder || ((selectedForwarder.transport_modes || []).length > 0 && !selectedTransportMode) || (selectedForwarder.required_fields || []).some(f => !forwarderInputs[f])}
                                     onClick={handleImportForwarder}
                                 >
-                                    {selectedForwarder ? 'Import Anuani Hii' : 'Chagua Wakala'}
+                                    {selectedForwarder ? copy('Import this address', 'Import Anuani Hii') : copy('Choose forwarder', 'Chagua Wakala')}
                                 </Button>
                             </div>
                         </DrawerFooter>
@@ -933,16 +935,16 @@ export default function UserAddressManager({
                 >
                     <div className="flex max-h-[92vh] flex-col bg-white">
                         <DrawerHeader className="shrink-0 border-b border-slate-100 px-5 pb-4 pt-5 text-left">
-                            <DrawerTitle className="text-2xl font-black tracking-tight text-slate-950">Create cargo request</DrawerTitle>
+                            <DrawerTitle className="text-2xl font-black tracking-tight text-slate-950">{t('addressUi.cargoRequest')}</DrawerTitle>
                             <DrawerDescription className="mt-1 text-sm font-semibold text-slate-500">
-                                Add external purchase details so the forwarder can identify what is incoming.
+                                {copy('Add external purchase details so the forwarder can identify what is incoming.', 'Ongeza maelezo ya ununuzi wa nje ili forwarder ajue kinachokuja.')}
                             </DrawerDescription>
                         </DrawerHeader>
                         <div className="flex-1 overflow-y-auto px-5 py-5">
                             {shipmentAddress && (
                                 <div className="space-y-4">
                                     <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">Forwarder address</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">{t('addressUi.forwarderAddress')}</p>
                                         <h3 className="mt-1 text-lg font-black text-slate-950">{shipmentAddress.name || 'Imported forwarder address'}</h3>
                                         <p className="mt-1 line-clamp-2 text-sm font-semibold text-slate-600">{shipmentAddress.address_line}</p>
                                         {shipmentAddress.forwarder_transport_mode && (
@@ -951,71 +953,71 @@ export default function UserAddressManager({
                                     </div>
 
                                     <div className="grid gap-3 sm:grid-cols-2">
-                                        <ShipmentField label="Seller platform">
+                                        <ShipmentField label={copy('Seller platform', 'Platform ya muuzaji')}>
                                             <Input className="h-12 rounded-xl font-bold" value={shipmentForm.seller_platform} onChange={(event) => setShipmentForm((prev) => ({ ...prev, seller_platform: event.target.value }))} placeholder="Alibaba, Taobao, 1688..." />
                                         </ShipmentField>
-                                        <ShipmentField label="Seller name">
-                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.seller_name} onChange={(event) => setShipmentForm((prev) => ({ ...prev, seller_name: event.target.value }))} placeholder="Supplier/store name" />
+                                        <ShipmentField label={copy('Seller name', 'Jina la muuzaji')}>
+                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.seller_name} onChange={(event) => setShipmentForm((prev) => ({ ...prev, seller_name: event.target.value }))} placeholder={copy('Supplier/store name', 'Jina la supplier/duka')} />
                                         </ShipmentField>
-                                        <ShipmentField label="Order number">
-                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.external_order_ref} onChange={(event) => setShipmentForm((prev) => ({ ...prev, external_order_ref: event.target.value }))} placeholder="Seller order/reference number" />
+                                        <ShipmentField label={copy('Order number', 'Namba ya oda')}>
+                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.external_order_ref} onChange={(event) => setShipmentForm((prev) => ({ ...prev, external_order_ref: event.target.value }))} placeholder={copy('Seller order/reference number', 'Namba ya oda/rejeo la muuzaji')} />
                                         </ShipmentField>
-                                        <ShipmentField label="Tracking number">
-                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.tracking_number} onChange={(event) => setShipmentForm((prev) => ({ ...prev, tracking_number: event.target.value }))} placeholder="Courier/tracking code if available" />
+                                        <ShipmentField label={copy('Tracking number', 'Namba ya ufuatiliaji')}>
+                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.tracking_number} onChange={(event) => setShipmentForm((prev) => ({ ...prev, tracking_number: event.target.value }))} placeholder={copy('Courier/tracking code if available', 'Msimbo wa courier/ufuatiliaji kama upo')} />
                                         </ShipmentField>
                                     </div>
 
-                                    <ShipmentField label="Package description" hint="Describe what the forwarder should expect.">
+                                    <ShipmentField label={copy('Package description', 'Maelezo ya package')} hint={copy('Describe what the forwarder should expect.', 'Eleza kile forwarder anachopaswa kutarajia.')}>
                                         <textarea
                                             className="min-h-28 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-950 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                                             value={shipmentForm.package_description}
                                             onChange={(event) => setShipmentForm((prev) => ({ ...prev, package_description: event.target.value }))}
-                                            placeholder="E.g. 2 cartons of shoes, electronics accessories, spare parts..."
+                                            placeholder={copy('E.g. 2 cartons of shoes, electronics accessories, spare parts...', 'Mf. cartons 2 za viatu, vifaa vya electronics, spare parts...')}
                                         />
                                     </ShipmentField>
 
                                     <div className="grid gap-3 sm:grid-cols-3">
-                                        <ShipmentField label="Packages">
+                                        <ShipmentField label={copy('Packages', 'Packages')}>
                                             <Input type="number" min="1" className="h-12 rounded-xl font-bold" value={shipmentForm.package_count} onChange={(event) => setShipmentForm((prev) => ({ ...prev, package_count: event.target.value }))} />
                                         </ShipmentField>
-                                        <ShipmentField label="Weight estimate">
-                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.weight_estimate} onChange={(event) => setShipmentForm((prev) => ({ ...prev, weight_estimate: event.target.value }))} placeholder="E.g. 12kg" />
+                                        <ShipmentField label={copy('Weight estimate', 'Makadirio ya uzito')}>
+                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.weight_estimate} onChange={(event) => setShipmentForm((prev) => ({ ...prev, weight_estimate: event.target.value }))} placeholder={copy('E.g. 12kg', 'Mf. 12kg')} />
                                         </ShipmentField>
-                                        <ShipmentField label="Declared value">
-                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.declared_value} onChange={(event) => setShipmentForm((prev) => ({ ...prev, declared_value: event.target.value }))} placeholder="E.g. 120" />
+                                        <ShipmentField label={copy('Declared value', 'Thamani iliyotangazwa')}>
+                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.declared_value} onChange={(event) => setShipmentForm((prev) => ({ ...prev, declared_value: event.target.value }))} placeholder={copy('E.g. 120', 'Mf. 120')} />
                                         </ShipmentField>
                                     </div>
 
                                     <div className="grid gap-3 sm:grid-cols-2">
-                                        <ShipmentField label="Receipt link">
-                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.receipt_url} onChange={(event) => setShipmentForm((prev) => ({ ...prev, receipt_url: event.target.value }))} placeholder="Paste receipt URL if available" />
+                                        <ShipmentField label={copy('Receipt link', 'Link ya risiti')}>
+                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.receipt_url} onChange={(event) => setShipmentForm((prev) => ({ ...prev, receipt_url: event.target.value }))} placeholder={copy('Paste receipt URL if available', 'Bandika URL ya risiti kama ipo')} />
                                         </ShipmentField>
-                                        <ShipmentField label="Invoice link">
-                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.invoice_url} onChange={(event) => setShipmentForm((prev) => ({ ...prev, invoice_url: event.target.value }))} placeholder="Paste invoice/packing list URL" />
+                                        <ShipmentField label={copy('Invoice link', 'Link ya invoice')}>
+                                            <Input className="h-12 rounded-xl font-bold" value={shipmentForm.invoice_url} onChange={(event) => setShipmentForm((prev) => ({ ...prev, invoice_url: event.target.value }))} placeholder={copy('Paste invoice/packing list URL', 'Bandika URL ya invoice/packing list')} />
                                         </ShipmentField>
                                     </div>
 
-                                    <ShipmentField label="Notes for forwarder">
+                                    <ShipmentField label={copy('Notes for forwarder', 'Maelezo kwa forwarder')}>
                                         <textarea
                                             className="min-h-24 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-950 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                                             value={shipmentForm.notes}
                                             onChange={(event) => setShipmentForm((prev) => ({ ...prev, notes: event.target.value }))}
-                                            placeholder="Any special instruction, supplier contact, or package identification note."
+                                            placeholder={copy('Any special instruction, supplier contact, or package identification note.', 'Maelekezo maalum, mawasiliano ya supplier, au utambulisho wa package.')}
                                         />
                                     </ShipmentField>
 
                                     <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-900">
-                                        External purchases are tracking-only on Takeer. Refunds or seller disputes stay with the platform where payment happened.
+                                    {copy('External purchases are tracking-only on Takeer. Refunds or seller disputes stay with the platform where payment happened.', 'Ununuzi wa nje unafuatiliwa tu na Takeer. Refunds au dispute za muuzaji zibaki kwenye platform ambayo malipo yalifanyika.')}
                                     </div>
                                 </div>
                             )}
                         </div>
                         <DrawerFooter className="shrink-0 border-t border-slate-100 bg-white p-4">
                             <div className="flex gap-3">
-                                <Button type="button" variant="outline" className="h-12 flex-1 rounded-2xl font-black" onClick={() => setShipmentAddress(null)}>Cancel</Button>
+                                <Button type="button" variant="outline" className="h-12 flex-1 rounded-2xl font-black" onClick={() => setShipmentAddress(null)}>{t('addressUi.cancel')}</Button>
                                 <Button type="button" className="h-12 flex-1 rounded-2xl font-black" disabled={shipmentSubmitting} onClick={handleCreateShipment}>
                                     {shipmentSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                    Create shipment
+                                    {copy('Create shipment', 'Tengeneza shipment')}
                                 </Button>
                             </div>
                         </DrawerFooter>

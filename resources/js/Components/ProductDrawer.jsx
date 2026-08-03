@@ -9,8 +9,10 @@ import {
 } from '@/Components/ui/Drawer';
 import { Button } from '@/Components/ui/Button';
 import { ShieldCheck, Truck, ArrowRight, Zap, DownloadCloud, CalendarClock, Link as LinkIcon } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 export default function ProductDrawer({ product, isOpen, onOpenChange, onCheckout }) {
+    const { copy } = useLocale();
     if (!product) return null;
 
     const isDigital = product.type === 'digital';
@@ -28,12 +30,12 @@ export default function ProductDrawer({ product, isOpen, onOpenChange, onCheckou
                                 <div className="flex items-center gap-2 mb-1.5">
                                     {isDigital && (
                                         <span className="bg-brand-100 text-brand-700 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 w-max uppercase tracking-widest">
-                                            <DownloadCloud className="h-3 w-3" /> Mtandaoni
+                                            <DownloadCloud className="h-3 w-3" /> {copy('Digital', 'Mtandaoni')}
                                         </span>
                                     )}
                                     {isService && (
                                         <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 w-max uppercase tracking-widest">
-                                            <CalendarClock className="h-3 w-3" /> Huduma/Booking
+                                            <CalendarClock className="h-3 w-3" /> {copy('Service / booking', 'Huduma / booking')}
                                         </span>
                                     )}
                                 </div>
@@ -42,7 +44,7 @@ export default function ProductDrawer({ product, isOpen, onOpenChange, onCheckou
                                 </DrawerTitle>
                                 <DrawerDescription className="mt-1 flex items-center gap-1.5 text-brand-600 font-medium">
                                     <ShieldCheck className="h-4 w-4" />
-                                    Muuzaji: {product.merchant?.name || 'Takeer Verified'}
+                                    {copy('Seller', 'Muuzaji')}: {product.merchant?.name || copy('Takeer Verified', 'Takeer amethibitishwa')}
                                 </DrawerDescription>
                             </div>
                             <div className="text-right shrink-0">
@@ -57,11 +59,11 @@ export default function ProductDrawer({ product, isOpen, onOpenChange, onCheckou
                                 )}
                                 {product.in_stock ? (
                                     <span className="inline-flex items-center rounded-sm bg-green-100 px-2 py-0.5 mt-1 text-xs font-medium text-green-800">
-                                        Ipo Stoo
+                                        {copy('In stock', 'Ipo stoo')}
                                     </span>
                                 ) : (
                                     <span className="inline-flex items-center rounded-sm bg-red-100 px-2 py-0.5 mt-1 text-xs font-medium text-red-800">
-                                        Imeisha
+                                        {copy('Sold out', 'Imeisha')}
                                     </span>
                                 )}
                             </div>
@@ -75,11 +77,11 @@ export default function ProductDrawer({ product, isOpen, onOpenChange, onCheckou
                         {product.attributes && (
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Kategori</p>
+                                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">{copy('Category', 'Kategoria')}</p>
                                     <p className="font-medium">{product.attributes.category} • {product.attributes.sub_category}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Rangi</p>
+                                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">{copy('Color', 'Rangi')}</p>
                                     <div className="flex gap-1.5 flex-wrap">
                                         {product.attributes.colors?.map(c => (
                                             <span key={c} className="inline-block px-2 py-1 bg-accent rounded-md text-xs">{c}</span>
@@ -91,9 +93,9 @@ export default function ProductDrawer({ product, isOpen, onOpenChange, onCheckou
 
                         {/* Description */}
                         <div className="space-y-2">
-                            <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Maelezo</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">{copy('Description', 'Maelezo')}</p>
                             <p className="text-sm leading-relaxed text-foreground/90">
-                                {product.attributes?.suggested_description || 'Bidhaa bora kwa bei nafuu. Lipia sasa kupitia M-Pesa kwa usalama wa uhakika.'}
+                                {product.attributes?.suggested_description || copy('Quality product at a fair price. Pay securely through the available PSP method.', 'Bidhaa bora kwa bei nafuu. Lipia sasa kupitia njia salama ya PSP.')}
                             </p>
                         </div>
 
@@ -104,11 +106,11 @@ export default function ProductDrawer({ product, isOpen, onOpenChange, onCheckou
                                     <ShieldCheck className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-bold text-brand-900">Uhakika wa Pesa (Escrow)</p>
+                                    <p className="text-sm font-bold text-brand-900">{copy('Order protection (PSP)', 'Uhakika wa order (PSP)')}</p>
                                     <p className="text-xs text-brand-700/80 mt-0.5 leading-snug">
                                         {isPhysical ? 
-                                            'Pesa yako inahifadhiwa Takeer. Muuzaji hapokei pesa mpaka uthibitishe kupokea mzigo.' :
-                                            `Utapewa link ya ${isDigital ? 'kupakua' : 'kufanya booking'} mara tu baada ya malipo kukamilika.`
+                                            copy('Takeer holds your payment. The seller is not paid until delivery is confirmed.', 'Pesa yako inahifadhiwa Takeer. Muuzaji hapokei pesa mpaka uthibitishe kupokea mzigo.') :
+                                            copy(`You will receive a ${isDigital ? 'download' : 'booking'} link as soon as payment is complete.`, `Utapewa link ya ${isDigital ? 'kupakua' : 'kufanya booking'} mara tu baada ya malipo kukamilika.`)
                                         }
                                     </p>
                                 </div>
@@ -120,9 +122,9 @@ export default function ProductDrawer({ product, isOpen, onOpenChange, onCheckou
                                         <Truck className="h-5 w-5" />
                                     </div>
                                     <div>
-                                        <p className="text-sm font-bold text-amber-900">Usafirishaji Ndani ya Masaa 24</p>
+                                        <p className="text-sm font-bold text-amber-900">{copy('Dispatch within 24 hours', 'Usafirishaji ndani ya masaa 24')}</p>
                                         <p className="text-xs text-amber-700/80 mt-0.5 leading-snug">
-                                            Mzigo utatumwa kupitia Boda Boda (ndani ya mkoa) au Basi (mikoani).
+                                            {copy('Your order will be sent by local rider or inter-city bus where applicable.', 'Mzigo utatumwa kupitia Boda Boda (ndani ya mkoa) au Basi (mikoani).')}
                                         </p>
                                     </div>
                                 </div>
@@ -132,9 +134,9 @@ export default function ProductDrawer({ product, isOpen, onOpenChange, onCheckou
                                         <LinkIcon className="h-5 w-5" />
                                     </div>
                                     <div>
-                                        <p className="text-sm font-bold text-blue-900">Upatikanaji wa Haraka</p>
+                                        <p className="text-sm font-bold text-blue-900">{copy('Fast access', 'Upatikanaji wa haraka')}</p>
                                         <p className="text-xs text-blue-700/80 mt-0.5 leading-snug">
-                                            Huna haja ya kusubiri. Pata huduma yako mara moja kidijitali.
+                                            {copy('No waiting required. Access your digital product or service after payment.', 'Huna haja ya kusubiri. Pata huduma yako mara moja kidijitali.')}
                                         </p>
                                     </div>
                                 </div>
@@ -157,11 +159,11 @@ export default function ProductDrawer({ product, isOpen, onOpenChange, onCheckou
                         {product.in_stock ? (
                             <span className="flex items-center gap-2">
                                 <Zap className="h-5 w-5" />
-                                Nunua na 1-Tap (Escrow)
+                                {copy('Buy with 1-Tap through PSP', 'Nunua na 1-Tap kupitia PSP')}
                                 <ArrowRight className="h-5 w-5 ml-1" />
                             </span>
                         ) : (
-                            "Sold Out"
+                            copy('Sold out', 'Imeisha')
                         )}
                     </Button>
                 </DrawerFooter>

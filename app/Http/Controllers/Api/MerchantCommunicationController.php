@@ -171,7 +171,7 @@ class MerchantCommunicationController extends Controller
                     'activity_at' => $order->created_at,
                     'label' => $order->product?->title ?: 'Order',
                     'status' => $order->payment_status,
-                    'followup' => in_array($order->payment_status, ['awaiting_payment', 'awaiting_merchant_confirmation', 'pending'], true)
+                    'followup' => in_array($order->payment_status, ['awaiting_payment', 'pending_fulfillment', 'payment_confirmed', 'pending'], true)
                         ? $this->followup('order_'.$order->id, 'Order follow-up', 'Check payment, confirmation, or fulfilment status.', 'high', 'order', $order->id)
                         : null,
                 ]);

@@ -56,7 +56,7 @@ class MerchantMarketingController extends Controller
             : (float) Order::query()
                 ->where('merchant_id', $merchant->id)
                 ->whereIn('merchant_coupon_id', $couponIds)
-                ->whereIn('payment_status', ['resolved_merchant_paid', 'escrow_locked'])
+                ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'])
                 ->sum('total_paid');
 
         $referralLinks = MerchantReferralLink::query()
@@ -1368,7 +1368,7 @@ class MerchantMarketingController extends Controller
 
     private function marketingAnalytics(Merchant $merchant): array
     {
-        $paidStatuses = ['resolved_merchant_paid', 'escrow_locked'];
+        $paidStatuses = ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'];
         $paidOrders = fn () => Order::query()
             ->where('merchant_id', $merchant->id)
             ->whereIn('payment_status', $paidStatuses);
@@ -1876,7 +1876,7 @@ class MerchantMarketingController extends Controller
                 ->where('merchant_id', $merchant->id)
                 ->where('purchasable_type', 'product')
                 ->when($audienceRefId, fn ($query) => $query->where('purchasable_id', $audienceRefId))
-                ->whereIn('payment_status', ['resolved_merchant_paid', 'escrow_locked'])
+                ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'])
                 ->with('buyer:id,name,phone_number')
                 ->get()
                 ->map(fn ($order) => [

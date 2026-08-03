@@ -15,8 +15,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 export default function Customers({ merchant }) {
+    const { copy } = useLocale();
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -36,7 +38,7 @@ export default function Customers({ merchant }) {
             });
         } catch (err) {
             console.error('Failed to load customers', err);
-            toast.error('Imeshindwa kupakia orodha ya wateja.');
+            toast.error(copy('Failed to load customer list.', 'Imeshindikana kupakia orodha ya wateja.'));
         } finally {
             setLoading(false);
         }
@@ -59,16 +61,16 @@ export default function Customers({ merchant }) {
 
     return (
         <AppLayout>
-            <Head title={`Customers | ${merchant.display_name}`} />
+            <Head title={`${copy('Customers', 'Wateja')} | ${merchant.display_name}`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-8 pb-24">
                 
                 {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
-                            Customer Base <Users className="h-8 w-8 text-brand-600" />
+                            {copy('Customer base', 'Msingi wa wateja')} <Users className="h-8 w-8 text-brand-600" />
                         </h1>
-                        <p className="text-muted-foreground">Analyze and manage your store's customer database.</p>
+                        <p className="text-muted-foreground">{copy("Analyze and manage your store's customer database.", 'Changanua na simamia hifadhidata ya wateja wa duka lako.')}</p>
                     </div>
                 </div>
 
@@ -80,7 +82,7 @@ export default function Customers({ merchant }) {
                                 <Users className="h-6 w-6 text-brand-600" />
                             </div>
                             <div>
-                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Customers</p>
+                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{copy('Total customers', 'Jumla ya wateja')}</p>
                                 <h3 className="text-2xl font-black text-gray-900">{stats.total_customers}</h3>
                             </div>
                         </CardContent>
@@ -91,7 +93,7 @@ export default function Customers({ merchant }) {
                                 <TrendingUp className="h-6 w-6 text-green-600" />
                             </div>
                             <div>
-                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Repeat Buyers</p>
+                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{copy('Repeat buyers', 'Wanunuzi wanaorudia')}</p>
                                 <h3 className="text-2xl font-black text-gray-900">{stats.repeat_customers}</h3>
                             </div>
                         </CardContent>
@@ -102,7 +104,7 @@ export default function Customers({ merchant }) {
                                 <ShoppingBag className="h-6 w-6 text-amber-600" />
                             </div>
                             <div>
-                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Customer Retention</p>
+                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{copy('Customer retention', 'Uhifadhi wa wateja')}</p>
                                 <h3 className="text-2xl font-black text-gray-900">
                                     {stats.total_customers > 0 ? Math.round((stats.repeat_customers / stats.total_customers) * 100) : 0}%
                                 </h3>
@@ -116,7 +118,7 @@ export default function Customers({ merchant }) {
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                         <Input 
-                            placeholder="Search by name or phone number..."
+                            placeholder={copy('Search by name or phone number...', 'Tafuta kwa jina au namba ya simu...')}
                             className="pl-10 h-12 rounded-2xl border-brand-100 shadow-sm focus:ring-brand-500"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -129,7 +131,7 @@ export default function Customers({ merchant }) {
                     {loading ? (
                         <div className="py-20 text-center flex flex-col items-center">
                             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-600 mb-4"></div>
-                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Pakia Wateja...</p>
+                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{copy('Loading customers...', 'Inapakia wateja...')}</p>
                         </div>
                     ) : customers.length > 0 ? (
                         <div className="grid grid-cols-1 gap-4">
@@ -146,7 +148,7 @@ export default function Customers({ merchant }) {
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <h3 className="font-black text-lg text-gray-900 flex items-center gap-2">
-                                                    {c.name || 'Anonymous Guest'}
+                                                    {c.name || copy('Anonymous guest', 'Mgeni asiyejulikana')}
                                                     {c.order_count > 3 && <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">VIP</span>}
                                                 </h3>
                                                 <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
@@ -154,7 +156,7 @@ export default function Customers({ merchant }) {
                                                         <Smartphone className="h-3 w-3" /> {c.phone}
                                                     </p>
                                                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                                        <Calendar className="h-3 w-3" /> Last order: {c.last_purchase_at ? new Date(c.last_purchase_at).toLocaleDateString() : 'N/A'}
+                                                        <Calendar className="h-3 w-3" /> {copy('Last order', 'Oda ya mwisho')}: {c.last_purchase_at ? new Date(c.last_purchase_at).toLocaleDateString() : copy('N/A', 'Haipo')}
                                                     </p>
                                                 </div>
                                             </div>
@@ -162,9 +164,9 @@ export default function Customers({ merchant }) {
 
                                         <div className="text-right flex items-center gap-8">
                                             <div className="hidden md:block">
-                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Spent</p>
+                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{copy('Total spent', 'Jumla iliyotumika')}</p>
                                                 <p className="text-xl font-black text-brand-600">{formatCurrency(c.total_spent)}</p>
-                                                <p className="text-[10px] text-muted-foreground uppercase mt-1">{c.order_count} Orders</p>
+                                                <p className="text-[10px] text-muted-foreground uppercase mt-1">{c.order_count} {copy('orders', 'oda')}</p>
                                             </div>
                                             <ChevronRight className="h-5 w-5 text-brand-300 group-hover:text-brand-600 transition-colors" />
                                         </div>
@@ -175,8 +177,8 @@ export default function Customers({ merchant }) {
                     ) : (
                         <div className="py-20 text-center flex flex-col items-center opacity-40">
                             <Users className="h-20 w-20 mb-4" />
-                            <h3 className="text-xl font-black">No Customers Found</h3>
-                            <p className="text-sm">Start making sales to build your customer database.</p>
+                            <h3 className="text-xl font-black">{copy('No customers found', 'Hakuna wateja waliopatikana')}</h3>
+                            <p className="text-sm">{copy('Start making sales to build your customer database.', 'Anza kuuza ili kujenga hifadhidata ya wateja wako.')}</p>
                         </div>
                     )}
                 </div>

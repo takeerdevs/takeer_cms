@@ -20,8 +20,10 @@ import {
 import AppLayout from '@/Layouts/AppLayout';
 import { Button } from '@/Components/ui/Button';
 import ServiceRequestModal from './ServiceRequestModal';
+import { useLocale } from '@/lib/i18n';
 
 export default function WorkshopProductTemplate({ product }) {
+    const { t } = useLocale();
     const [seats, setSeats] = useState(1);
     const [requestOpen, setRequestOpen] = useState(false);
     const details = product?.module_details || product?.service_details || {};
@@ -60,7 +62,7 @@ export default function WorkshopProductTemplate({ product }) {
                             type="button"
                             onClick={() => window.history.back()}
                             className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 backdrop-blur transition hover:bg-black/50"
-                            aria-label="Go back"
+                            aria-label={t('template.goBack')}
                         >
                             <ArrowLeft className="h-5 w-5" />
                         </button>
@@ -69,7 +71,7 @@ export default function WorkshopProductTemplate({ product }) {
                             <div className="mb-3 flex flex-wrap gap-2">
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-black uppercase tracking-wide backdrop-blur">
                                     <Presentation className="h-3.5 w-3.5" />
-                                    Workshop
+                                    {t('template.workshop')}
                                 </span>
                                 <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black uppercase tracking-wide backdrop-blur">{formatLabel}</span>
                             </div>
@@ -87,28 +89,28 @@ export default function WorkshopProductTemplate({ product }) {
                 <main className="mx-auto grid max-w-5xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_380px] md:p-8">
                     <div className="space-y-5">
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                            <h2 className="text-lg font-black">About this workshop</h2>
-                            <p className="mt-3 text-sm leading-7 text-slate-700">{product.description || product.attributes?.suggested_description || 'A practical training session managed by the merchant.'}</p>
+                            <h2 className="text-lg font-black">{t('template.aboutWorkshop')}</h2>
+                            <p className="mt-3 text-sm leading-7 text-slate-700">{product.description || product.attributes?.suggested_description || t('template.workshopFallback')}</p>
                             <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                                <Stat icon={Presentation} label="Format" value={formatLabel} />
-                                <Stat icon={BookOpenCheck} label="Level" value={details.workshop_level || 'All levels'} />
-                                <Stat icon={Users} label="Capacity" value={capacity > 0 ? `${capacity} seats` : 'Open'} />
+                                <Stat icon={Presentation} label={t('template.format')} value={formatLabel} />
+                                <Stat icon={BookOpenCheck} label={t('template.level')} value={details.workshop_level || t('template.allLevels')} />
+                                <Stat icon={Users} label={t('template.capacity')} value={capacity > 0 ? `${capacity} ${t('template.seats')}` : t('template.open')} />
                             </div>
                         </section>
 
                         {(outcomes.length > 0 || materials.length > 0) && (
                             <section className="grid gap-4 md:grid-cols-2">
-                                {outcomes.length > 0 && <ListBlock title="What you will learn" items={outcomes} tone="emerald" />}
-                                {materials.length > 0 && <ListBlock title="Materials included" items={materials} tone="amber" />}
+                                {outcomes.length > 0 && <ListBlock title={t('publicCommerce.whatLearn')} items={outcomes} tone="emerald" />}
+                                {materials.length > 0 && <ListBlock title={t('publicCommerce.supportingMaterials')} items={materials} tone="amber" />}
                             </section>
                         )}
 
                         {(details.workshop_start_note || requirements.length > 0) && (
                             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                                <h2 className="text-lg font-black">Enrollment details</h2>
+                                <h2 className="text-lg font-black">{t('template.enrollmentDetails')}</h2>
                                 {details.workshop_start_note && (
                                     <div className="mt-4 rounded-xl bg-indigo-50 p-4 text-indigo-950">
-                                        <p className="text-xs font-black uppercase tracking-wide text-indigo-700">Starts</p>
+                                        <p className="text-xs font-black uppercase tracking-wide text-indigo-700">{t('template.starts')}</p>
                                         <p className="mt-1 font-black">{details.workshop_start_note}</p>
                                     </div>
                                 )}
@@ -133,7 +135,7 @@ export default function WorkshopProductTemplate({ product }) {
                                     </div>
                                     <div>
                                         <p className="font-black">{merchant?.display_name || 'Training provider'}</p>
-                                        <p className="text-sm text-slate-500">View more sessions from this business</p>
+                                        <p className="text-sm text-slate-500">{t('template.viewMoreSessions')}</p>
                                     </div>
                                 </div>
                                 <ChevronRight className="h-5 w-5 text-slate-400" />
@@ -143,7 +145,7 @@ export default function WorkshopProductTemplate({ product }) {
 
                     <aside className="space-y-4 md:sticky md:top-5 md:self-start">
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Per seat</p>
+                            <p className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.perSeat')}</p>
                             <p className="mt-1 text-3xl font-black text-brand-700">TZS {Number(pricePerSeat || 0).toLocaleString()}</p>
                             <div className="mt-5 flex items-center justify-between rounded-xl bg-slate-50 p-2">
                                 <button type="button" onClick={() => setSeats((value) => Math.max(1, value - 1))} className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm">
@@ -151,7 +153,7 @@ export default function WorkshopProductTemplate({ product }) {
                                 </button>
                                 <div className="text-center">
                                     <p className="text-lg font-black">{seats}</p>
-                                    <p className="text-[11px] font-bold uppercase text-slate-500">{seats === 1 ? 'seat' : 'seats'}</p>
+                                    <p className="text-[11px] font-bold uppercase text-slate-500">{seats === 1 ? t('template.seat') : t('template.seats')}</p>
                                 </div>
                                 <button type="button" onClick={() => setSeats((value) => Math.min(capacity || 100, value + 1))} className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm">
                                     <Plus className="h-4 w-4" />
@@ -159,13 +161,13 @@ export default function WorkshopProductTemplate({ product }) {
                             </div>
                             <div className="mt-4 rounded-xl bg-slate-950 p-4 text-white">
                                 <div className="flex items-center justify-between text-sm">
-                                    <span className="font-bold text-white/70">Estimated total</span>
+                                    <span className="font-bold text-white/70">{t('template.estimatedTotal')}</span>
                                     <span className="text-xl font-black">TZS {Number(total || 0).toLocaleString()}</span>
                                 </div>
                             </div>
                             <Button className="mt-4 h-12 w-full rounded-xl text-base font-black" disabled={!canBook} onClick={openBooking}>
                                 <Zap className="mr-2 h-5 w-5" />
-                                {canBook ? 'Request enrollment' : 'Class full'}
+                                {canBook ? t('template.requestEnrollment') : t('template.classFull')}
                             </Button>
                         </section>
 
@@ -173,8 +175,8 @@ export default function WorkshopProductTemplate({ product }) {
                             <div className="flex gap-3">
                                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />
                                 <div>
-                                    <p className="font-black">Enrollment protected</p>
-                                    <p className="mt-1 text-sm text-amber-900/75">Confirm dates, venue, materials, and attendance requirements before the session starts.</p>
+                                    <p className="font-black">{t('template.enrollmentProtected')}</p>
+                                    <p className="mt-1 text-sm text-amber-900/75">{t('template.confirmWorkshop')}</p>
                                 </div>
                             </div>
                         </section>
@@ -184,12 +186,12 @@ export default function WorkshopProductTemplate({ product }) {
                 <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:hidden">
                     <div className="mx-auto flex max-w-5xl items-center gap-3">
                         <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold uppercase text-slate-500">Estimated total</p>
+                            <p className="text-xs font-bold uppercase text-slate-500">{t('template.estimatedTotal')}</p>
                             <p className="truncate text-lg font-black text-brand-700">TZS {Number(total || 0).toLocaleString()}</p>
                         </div>
                         <Button className="h-12 rounded-xl font-black" disabled={!canBook} onClick={openBooking}>
                             <CalendarClock className="mr-2 h-4 w-4" />
-                            Enroll
+                            {t('template.enroll')}
                         </Button>
                     </div>
                 </div>
@@ -198,8 +200,8 @@ export default function WorkshopProductTemplate({ product }) {
                     open={requestOpen}
                     onOpenChange={setRequestOpen}
                     requestType="workshop_enrollment_request"
-                    title="Request enrollment"
-                    submitLabel="Send enrollment request"
+                    title={t('template.requestEnrollment')}
+                    submitLabel={t('template.sendBooking')}
                     modulePayload={{ workshop_seats: seats }}
                     messagePlaceholder="Add attendee names, preferred cohort, learning goals, or access needs..."
                 />

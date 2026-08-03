@@ -4,10 +4,12 @@ import { Head, Link } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
-import { Bell, ShieldAlert, Users, ArrowDownToLine, Settings2, TrendingUp, Store, Flag, Shapes, Wallet, ShieldCheck, Tags, Ruler, Activity, Gauge } from 'lucide-react';
+import { Bell, ShieldAlert, Users, Settings2, TrendingUp, Store, Flag, Shapes, ShieldCheck, Tags, Ruler, Activity, Gauge } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 export default function AdminDashboard() {
+    const { copy } = useLocale();
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -18,7 +20,7 @@ export default function AdminDashboard() {
         fetch('/admin/api/settings', { headers: { Accept: 'application/json' } })
             .then(async (r) => {
                 const data = await r.json();
-                if (!r.ok) throw new Error(data.message || 'Failed to load dashboard stats.');
+                if (!r.ok) throw new Error(data.message || copy('Failed to load dashboard stats.', 'Imeshindikana kupakia takwimu za dashibodi.'));
                 return data;
             })
             .then(data => {
@@ -29,46 +31,44 @@ export default function AdminDashboard() {
                 toast.error(err.message);
                 setLoading(false);
             });
-    }, []);
+        }, [copy]);
 
     const quickLinks = [
-        { name: 'Attention Center', href: '/admin/attention', icon: Bell, desc: 'Review admin work that needs action' },
-        { name: 'Disputes', href: '/admin/disputes', icon: ShieldAlert, desc: 'Review and resolve order disputes' },
-        { name: 'Service Risk', href: '/admin/service-risk', icon: ShieldCheck, desc: 'Monitor service credentials, disputes, and regulated listings' },
-        { name: 'Notifications', href: '/admin/notifications', icon: Bell, desc: 'Monitor SMS, WhatsApp, and email outbox logs' },
-        { name: 'Users', href: '/admin/users', icon: Users, desc: 'Manage all platform users' },
-        { name: 'Merchants', href: '/admin/merchants', icon: Store, desc: 'Control merchant account access and trust' },
-        { name: 'Content Reports', href: '/admin/content-reports', icon: Flag, desc: 'Moderate reported content' },
-        { name: 'System Health', href: '/health', icon: Activity, desc: 'View current platform readiness checks', external: true },
-        { name: 'Horizon', href: '/admin/horizon', icon: Gauge, desc: 'Monitor queues, workers, failed jobs, and throughput', external: true },
-        { name: 'Categories', href: '/admin/categories', icon: Shapes, desc: 'Manage category tree and attributes' },
-        { name: 'Brands & Models', href: '/admin/brands', icon: Tags, desc: 'Manage reusable brand and model catalog' },
-        { name: 'Sellable Units', href: '/admin/sellable-units', icon: Ruler, desc: 'Manage units, conversions, and quick quantities' },
-        { name: 'Platform Wallet', href: '/admin/platform-wallet', icon: Wallet, desc: 'Track Takeer fees, GMV, and transaction proof' },
-        { name: 'Withdrawals', href: '/admin/withdrawals', icon: ArrowDownToLine, desc: 'Approve pending payout requests' },
-        { name: 'Payout Settings', href: '/admin/payout-settings', icon: Wallet, desc: 'Control default payout release schedules' },
-        { name: 'General Settings', href: '/admin/settings', icon: Settings2, desc: 'Configure platform-wide non-AI defaults' },
-        { name: 'AI Settings', href: '/admin/ai-settings', icon: Settings2, desc: 'Configure AI providers and keys' },
+        { name: copy('Attention Center', 'Kituo cha Uangalizi'), href: '/admin/attention', icon: Bell, desc: copy('Review admin work that needs action', 'Kagua kazi za msimamizi zinazohitaji hatua') },
+        { name: copy('Disputes', 'Migogoro'), href: '/admin/disputes', icon: ShieldAlert, desc: copy('Review and resolve order disputes', 'Kagua na tatua migogoro ya oda') },
+        { name: copy('Service Risk', 'Hatari za Huduma'), href: '/admin/service-risk', icon: ShieldCheck, desc: copy('Monitor service credentials, disputes, and regulated listings', 'Fuatilia sifa za huduma, migogoro na matangazo yaliyodhibitiwa') },
+        { name: copy('Notifications', 'Arifa'), href: '/admin/notifications', icon: Bell, desc: copy('Monitor SMS, WhatsApp, and email outbox logs', 'Fuatilia kumbukumbu za SMS, WhatsApp na barua pepe') },
+        { name: copy('Users', 'Watumiaji'), href: '/admin/users', icon: Users, desc: copy('Manage all platform users', 'Simamia watumiaji wote wa jukwaa') },
+        { name: copy('Merchants', 'Wauzaji'), href: '/admin/merchants', icon: Store, desc: copy('Control merchant account access and trust', 'Dhibiti ufikiaji na uaminifu wa akaunti za wauzaji') },
+        { name: copy('Content Reports', 'Ripoti za Maudhui'), href: '/admin/content-reports', icon: Flag, desc: copy('Moderate reported content', 'Simamia maudhui yaliyoripotiwa') },
+        { name: copy('System Health', 'Afya ya Mfumo'), href: '/health', icon: Activity, desc: copy('View current platform readiness checks', 'Angalia ukaguzi wa utayari wa jukwaa'), external: true },
+        { name: 'Horizon', href: '/admin/horizon', icon: Gauge, desc: copy('Monitor queues, workers, failed jobs, and throughput', 'Fuatilia foleni, wafanyakazi, kazi zilizoshindikana na mtiririko'), external: true },
+        { name: copy('Categories', 'Kategoria'), href: '/admin/categories', icon: Shapes, desc: copy('Manage category tree and attributes', 'Simamia mti wa kategoria na sifa') },
+        { name: copy('Brands & Models', 'Chapa na Miundo'), href: '/admin/brands', icon: Tags, desc: copy('Manage reusable brand and model catalog', 'Simamia orodha ya chapa na miundo inayotumika tena') },
+        { name: copy('Sellable Units', 'Vipimo vya Uuzaji'), href: '/admin/sellable-units', icon: Ruler, desc: copy('Manage units, conversions, and quick quantities', 'Simamia vipimo, ubadilishaji na kiasi cha haraka') },
+        { name: copy('Payment Operations', 'Uendeshaji wa Malipo'), href: '/admin/payment-operations', icon: Activity, desc: copy('Review provider payouts, callbacks, and reconciliation breaks', 'Kagua malipo ya PSP, callbacks na tofauti za upatanisho') },
+        { name: copy('General Settings', 'Mipangilio ya Jumla'), href: '/admin/settings', icon: Settings2, desc: copy('Configure platform-wide non-AI defaults', 'Sanidi mipangilio ya jumla ya jukwaa isiyo ya AI') },
+        { name: copy('AI Settings', 'Mipangilio ya AI'), href: '/admin/ai-settings', icon: Settings2, desc: copy('Configure AI providers and keys', 'Sanidi watoa huduma na funguo za AI') },
     ];
 
     return (
-        <AdminLayout title="Admin Dashboard">
-            <Head title="Admin Dashboard | Takeer" />
+        <AdminLayout title={copy('Admin Dashboard', 'Dashibodi ya Msimamizi')}>
+            <Head title={`${copy('Admin Dashboard', 'Dashibodi ya Msimamizi')} | Takeer`} />
 
             <div className="space-y-8">
                 <div>
-                    <h1 className="text-2xl font-black text-slate-900">Platform Control Center</h1>
-                    <p className="text-slate-600 mt-1 text-sm">Live overview and quick access to core admin controls.</p>
+                    <h1 className="text-2xl font-black text-slate-900">{copy('Platform Control Center', 'Kituo cha Udhibiti wa Jukwaa')}</h1>
+                    <p className="text-slate-600 mt-1 text-sm">{copy('Live overview and quick access to core admin controls.', 'Muhtasari wa moja kwa moja na ufikiaji wa haraka wa udhibiti muhimu wa msimamizi.')}</p>
                 </div>
 
                 <Card className="bg-white border-slate-200 shadow-sm">
                     <CardContent className="p-4 space-y-3">
-                        <p className="text-sm font-bold text-slate-900">Global Platform Search</p>
+                        <p className="text-sm font-bold text-slate-900">{copy('Global Platform Search', 'Utafutaji wa Jukwaa Zima')}</p>
                         <div className="flex gap-2">
                             <Input
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search users, merchants, products, posts, orders..."
+                                placeholder={copy('Search users, merchants, products, posts, orders...', 'Tafuta watumiaji, wauzaji, bidhaa, machapisho, oda...')}
                                 className="bg-white border-slate-300 text-slate-900"
                             />
                             <Button
@@ -76,14 +76,14 @@ export default function AdminDashboard() {
                                 disabled={searching}
                                 onClick={async () => {
                                     if ((search || '').trim().length < 2) {
-                                        toast.error('Enter at least 2 characters.');
+                                        toast.error(copy('Enter at least 2 characters.', 'Ingiza angalau herufi 2.'));
                                         return;
                                     }
                                     setSearching(true);
                                     try {
                                         const res = await fetch(`/admin/api/search?q=${encodeURIComponent(search)}`, { headers: { Accept: 'application/json' } });
                                         const data = await res.json();
-                                        if (!res.ok) throw new Error(data.message || 'Search failed.');
+                                        if (!res.ok) throw new Error(data.message || copy('Search failed.', 'Utafutaji umeshindikana.'));
                                         setSearchResults(data);
                                     } catch (err) {
                                         toast.error(err.message);
@@ -92,16 +92,16 @@ export default function AdminDashboard() {
                                     }
                                 }}
                             >
-                                {searching ? 'Searching...' : 'Search'}
+                                {searching ? copy('Searching...', 'Inatafuta...') : copy('Search', 'Tafuta')}
                             </Button>
                         </div>
                         {searchResults && (
                             <div className="grid md:grid-cols-2 gap-3 text-sm">
-                                <SearchGroup title="Users" items={(searchResults.users || []).map((x) => `${x.name || '-'} (${x.phone_number || '-'})`)} />
-                                <SearchGroup title="Merchants" items={(searchResults.merchants || []).map((x) => `${x.display_name || '-'} (@${x.username || '-'})`)} />
-                                <SearchGroup title="Products" items={(searchResults.products || []).map((x) => `${x.title || '-'} [${x.type || '-'}]`)} />
-                                <SearchGroup title="Posts" items={(searchResults.posts || []).map((x) => `${x.title || x.caption || '-'} (id:${x.id})`)} />
-                                <SearchGroup title="Orders" items={(searchResults.orders || []).map((x) => `#${x.id} - ${x.payment_status || '-'}`)} />
+                                <SearchGroup title={copy('Users', 'Watumiaji')} items={(searchResults.users || []).map((x) => `${x.name || '-'} (${x.phone_number || '-'})`)} copy={copy} />
+                                <SearchGroup title={copy('Merchants', 'Wauzaji')} items={(searchResults.merchants || []).map((x) => `${x.display_name || '-'} (@${x.username || '-'})`)} copy={copy} />
+                                <SearchGroup title={copy('Products', 'Bidhaa')} items={(searchResults.products || []).map((x) => `${x.title || '-'} [${x.type || '-'}]`)} copy={copy} />
+                                <SearchGroup title={copy('Posts', 'Machapisho')} items={(searchResults.posts || []).map((x) => `${x.title || x.caption || '-'} (id:${x.id})`)} copy={copy} />
+                                <SearchGroup title={copy('Orders', 'Oda')} items={(searchResults.orders || []).map((x) => `#${x.id} - ${x.payment_status || '-'}`)} copy={copy} />
                             </div>
                         )}
                     </CardContent>
@@ -109,12 +109,12 @@ export default function AdminDashboard() {
 
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {[
-                        { label: 'Total Users', key: 'total_users', icon: Users, tone: 'text-sky-700' },
-                        { label: 'Total Merchants', key: 'total_merchants', icon: Store, tone: 'text-indigo-700' },
-                        { label: 'Total Orders', key: 'total_orders', icon: TrendingUp, tone: 'text-emerald-700' },
-                        { label: 'Open Disputes', key: 'open_disputes', icon: ShieldAlert, tone: 'text-red-700' },
-                        { label: 'Pending Withdrawals', key: 'pending_withdrawals', icon: ArrowDownToLine, tone: 'text-amber-700' },
-                        { label: 'Admin Accounts', key: 'total_admins', icon: Settings2, tone: 'text-purple-700' },
+                        { label: copy('Total Users', 'Watumiaji Wote'), key: 'total_users', icon: Users, tone: 'text-sky-700' },
+                        { label: copy('Total Merchants', 'Wauzaji Wote'), key: 'total_merchants', icon: Store, tone: 'text-indigo-700' },
+                        { label: copy('Total Orders', 'Oda Zote'), key: 'total_orders', icon: TrendingUp, tone: 'text-emerald-700' },
+                        { label: copy('Open Disputes', 'Migogoro Inayoendelea'), key: 'open_disputes', icon: ShieldAlert, tone: 'text-red-700' },
+                        { label: copy('Pending Provider Payouts', 'Malipo ya PSP Yanayosubiri'), key: 'pending_provider_payouts', icon: Activity, tone: 'text-amber-700' },
+                        { label: copy('Admin Accounts', 'Akaunti za Wasimamizi'), key: 'total_admins', icon: Settings2, tone: 'text-purple-700' },
                     ].map(({ label, key, icon: Icon, tone }) => (
                         <Card key={key} className="bg-white border-slate-200 shadow-sm">
                             <CardContent className="p-5">
@@ -131,7 +131,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div>
-                    <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-widest mb-4">Quick Links</h2>
+                    <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-widest mb-4">{copy('Quick Links', 'Viungo vya Haraka')}</h2>
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {quickLinks.map(({ name, href, icon: Icon, desc, external }) => {
                             const content = (
@@ -165,12 +165,12 @@ export default function AdminDashboard() {
     );
 }
 
-function SearchGroup({ title, items }) {
+function SearchGroup({ title, items, copy }) {
     return (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="font-bold text-slate-900 mb-2">{title}</p>
             {items.length === 0 ? (
-                <p className="text-slate-500 text-xs">No matches</p>
+                <p className="text-slate-500 text-xs">{copy('No matches', 'Hakuna matokeo')}</p>
             ) : (
                 <div className="space-y-1">
                     {items.slice(0, 6).map((item, idx) => (

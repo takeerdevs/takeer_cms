@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Image, Text, Trash2 } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Textarea } from '@/Components/ui/Textarea';
+import { useLocale } from '@/lib/i18n';
 
 const sectionTypes = [
     { key: 'text', label: 'Text', icon: Text },
@@ -19,6 +20,7 @@ const emptySection = (sectionType = 'text') => ({
 });
 
 export default function ProductDetailSectionsEditor({ productDetailSections, setProductDetailSections, onUploadSectionImage }) {
+    const { copy } = useLocale();
     const [openIndex, setOpenIndex] = useState(0);
 
     const updateSection = (index, updates) => {
@@ -56,16 +58,16 @@ export default function ProductDetailSectionsEditor({ productDetailSections, set
         <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
             <div className="flex flex-col gap-3 min-[760px]:flex-row min-[760px]:items-start min-[760px]:justify-between">
                 <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-700">In-depth product details / features</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-700">{copy('In-depth product details / features', 'Maelezo ya kina ya bidhaa / vipengele')}</p>
                     <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
-                        Add rich product-description blocks. Use text sections for specs or explanations, and image sections for designed feature graphics.
+                        {copy('Add rich product-description blocks. Use text sections for specs or explanations, and image sections for designed feature graphics.', 'Ongeza sehemu zenye maelezo ya kina ya bidhaa. Tumia maandishi kwa specs au maelezo, na picha kwa michoro ya vipengele.')}
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {sectionTypes.map(({ key, label, icon: Icon }) => (
                         <Button key={key} type="button" variant="outline" size="sm" className="h-9 rounded-xl text-xs font-black" onClick={() => addSection(key)}>
                             <Icon className="mr-1 h-3.5 w-3.5" />
-                            {label}
+                            {copy(label, label === 'Image + text' ? 'Picha + maandishi' : label === 'Image' ? 'Picha' : 'Maandishi')}
                         </Button>
                     ))}
                 </div>
@@ -74,7 +76,7 @@ export default function ProductDetailSectionsEditor({ productDetailSections, set
             <div className="space-y-2">
                 {productDetailSections.map((section, index) => {
                     const isOpen = openIndex === index;
-                    const typeLabel = sectionTypes.find((type) => type.key === section.section_type)?.label || 'Section';
+                    const typeLabel = copy(sectionTypes.find((type) => type.key === section.section_type)?.label || 'Section', section.section_type === 'image_text' ? 'Picha + maandishi' : section.section_type === 'image' ? 'Picha' : 'Maandishi');
                     const needsText = ['text', 'image_text', 'selling_points', 'company_intro', 'custom'].includes(section.section_type || 'text');
                     const needsImage = ['image', 'image_text'].includes(section.section_type || 'text');
 
@@ -87,10 +89,10 @@ export default function ProductDetailSectionsEditor({ productDetailSections, set
                             >
                                 <span className="min-w-0">
                                     <span className="block text-sm font-black text-slate-900">
-                                        {section.title || `${typeLabel} section ${index + 1}`}
+                                        {section.title || `${typeLabel} ${copy('section', 'sehemu')} ${index + 1}`}
                                     </span>
                                     <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">
-                                        {typeLabel}{section.is_visible === false ? ' / hidden' : ''}
+                                        {typeLabel}{section.is_visible === false ? ` / ${copy('hidden', 'imefichwa')}` : ''}
                                     </span>
                                 </span>
                                 <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -115,7 +117,7 @@ export default function ProductDetailSectionsEditor({ productDetailSections, set
                                         <Input
                                             value={section.title || ''}
                                             onChange={(e) => updateSection(index, { title: e.target.value })}
-                                            placeholder="Section title, e.g. High speed brushless motor"
+                                            placeholder={copy('Section title, e.g. High speed brushless motor', 'Kichwa cha sehemu, mfano: motor yenye kasi kubwa')}
                                             className="h-11 bg-white"
                                         />
                                         <div className="flex gap-1">
@@ -137,13 +139,13 @@ export default function ProductDetailSectionsEditor({ productDetailSections, set
                                                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                                                     <img
                                                         src={section.local_image_url || section.image_url}
-                                                        alt={section.title || 'Product feature'}
+                                                        alt={section.title || copy('Product feature', 'Kipengele cha bidhaa')}
                                                         className="max-h-80 w-full object-contain"
                                                     />
                                                 </div>
                                             ) : (
                                                 <div className="rounded-xl bg-white px-4 py-6 text-center text-xs font-bold text-slate-500">
-                                                    Upload a product feature image. Files are stored by Takeer for persistence.
+                                                        {copy('Upload a product feature image. Files are stored by Takeer for persistence.', 'Pakia picha ya kipengele cha bidhaa. Faili zitatunzwa na Takeer.')}
                                                 </div>
                                             )}
 
@@ -158,7 +160,7 @@ export default function ProductDetailSectionsEditor({ productDetailSections, set
 
                                             <div className="flex flex-col gap-2 min-[520px]:flex-row">
                                                 <label className="inline-flex h-11 flex-1 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 hover:border-brand-200 hover:text-brand-700">
-                                                    {section.image_url ? 'Replace image' : 'Upload image'}
+                                                    {section.image_url ? copy('Replace image', 'Badilisha picha') : copy('Upload image', 'Pakia picha')}
                                                     <input
                                                         type="file"
                                                         accept="image/*"
@@ -178,7 +180,7 @@ export default function ProductDetailSectionsEditor({ productDetailSections, set
                                                         className="h-11 rounded-xl text-red-600"
                                                         onClick={() => updateSection(index, { image_url: '', local_image_url: '', is_uploading_image: false, upload_progress: 0 })}
                                                     >
-                                                        Remove image
+                                                        {copy('Remove image', 'Ondoa picha')}
                                                     </Button>
                                                 )}
                                             </div>
@@ -189,7 +191,7 @@ export default function ProductDetailSectionsEditor({ productDetailSections, set
                                         <Textarea
                                             value={section.body || ''}
                                             onChange={(e) => updateSection(index, { body: e.target.value })}
-                                            placeholder="Write product details, feature explanation, specs, selling points, or usage notes..."
+                                            placeholder={copy('Write product details, feature explanation, specs, selling points, or usage notes...', 'Andika maelezo ya bidhaa, ufafanuzi wa kipengele, specs, hoja za mauzo, au matumizi...')}
                                             className="min-h-28 rounded-xl bg-white"
                                         />
                                     )}
@@ -200,7 +202,7 @@ export default function ProductDetailSectionsEditor({ productDetailSections, set
                                             checked={section.is_visible !== false}
                                             onChange={(e) => updateSection(index, { is_visible: e.target.checked })}
                                         />
-                                        Visible on product page
+                                        {copy('Visible on product page', 'Inaonekana kwenye ukurasa wa bidhaa')}
                                     </label>
                                 </div>
                             )}

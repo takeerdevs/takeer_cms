@@ -5,6 +5,7 @@ import { Input } from '@/Components/ui/Input';
 import { Truck, Plus, Trash2, Loader2, MapPin, Globe, Pencil, X, Clock3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete, Circle } from '@react-google-maps/api';
+import { useLocale } from '@/lib/i18n';
 
 const MAP_CONTAINER_STYLE = {
     width: '100%',
@@ -24,14 +25,15 @@ const EMPTY_INTERCITY_FEE_PARTS = {
     handling_fee: '',
 };
 const DELIVERY_PRESETS = [
-    { key: 'same_day', label: 'Leo leo', hint: 'Boda/local delivery ndani ya siku hiyo hiyo.', handling: [0, 0], transit: [0, 0], buyerLabel: 'Same day delivery' },
-    { key: 'next_day', label: 'Kesho', hint: 'Mteja apokee kesho.', handling: [0, 1], transit: [1, 1], buyerLabel: 'Delivery by tomorrow' },
-    { key: 'one_two', label: 'Siku 1-2', hint: 'Kwa oda za kawaida ndani ya mji.', handling: [0, 1], transit: [1, 2], buyerLabel: 'Delivery in 1-2 days' },
-    { key: 'bus_two_four', label: 'Basi siku 2-4', hint: 'Inter-city kupitia basi/parcel office.', handling: [0, 1], transit: [2, 4], buyerLabel: 'Inter-city delivery in 2-4 days by bus' },
-    { key: 'confirm', label: 'Tutathibitisha', hint: 'Kwa mizigo mikubwa au bei/muda hutegemea transporter.', handling: ['', ''], transit: ['', ''], buyerLabel: 'Delivery time will be confirmed in chat', confirm: true },
+    { key: 'same_day', label: 'Leo leo', englishLabel: 'Same day', hint: 'Boda/local delivery ndani ya siku hiyo hiyo.', englishHint: 'Motorbike/local delivery within the same day.', handling: [0, 0], transit: [0, 0], buyerLabel: 'Same day delivery' },
+    { key: 'next_day', label: 'Kesho', englishLabel: 'Tomorrow', hint: 'Mteja apokee kesho.', englishHint: 'Customer receives it tomorrow.', handling: [0, 1], transit: [1, 1], buyerLabel: 'Delivery by tomorrow' },
+    { key: 'one_two', label: 'Siku 1-2', englishLabel: '1-2 days', hint: 'Kwa oda za kawaida ndani ya mji.', englishHint: 'For regular orders within the city.', handling: [0, 1], transit: [1, 2], buyerLabel: 'Delivery in 1-2 days' },
+    { key: 'bus_two_four', label: 'Basi siku 2-4', englishLabel: '2-4 days by bus', hint: 'Inter-city kupitia basi/parcel office.', englishHint: 'Intercity through a bus or parcel office.', handling: [0, 1], transit: [2, 4], buyerLabel: 'Inter-city delivery in 2-4 days by bus' },
+    { key: 'confirm', label: 'Tutathibitisha', englishLabel: 'Confirm later', hint: 'Kwa mizigo mikubwa au bei/muda hutegemea transporter.', englishHint: 'For large shipments or carrier-dependent cost/time.', handling: ['', ''], transit: ['', ''], buyerLabel: 'Delivery time will be confirmed in chat', confirm: true },
 ];
 
 export default function ShippingZonesManager({ profileId, locations = [], fixedLocationId = null, merchantId = null, onRefresh: onParentRefresh, activeProfile = null, countries = [] }) {
+    const { copy } = useLocale();
     const [profile, setProfile] = useState(null);
     const [zones, setZones] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -133,7 +135,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
     const handleQuickFeeSave = async (zone) => {
         const draftValue = feeDrafts[zone.id];
         if (draftValue === '' || Number(draftValue) < 0) {
-            toast.error('Tafadhali weka gharama sahihi ya usafiri.');
+            toast.error(copy('Enter a valid shipping cost.', 'Tafadhali weka gharama sahihi ya usafiri.'));
             return;
         }
 
@@ -145,10 +147,10 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
             });
             setZones(prev => prev.map(item => item.id === zone.id ? res.data.data : item));
             setFeeDrafts(prev => ({ ...prev, [zone.id]: res.data.data.flat_rate_fee ?? draftValue }));
-            toast.success('Gharama ya usafiri imesasishwa.');
+            toast.success(copy('Shipping cost updated.', 'Gharama ya usafiri imesasishwa.'));
             if (onParentRefresh) onParentRefresh();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindikana kusasisha gharama.');
+            toast.error(err.response?.data?.message || copy('Could not update shipping cost.', 'Imeshindikana kusasisha gharama.'));
         } finally {
             setSavingFeeId(null);
         }
@@ -198,7 +200,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         const isInternational = newZone.coverage_scope === 'international';
         const sectionAllowed = isShippingSectionEnabled(newZone);
         if (!sectionAllowed) {
-            toast.error('Sehemu hii imezimwa kwenye template hii. Iwashe kwanza juu ya template.');
+            toast.error(copy('This section is disabled in this template. Enable it above first.', 'Sehemu hii imezimwa kwenye template hii. Iwashe kwanza juu ya template.'));
             return;
         }
         const shouldSaveCutoff = shouldShowCutoff(newZone);
@@ -217,40 +219,40 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         };
 
         if (!isIntercity && !payload.zone_name) {
-            toast.error('Tafadhali jaza jina la ukanda.');
+            toast.error(copy('Enter a zone name.', 'Tafadhali jaza jina la ukanda.'));
             return;
         }
 
         if (payload.flat_rate_fee === '' || Number(payload.flat_rate_fee) < 0 || (isIntercity && intercityFeeKnown && intercityFeeTotal <= 0)) {
-            toast.error(isIntercity ? 'Weka gharama sahihi au chagua ithibitishwe kwenye chat.' : 'Tafadhali jaza gharama.');
+                toast.error(isIntercity ? copy('Enter a valid cost or choose confirmation in chat.', 'Weka gharama sahihi au chagua ithibitishwe kwenye chat.') : copy('Enter a cost.', 'Tafadhali jaza gharama.'));
             return;
         }
 
         // Validations
         if (payload.delivery_type === 'local_boda') {
             if (!payload.merchant_location_id) {
-                toast.error('Tafadhali chagua eneo la duka.');
+                toast.error(copy('Choose a shop location.', 'Tafadhali chagua eneo la duka.'));
                 return;
             }
             if (!payload.reference_lat && !payload.max_distance_km) {
-                toast.error('Tafadhali chagua eneo mwisho au weka umbali wa KM.');
+                toast.error(copy('Choose an end location or enter a distance in KM.', 'Tafadhali chagua eneo mwisho au weka umbali wa KM.'));
                 return;
             }
         }
 
         if (isIntercity) {
             if (isInternational && !payload.destination_country_id && !payload.destination_country) {
-                toast.error('Tafadhali weka nchi unayotaka kusafirisha kwenda.');
+                toast.error(copy('Enter the destination country.', 'Tafadhali weka nchi unayotaka kusafirisha kwenda.'));
                 return;
             }
             if (!isCountrywide && !isInternational && !destinationName) {
-                toast.error('Tafadhali chagua au andika destination/region ya inter-city.');
+                toast.error(copy('Choose or enter the inter-city destination/region.', 'Tafadhali chagua au andika destination/region ya inter-city.'));
                 return;
             }
         }
 
         if (!profileId) {
-            toast.error('Hitilafu: Profile ya usafirishaji haijatambuliwa.');
+            toast.error(copy('Error: shipping profile not found.', 'Hitilafu: Profile ya usafirishaji haijatambuliwa.'));
             return;
         }
 
@@ -259,17 +261,17 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
             if (editingId) {
                 const res = await window.axios.put(`/api/merchant/shipping-zones/${editingId}`, { ...payload, merchant_id: merchantId });
                 setZones(zones.map(z => z.id === editingId ? res.data.data : z));
-                toast.success('Njia ya usafirishaji imesasishwa!');
+                toast.success(copy('Shipping method updated!', 'Njia ya usafirishaji imesasishwa!'));
             } else {
                 const res = await window.axios.post(`/api/merchant/shipping-profiles/${profileId}/zones`, { ...payload, merchant_id: merchantId });
                 setZones([res.data.data, ...zones]);
-                toast.success('Njia ya usafirishaji imeongezwa!');
+                toast.success(copy('Shipping method added!', 'Njia ya usafirishaji imeongezwa!'));
             }
 
             handleCancelEdit();
             if (onParentRefresh) onParentRefresh();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindikana kuhifadhi njia hii.');
+            toast.error(err.response?.data?.message || copy('Could not save this method.', 'Imeshindikana kuhifadhi njia hii.'));
         } finally {
             setIsSaving(false);
         }
@@ -377,10 +379,10 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         try {
             await window.axios.delete(`/api/merchant/shipping-zones/${id}`, { data: { merchant_id: merchantId } });
             setZones(zones.filter(z => z.id !== id));
-            toast.success('Imefutwa kikamilifu.');
+            toast.success(copy('Deleted successfully.', 'Imefutwa kikamilifu.'));
             if (onParentRefresh) onParentRefresh();
         } catch (err) {
-            toast.error('Imeshindikana kufuta.');
+            toast.error(copy('Could not delete.', 'Imeshindikana kufuta.'));
         }
     };
 
@@ -446,7 +448,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                     destination_city_id: '',
                 }));
                 setHotspotSearch('');
-                toast.success(`Destination imewekwa: ${destinationName || name}`);
+                toast.success(copy(`Destination set: ${destinationName || name}`, `Destination imewekwa: ${destinationName || name}`));
             }
         }
     };
@@ -459,9 +461,9 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
     };
 
     const formatDeliveryType = (type) => {
-        if (type === 'self_pickup') return 'Mteja kuchukua';
-        if (type === 'local_boda') return 'Dereva wa karibu';
-        if (type === 'intercity_bus') return 'Basi la mikoani';
+        if (type === 'self_pickup') return copy('Self-pickup', 'Mteja kuchukua');
+        if (type === 'local_boda') return copy('Local rider delivery', 'Dereva wa karibu');
+        if (type === 'intercity_bus') return copy('Intercity bus', 'Basi la mikoani');
         return type;
     };
 
@@ -505,7 +507,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
     const setCoverageMode = (mode) => {
         if (mode === 'in_city') {
             if (activeProfile && activeProfile.in_city_enabled === false) {
-                toast.error('Ndani ya mji imezimwa kwenye template hii.');
+                toast.error(copy('In-city delivery is disabled in this template.', 'Ndani ya mji imezimwa kwenye template hii.'));
                 return;
             }
             setNewZone(prev => ({
@@ -518,11 +520,11 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         }
 
         if (mode === 'international' && activeProfile && activeProfile.international_enabled !== true) {
-            toast.error('Nje ya nchi imezimwa kwenye template hii.');
+            toast.error(copy('International delivery is disabled in this template.', 'Nje ya nchi imezimwa kwenye template hii.'));
             return;
         }
         if (mode === 'inter_city' && activeProfile && activeProfile.intercity_enabled === false) {
-            toast.error('Mikoani imezimwa kwenye template hii.');
+            toast.error(copy('Inter-city delivery is disabled in this template.', 'Mikoani imezimwa kwenye template hii.'));
             return;
         }
 
@@ -540,35 +542,35 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
     };
 
     const formatCoverageScope = (zone) => {
-        if (zone.coverage_scope === 'international') return `Kimataifa${zone.destination_country ? `: ${zone.destination_country}` : ''}`;
-        if (zone.coverage_scope === 'countrywide') return `Nchi nzima${zone.destination_country ? `: ${zone.destination_country}` : ''}`;
-        if (zone.delivery_type === 'local_boda') return 'Ndani ya mji';
-        if (zone.delivery_type === 'intercity_bus') return 'Mji/Mkoa maalum';
+        if (zone.coverage_scope === 'international') return `${copy('International', 'Kimataifa')}${zone.destination_country ? `: ${zone.destination_country}` : ''}`;
+        if (zone.coverage_scope === 'countrywide') return `${copy('Countrywide', 'Nchi nzima')}${zone.destination_country ? `: ${zone.destination_country}` : ''}`;
+        if (zone.delivery_type === 'local_boda') return copy('Within city', 'Ndani ya mji');
+        if (zone.delivery_type === 'intercity_bus') return copy('Specific city/region', 'Mji/Mkoa maalum');
         return formatDeliveryType(zone.delivery_type);
     };
 
     const formatShippingFee = (fee, deliveryType = null) => {
         const amount = Number(fee || 0);
-        if (deliveryType === 'intercity_bus' && amount <= 0) return 'Itathibitishwa kwenye chat';
-        return amount > 0 ? `TZS ${amount.toLocaleString()}` : 'Bure';
+        if (deliveryType === 'intercity_bus' && amount <= 0) return copy('Confirmed in chat', 'Itathibitishwa kwenye chat');
+        return amount > 0 ? `TZS ${amount.toLocaleString()}` : copy('Free', 'Bure');
     };
 
     const formatDayRange = (min, max) => {
         const a = min !== null && min !== undefined && min !== '' ? Number(min) : null;
         const b = max !== null && max !== undefined && max !== '' ? Number(max) : null;
         if (a === null && b === null) return '';
-        if (a !== null && b !== null && a !== b) return `${a}-${b} days`;
+        if (a !== null && b !== null && a !== b) return `${a}-${b} ${copy('days', 'siku')}`;
         const value = b ?? a;
-        if (value === 0) return 'same day';
-        if (value === 1) return '1 day';
-        return `${value} days`;
+        if (value === 0) return copy('same day', 'siku hiyo hiyo');
+        if (value === 1) return `1 ${copy('day', 'siku')}`;
+        return `${value} ${copy('days', 'siku')}`;
     };
 
     const formatDeliveryPromise = (zone) => {
         if (zone.delivery_promise_label) return zone.delivery_promise_label;
         const handling = formatDayRange(zone.handling_min_days, zone.handling_max_days);
         const transit = formatDayRange(zone.transit_min_days, zone.transit_max_days);
-        if (zone.requires_delivery_confirmation) return 'Time confirmed in chat';
+        if (zone.requires_delivery_confirmation) return copy('Time confirmed in chat', 'Muda unathibitishwa kwenye chat');
         if (handling && transit) return `${handling} prep + ${transit} transit`;
         return transit || handling || '';
     };
@@ -598,19 +600,19 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
 
     const deliveryPreviewText = (() => {
         if (newZone.requires_delivery_confirmation) {
-            return 'Mteja ataona muda utathibitishwa kwenye chat. Hapa hakuna haja ya kuonyesha deadline ya same-day.';
+            return copy('Customers will see that the time is confirmed in chat. A same-day deadline is not needed here.', 'Mteja ataona muda utathibitishwa kwenye chat. Hapa hakuna haja ya kuonyesha deadline ya same-day.');
         }
 
         if (shouldShowCutoff(newZone)) {
             return newZone.cutoff_time
-                ? `Mteja ataelewa: same-day ikiwa ameagiza kabla ya ${newZone.cutoff_time}.`
-                : 'Hii ni same-day. Weka saa ya mwisho kama una deadline ya kupokea oda za leo.';
+                ? copy(`Customers will see: same-day if they order before ${newZone.cutoff_time}.`, `Mteja ataelewa: siku hiyo hiyo ikiwa ameagiza kabla ya ${newZone.cutoff_time}.`)
+                : copy('This is same-day. Set a cutoff time if you have a deadline for receiving today\'s orders.', 'Hii ni same-day. Weka saa ya mwisho kama una deadline ya kupokea oda za leo.');
         }
 
         const label = newZone.delivery_promise_label || formatDeliveryPromise(newZone);
         return label
-            ? `Mteja ataona: ${label}. Deadline ya saa imefichwa kwa sababu si ahadi ya same-day.`
-            : 'Chagua preset au andika maneno rahisi ambayo mteja ataona.';
+            ? copy(`Customers will see: ${label}. The time deadline is hidden because this is not a same-day promise.`, `Mteja ataona: ${label}. Deadline ya saa imefichwa kwa sababu si ahadi ya same-day.`)
+            : copy('Choose a preset or write simple wording customers will see.', 'Chagua preset au andika maneno rahisi ambayo mteja ataona.');
     })();
 
     const applyDeliveryPreset = (preset) => {
@@ -632,8 +634,8 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                 <div className="flex items-center gap-2 mb-2 bg-brand-50 p-3 rounded-xl border border-brand-100">
                     <Truck className="h-5 w-5 text-brand-600" />
                     <div>
-                        <p className="text-xs font-black text-brand-900 leading-none">Njia za Usafirishaji</p>
-                        <p className="text-[10px] text-brand-700 font-medium mt-1">Usimamizi wa kanda zote za uwasilishaji.</p>
+                        <p className="text-xs font-black text-brand-900 leading-none">{copy('Shipping methods', 'Njia za usafirishaji')}</p>
+                        <p className="text-[10px] text-brand-700 font-medium mt-1">{copy('Manage all delivery zones.', 'Usimamizi wa kanda zote za uwasilishaji.')}</p>
                     </div>
                 </div>
             )}
@@ -644,7 +646,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6">
                     {zones.length === 0 ? (
                         <p className="col-span-full text-[11px] text-brand-600 font-bold bg-brand-50/50 p-3 rounded-xl border border-brand-100 border-dashed text-center">
-                            Bado hujaweka njia yoyote hapa.
+                            {copy('No shipping methods yet.', 'Bado hujaweka njia yoyote hapa.')}
                         </p>
                     ) : (
                         zones.map(zone => (
@@ -698,7 +700,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                             value={feeDrafts[zone.id] ?? ''}
                                             onChange={(e) => handleFeeDraftChange(zone.id, e.target.value)}
                                             className="h-8 rounded-lg bg-white text-xs font-black"
-                                            aria-label="Gharama ya usafiri"
+                                            aria-label={copy('Shipping cost', 'Gharama ya usafiri')}
                                         />
                                         <Button
                                             type="button"
@@ -707,7 +709,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                             onClick={() => handleQuickFeeSave(zone)}
                                             className="h-8 rounded-lg px-3 text-[10px] font-black uppercase bg-brand-600 hover:bg-brand-700"
                                         >
-                                            {savingFeeId === zone.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Hifadhi'}
+                                            {savingFeeId === zone.id ? <Loader2 className="h-3 w-3 animate-spin" /> : copy('Save', 'Hifadhi')}
                                         </Button>
                                     </div>
                                 )}
@@ -724,20 +726,20 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                             {editingId ? <Pencil className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                         </div>
                         <h3 className="text-xs font-black uppercase tracking-wider">
-                            {editingId ? 'Hariri Njia ya Usafirishaji' : 'Ongeza Njia Mpya'}
+                            {editingId ? copy('Edit shipping method', 'Hariri Njia ya Usafirishaji') : copy('Add new method', 'Ongeza Njia Mpya')}
                         </h3>
                     </div>
                     {editingId && (
                         <Button variant="ghost" size="sm" onClick={handleCancelEdit} className="h-7 text-xs font-bold gap-1 text-slate-500 hover:text-slate-900 border border-slate-200">
-                            <X className="h-3 w-3" /> Ghairi
+                            <X className="h-3 w-3" /> {copy('Cancel', 'Ghairi')}
                         </Button>
                     )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     {[
-                        { key: 'in_city', title: 'Ndani ya mji', hint: 'Boda/gari kutoka stoo hadi umbali ulioweka.' },
-                        { key: 'inter_city', title: 'Mikoani', hint: 'Mji/mkoa maalum au nchi nzima ndani ya nchi ya biashara.' },
-                        { key: 'international', title: 'Nje ya nchi', hint: 'Kenya, Uganda, Rwanda na nchi nyingine unazoweka.' },
+                        { key: 'in_city', title: copy('Within city', 'Ndani ya mji'), hint: copy('Motorbike/car from the store within the distance you set.', 'Boda/gari kutoka stoo hadi umbali ulioweka.') },
+                        { key: 'inter_city', title: copy('Intercity', 'Mikoani'), hint: copy('Specific city/region or countrywide within the business country.', 'Mji/mkoa maalum au nchi nzima ndani ya nchi ya biashara.') },
+                        { key: 'international', title: copy('International', 'Nje ya nchi'), hint: copy('Kenya, Uganda, Rwanda, and other countries you add.', 'Kenya, Uganda, Rwanda na nchi nyingine unazoweka.') },
                     ].map((mode) => {
                         const modeEnabled = mode.key === 'in_city'
                             ? activeProfile?.in_city_enabled !== false
@@ -760,9 +762,9 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
 
                 {newZone.delivery_type !== 'intercity_bus' && (
                     <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Jina la Ukanda / Labeli (Mf. Dar - Karibu na Duka)</label>
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Zone name / label (e.g. Dar - Near shop)', 'Jina la Ukanda / Labeli (Mf. Dar - Karibu na Duka)')}</label>
                         <Input
-                            placeholder="Jina la utambulisho (halitaonekana kwa mteja)"
+                            placeholder={copy('Internal name (not shown to customers)', 'Jina la utambulisho (halitaonekana kwa mteja)')}
                             value={newZone.zone_name}
                             onChange={e => setNewZone({ ...newZone, zone_name: e.target.value })}
                             required
@@ -775,17 +777,17 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                     <div className="flex items-start gap-2">
                         <Clock3 className="mt-0.5 h-4 w-4 text-emerald-700" />
                         <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Muda wa kufikisha</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">{copy('Delivery time', 'Muda wa kufikisha')}</p>
                             <p className="text-[10px] font-semibold leading-4 text-emerald-800/80">
-                                Chagua ahadi moja. Tutaficha vitu visivyoendana nayo ili mteja asione ahadi mbili tofauti.
+                                {copy('Choose one promise. We hide conflicting settings so customers do not see two different promises.', 'Chagua ahadi moja. Tutaficha vitu visivyoendana nayo ili mteja asione ahadi mbili tofauti.')}
                             </p>
                         </div>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                         {DELIVERY_PRESETS.map((preset) => (
                             <button key={preset.key} type="button" onClick={() => applyDeliveryPreset(preset)} className={`rounded-2xl border bg-white px-3 py-2 text-left transition hover:border-emerald-300 ${newZone.delivery_promise_label === preset.buyerLabel ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-emerald-100'}`}>
-                                <span className="block text-xs font-black text-emerald-900">{preset.label}</span>
-                                <span className="mt-0.5 block text-[10px] font-semibold leading-4 text-emerald-700/75">{preset.hint}</span>
+                                <span className="block text-xs font-black text-emerald-900">{copy(preset.englishLabel || preset.buyerLabel, preset.label)}</span>
+                                <span className="mt-0.5 block text-[10px] font-semibold leading-4 text-emerald-700/75">{copy(preset.englishHint || preset.hint, preset.hint)}</span>
                             </button>
                         ))}
                     </div>
@@ -793,55 +795,55 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                         <div className="space-y-3">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                 <label className="space-y-1">
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Kuandaa kuanzia</span>
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{copy('Preparation from', 'Kuandaa kuanzia')}</span>
                                     <Input type="number" min="0" placeholder="0" value={newZone.handling_min_days} onChange={e => setNewZone({ ...newZone, handling_min_days: e.target.value })} className="h-10 rounded-xl bg-white text-xs font-bold" />
-                                    <span className="block text-[9px] font-semibold text-muted-foreground">Siku kabla mzigo haujatoka dukani.</span>
+                                    <span className="block text-[9px] font-semibold text-muted-foreground">{copy('Days before the parcel leaves the shop.', 'Siku kabla mzigo haujatoka dukani.')}</span>
                                 </label>
                                 <label className="space-y-1">
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Kuandaa mpaka</span>
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{copy('Preparation until', 'Kuandaa mpaka')}</span>
                                     <Input type="number" min="0" placeholder="1" value={newZone.handling_max_days} onChange={e => setNewZone({ ...newZone, handling_max_days: e.target.value })} className="h-10 rounded-xl bg-white text-xs font-bold" />
                                 </label>
                                 <label className="space-y-1">
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Safari kuanzia</span>
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{copy('Transit from', 'Safari kuanzia')}</span>
                                     <Input type="number" min="0" placeholder={newZone.delivery_type === 'local_boda' ? '0' : '1'} value={newZone.transit_min_days} onChange={e => setNewZone({ ...newZone, transit_min_days: e.target.value })} className="h-10 rounded-xl bg-white text-xs font-bold" />
-                                    <span className="block text-[9px] font-semibold text-muted-foreground">Siku za boda/basi/cargo kufikisha.</span>
+                                    <span className="block text-[9px] font-semibold text-muted-foreground">{copy('Days for motorbike/bus/cargo delivery.', 'Siku za boda/basi/cargo kufikisha.')}</span>
                                 </label>
                                 <label className="space-y-1">
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Safari mpaka</span>
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{copy('Transit until', 'Safari mpaka')}</span>
                                     <Input type="number" min="0" placeholder={newZone.delivery_type === 'local_boda' ? '0' : '4'} value={newZone.transit_max_days} onChange={e => setNewZone({ ...newZone, transit_max_days: e.target.value })} className="h-10 rounded-xl bg-white text-xs font-bold" />
                                 </label>
                             </div>
                             {shouldShowCutoff(newZone) && (
                                 <label className="block space-y-1">
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Muda wa mwisho mteja kuweka oda ili kutumwa siku hiyo hiyo</span>
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{copy('Latest order time for same-day dispatch', 'Muda wa mwisho mteja kuweka oda ili kutumwa siku hiyo hiyo')}</span>
                                     <Input type="time" value={newZone.cutoff_time} onChange={e => setNewZone({ ...newZone, cutoff_time: e.target.value })} className="h-10 rounded-xl bg-white text-xs font-bold" />
-                                    <span className="block text-[9px] font-semibold text-muted-foreground">Inaonekana tu kwa ahadi ya leo leo. Mf. oda kabla ya saa 8 mchana.</span>
+                                    <span className="block text-[9px] font-semibold text-muted-foreground">{copy('Shown only for same-day promises. E.g. orders before 2 PM.', 'Inaonekana tu kwa ahadi ya leo leo. Mf. oda kabla ya saa 8 mchana.')}</span>
                                 </label>
                             )}
                         </div>
                     ) : (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-900">
-                            Umechagua kuthibitisha muda kwenye chat, kwa hiyo siku na deadline ya saa zimefichwa.
+                            {copy('You chose to confirm the time in chat, so day ranges and time deadlines are hidden.', 'Umechagua kuthibitisha muda kwenye chat, kwa hiyo siku na deadline ya saa zimefichwa.')}
                         </div>
                     )}
                     <div className="grid grid-cols-1 gap-2">
                         <label className="space-y-1">
-                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Maneno atakayoona mteja</span>
-                            <Input placeholder="Mf. Leo leo Dar / Siku 2-4 kwa basi" value={newZone.delivery_promise_label} onChange={e => setNewZone({ ...newZone, delivery_promise_label: e.target.value })} className="h-10 rounded-xl bg-white text-xs font-bold" />
+                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{copy('Customer-facing wording', 'Maneno atakayoona mteja')}</span>
+                            <Input placeholder={copy('E.g. Same day Dar / 2-4 days by bus', 'Mf. Leo leo Dar / Siku 2-4 kwa basi')} value={newZone.delivery_promise_label} onChange={e => setNewZone({ ...newZone, delivery_promise_label: e.target.value })} className="h-10 rounded-xl bg-white text-xs font-bold" />
                         </label>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <button type="button" onClick={() => setNewZone({ ...newZone, business_days_only: !newZone.business_days_only })} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${newZone.business_days_only ? 'border-emerald-200 bg-white text-emerald-800' : 'border-slate-200 bg-white/60 text-slate-500'}`}>
-                            {newZone.business_days_only ? 'Siku za kazi' : 'Kila siku'}
+                            {newZone.business_days_only ? copy('Business days', 'Siku za kazi') : copy('Every day', 'Kila siku')}
                         </button>
                         <button type="button" onClick={() => setNewZone({ ...newZone, requires_delivery_confirmation: !newZone.requires_delivery_confirmation, cutoff_time: newZone.requires_delivery_confirmation ? newZone.cutoff_time : '' })} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${newZone.requires_delivery_confirmation ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white/60 text-slate-500'}`}>
-                            {newZone.requires_delivery_confirmation ? 'Tuta-confirm kwa chat' : 'Mteja aone estimate'}
+                            {newZone.requires_delivery_confirmation ? copy('Confirm in chat', 'Tuta-confirm kwa chat') : copy('Show estimate to customer', 'Mteja aone estimate')}
                         </button>
                     </div>
                     <div className="rounded-2xl border border-emerald-100 bg-white px-3 py-2 text-[11px] font-bold leading-5 text-emerald-900">
                         {deliveryPreviewText}
                     </div>
-                    <Input placeholder="Ujumbe wa ziada, mf. Ofisi ya basi itathibitishwa baada ya oda" value={newZone.delivery_promise_note} onChange={e => setNewZone({ ...newZone, delivery_promise_note: e.target.value })} className="h-10 rounded-xl bg-white text-xs font-bold" />
+                    <Input placeholder={copy('Additional note, e.g. bus office confirmed after order', 'Ujumbe wa ziada, mf. Ofisi ya basi itathibitishwa baada ya oda')} value={newZone.delivery_promise_note} onChange={e => setNewZone({ ...newZone, delivery_promise_note: e.target.value })} className="h-10 rounded-xl bg-white text-xs font-bold" />
                 </div>
 
                 {newZone.delivery_type === 'local_boda' && (
@@ -849,13 +851,13 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {!fixedLocationId ? (
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Chagua Eneo la Duka</label>
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Choose shop location', 'Chagua Eneo la Duka')}</label>
                                     <select
                                         value={newZone.merchant_location_id}
                                         onChange={e => setNewZone({ ...newZone, merchant_location_id: e.target.value })}
                                         className="flex h-11 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                                     >
-                                        <option value="" disabled>Chagua duka...</option>
+                                        <option value="" disabled>{copy('Choose shop...', 'Chagua duka...')}</option>
                                         {locations.map(loc => (
                                             <option key={loc.id} value={loc.id}>{loc.name}</option>
                                         ))}
@@ -863,23 +865,23 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                 </div>
                             ) : (
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Eneo la Duka</label>
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Shop location', 'Eneo la Duka')}</label>
                                     <div className="h-11 flex items-center px-4 bg-white border border-brand-200 rounded-xl text-xs font-bold text-brand-800">
                                         <MapPin className="h-3 w-3 mr-2 text-brand-500" /> {selectedShop?.name}
                                     </div>
                                 </div>
                             )}
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tafuta Eneo la Mwisho kwa Umbali</label>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Find end location for distance', 'Tafuta Eneo la Mwisho kwa Umbali')}</label>
                                 {isLoaded ? (
                                     <Autocomplete onLoad={onLoad} onPlaceChanged={onPlaceChanged}>
                                         <Input
-                                            placeholder="Mf. Kariakoo, Posta, Kimara..."
+                                            placeholder={copy('E.g. Kariakoo, Posta, Kimara...', 'Mf. Kariakoo, Posta, Kimara...')}
                                             className="bg-white rounded-xl h-11"
                                         />
                                     </Autocomplete>
                                 ) : (
-                                    <Input disabled placeholder="Inapakia ramani..." className="bg-white rounded-xl h-11" />
+                                    <Input disabled placeholder={copy('Loading map...', 'Inapakia ramani...')} className="bg-white rounded-xl h-11" />
                                 )}
                             </div>
                         </div>
@@ -895,7 +897,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                     {selectedShop && (
                                         <Marker
                                             position={{ lat: Number(selectedShop.latitude), lng: Number(selectedShop.longitude) }}
-                                            label="DUKA"
+                                            label={copy('SHOP', 'DUKA')}
                                         />
                                     )}
                                     {newZone.reference_lat && (
@@ -903,7 +905,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                             position={{ lat: Number(newZone.reference_lat), lng: Number(newZone.reference_lng) }}
                                             draggable={true}
                                             onDragEnd={onMarkerDragEnd}
-                                            label="MWISHO"
+                                            label={copy('END', 'MWISHO')}
                                         />
                                     )}
                                     {selectedShop && newZone.max_distance_km && (
@@ -927,15 +929,15 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                 </GoogleMap>
                             ) : (
                                 <div className="w-full h-[200px] bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                                    Weka VITE_GOOGLE_MAPS_API_KEY kuona ramani
+                                    {copy('Set VITE_GOOGLE_MAPS_API_KEY to view the map.', 'Weka VITE_GOOGLE_MAPS_API_KEY kuona ramani.')}
                                 </div>
                             )}
                             <div className="absolute bottom-2 left-2 right-2 bg-white/90 backdrop-blur-sm p-2 rounded-lg border shadow-sm flex items-center">
                                 <p className="text-[10px] font-bold text-brand-800">
-                                    {newZone.reference_name ? `Eneo: ${newZone.reference_name}` : 'Tafuta au angusha pini kuweka umbali wa mwisho.'}
+                                    {newZone.reference_name ? `${copy('Area', 'Eneo')}: ${newZone.reference_name}` : copy('Search or drop a pin to set the end distance.', 'Tafuta au angusha pini kuweka umbali wa mwisho.')}
                                 </p>
                                 {newZone.max_distance_km && (
-                                    <p className="text-[10px] font-black text-brand-600 ml-6">Umbali: {Number(newZone.max_distance_km).toFixed(1)} km</p>
+                                    <p className="text-[10px] font-black text-brand-600 ml-6">{copy('Distance', 'Umbali')}: {Number(newZone.max_distance_km).toFixed(1)} km</p>
                                 )}
                             </div>
                         </div>
@@ -947,20 +949,20 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                         <div className="space-y-3">
                             <div className="flex items-start flex-col gap-1 ">
                                 <label className="text-[10px] font-black text-brand-700 uppercase tracking-widest">
-                                    {newZone.coverage_scope === 'international' ? 'Nchi ya mteja' : 'Coverage ya mikoani'}
+                                    {newZone.coverage_scope === 'international' ? copy('Customer country', 'Nchi ya mteja') : copy('Intercity coverage', 'Coverage ya mikoani')}
                                 </label>
                                 <span className="text-[10px] font-medium italic">
                                     {newZone.coverage_scope === 'international'
-                                        ? 'Weka nchi moja kwa kila template. Ukiuza Kenya na Uganda, tengeneza njia mbili tofauti ili muda na gharama ziwe sahihi.'
-                                        : 'Unaweza kuweka mji/mkoa maalum au kuwasha nchi nzima kama customer yuko nje ya in-city delivery.'}
+                                        ? copy('Set one country per template. If you sell to Kenya and Uganda, create two routes so time and cost stay accurate.', 'Weka nchi moja kwa kila template. Ukiuza Kenya na Uganda, tengeneza njia mbili tofauti ili muda na gharama ziwe sahihi.')
+                                        : copy('Set a specific city/region or enable countrywide delivery when the customer is outside the city area.', 'Unaweza kuweka mji/mkoa maalum au kuwasha nchi nzima kama customer yuko nje ya in-city delivery.')}
                                 </span>
                             </div>
 
                             {coverageMode === 'inter_city' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     {[
-                                        { key: 'city_region', title: 'Miji au mikoa maalum', hint: 'Mf. Morogoro, Dodoma, Mwanza. Weka Mkoa mmoja then hifadhi njia na uweke mkoa mwingine hadi mikoa yote unayofanya delivery iwekwe, wateja wa mikoa hiyo wataoneshwa kuwa delivery ipo' },
-                                        { key: 'countrywide', title: 'Nchi nzima', hint: 'Chagua kama delivery unafanya nchi nzima.' },
+                                        { key: 'city_region', title: copy('Specific cities or regions', 'Miji au mikoa maalum'), hint: copy('E.g. Morogoro, Dodoma, Mwanza. Save one region at a time until all delivery areas are added.', 'Mf. Morogoro, Dodoma, Mwanza. Weka Mkoa mmoja then hifadhi njia na uweke mkoa mwingine hadi mikoa yote unayofanya delivery iwekwe, wateja wa mikoa hiyo wataoneshwa kuwa delivery ipo') },
+                                        { key: 'countrywide', title: copy('Countrywide', 'Nchi nzima'), hint: copy('Choose this if you deliver across the whole country.', 'Chagua kama delivery unafanya nchi nzima.') },
                                     ].map((scope) => (
                                         <button
                                             key={scope.key}
@@ -984,7 +986,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
 
                             {!isShippingSectionEnabled(newZone) && (
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-900">
-                                    Sehemu hii imezimwa kwenye template hii. Iwashe kwenye switches za template hapo juu kabla ya kuhifadhi njia.
+                                    {copy('This section is disabled in this template. Enable it in the switches above before saving a route.', 'Sehemu hii imezimwa kwenye template hii. Iwashe kwenye switches za template hapo juu kabla ya kuhifadhi njia.')}
                                 </div>
                             )}
 
@@ -1001,7 +1003,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                     }}
                                     className="h-11 w-full rounded-xl border border-brand-200 bg-white px-3 text-sm font-bold text-brand-900"
                                 >
-                                    <option value="">Chagua nchi, mf. Kenya, Uganda, Rwanda</option>
+                                    <option value="">{copy('Choose a country, e.g. Kenya, Uganda, Rwanda', 'Chagua nchi, mf. Kenya, Uganda, Rwanda')}</option>
                                     {countries.map(country => (
                                         <option key={country.id} value={country.id}>
                                             {country.name}{countryCodeById(country.id) ? ` (${countryCodeById(country.id)})` : ''}
@@ -1021,7 +1023,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                     }}
                                     className="h-11 w-full rounded-xl border border-brand-200 bg-white px-3 text-sm font-bold text-brand-900"
                                 >
-                                    <option value="">Chagua nchi ya biashara</option>
+                                    <option value="">{copy('Choose business country', 'Chagua nchi ya biashara')}</option>
                                     {countries.map(country => (
                                         <option key={country.id} value={country.id}>
                                             {country.name}{countryCodeById(country.id) ? ` (${countryCodeById(country.id)})` : ''}
@@ -1036,7 +1038,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                             onPlaceChanged={handleIntercityDestinationChanged}
                                         >
                                             <Input
-                                                placeholder="Tafuta mkoa/mji, mf. Morogoro, Dodoma, Mwanza"
+                                                placeholder={copy('Search region/city, e.g. Morogoro, Dodoma, Mwanza', 'Tafuta mkoa/mji, mf. Morogoro, Dodoma, Mwanza')}
                                                 value={hotspotSearch}
                                                 onChange={e => setHotspotSearch(e.target.value)}
                                                 className="bg-white border-brand-200 rounded-xl h-11 text-sm font-medium"
@@ -1046,7 +1048,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                 </div>
                             ) : (
                                 <Input
-                                    placeholder="Andika mkoa/mji, mf. Morogoro, Dodoma, Mwanza"
+                                    placeholder={copy('Enter region/city, e.g. Morogoro, Dodoma, Mwanza', 'Andika mkoa/mji, mf. Morogoro, Dodoma, Mwanza')}
                                     value={newZone.zone_name}
                                     onChange={e => setNewZone({
                                         ...newZone,
@@ -1068,8 +1070,8 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                             <p className="text-xs font-bold text-brand-900 truncate">{newZone.zone_name || newZone.destination_country || newZone.destination_city || newZone.destination_region || newZone.reference_name}</p>
                                             <p className="text-[10px] text-brand-700/70 truncate">
                                                 {intercityFeeKnown && Number(newZone.flat_rate_fee || 0) > 0
-                                                    ? `Mteja ataona TZS ${Number(newZone.flat_rate_fee || 0).toLocaleString()}`
-                                                    : 'Gharama itathibitishwa kwenye order chat; waybill itaonyesha pickup/drop-off halisi.'}
+                                                    ? copy(`Customer sees TZS ${Number(newZone.flat_rate_fee || 0).toLocaleString()}`, `Mteja ataona TZS ${Number(newZone.flat_rate_fee || 0).toLocaleString()}`)
+                                                    : copy('Cost is confirmed in the order chat; the waybill will show the actual pickup/drop-off.', 'Gharama itathibitishwa kwenye order chat; waybill itaonyesha pickup/drop-off halisi.')}
                                             </p>
                                         </div>
                                     </div>
@@ -1081,18 +1083,18 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
 
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-900">Gharama ya usafiri</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-900">{copy('Shipping cost', 'Gharama ya usafiri')}</p>
                         <p className="mt-1 text-[10px] font-semibold leading-4 text-slate-500">
-                            Hii ndiyo gharama ambayo mteja ataona kwenye checkout kwa njia hii.
+                            {copy('This is the cost customers will see at checkout for this method.', 'Hii ndiyo gharama ambayo mteja ataona kwenye checkout kwa njia hii.')}
                         </p>
                     </div>
                     {newZone.delivery_type !== 'intercity_bus' ? (
                         <label className="block space-y-1">
-                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Gharama ya usafiri (TZS)</span>
+                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{copy('Shipping cost (TZS)', 'Gharama ya usafiri (TZS)')}</span>
                             <Input
                                 type="number"
                                 min="0"
-                                placeholder="0 maana yake ni bure"
+                                placeholder={copy('0 means free', '0 maana yake ni bure')}
                                 value={newZone.flat_rate_fee}
                                 onChange={e => setNewZone({ ...newZone, flat_rate_fee: e.target.value })}
                                 required
@@ -1115,45 +1117,45 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                 }}
                                 className={`flex h-11 w-full items-center justify-between rounded-xl border px-3 text-left text-xs font-black uppercase tracking-wider ${intercityFeeKnown ? 'border-brand-300 bg-brand-50 text-brand-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}
                             >
-                                <span>{intercityFeeKnown ? 'Najua gharama ya destination hii' : 'Gharama itathibitishwa kwenye chat'}</span>
+                                <span>{intercityFeeKnown ? copy('I know this destination cost', 'Najua gharama ya destination hii') : copy('Cost will be confirmed in chat', 'Gharama itathibitishwa kwenye chat')}</span>
                                 <span className={`h-5 w-9 rounded-full p-0.5 transition ${intercityFeeKnown ? 'bg-brand-600' : 'bg-amber-300'}`}>
                                     <span className={`block h-4 w-4 rounded-full bg-white transition ${intercityFeeKnown ? 'translate-x-4' : ''}`} />
                                 </span>
                             </button>
                             <p className="text-[10px] font-semibold text-muted-foreground leading-4">
-                                Kama hujui bei kwa sababu ya uzito au msafirishaji, acha ithibitishwe kwenye order chat.
+                                {copy('If the price depends on weight or the carrier, leave it to be confirmed in the order chat.', 'Kama hujui bei kwa sababu ya uzito au msafirishaji, acha ithibitishwe kwenye order chat.')}
                             </p>
                             {intercityFeeKnown && (
                                 <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-3 space-y-3">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                                         <label className="space-y-1">
-                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">First mile</span>
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{copy('First mile', 'First mile')}</span>
                                             <Input
                                                 type="number"
                                                 min="0"
-                                                placeholder="Dukani -> ofisi"
+                                                placeholder={copy('Shop -> office', 'Dukani -> ofisi')}
                                                 value={intercityFeeParts.first_mile_fee}
                                                 onChange={e => handleIntercityFeePartChange('first_mile_fee', e.target.value)}
                                                 className="h-10 rounded-xl bg-white text-xs font-bold"
                                             />
                                         </label>
                                         <label className="space-y-1">
-                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Transport</span>
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{copy('Transport', 'Usafiri')}</span>
                                             <Input
                                                 type="number"
                                                 min="0"
-                                                placeholder="Basi/lori"
+                                                placeholder={copy('Bus/truck', 'Basi/lori')}
                                                 value={intercityFeeParts.transport_fee}
                                                 onChange={e => handleIntercityFeePartChange('transport_fee', e.target.value)}
                                                 className="h-10 rounded-xl bg-white text-xs font-bold"
                                             />
                                         </label>
                                         <label className="space-y-1">
-                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Handling</span>
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{copy('Handling', 'Ushughulikiaji')}</span>
                                             <Input
                                                 type="number"
                                                 min="0"
-                                                placeholder="Packaging"
+                                                placeholder={copy('Packaging', 'Packaging')}
                                                 value={intercityFeeParts.handling_fee}
                                                 onChange={e => handleIntercityFeePartChange('handling_fee', e.target.value)}
                                                 className="h-10 rounded-xl bg-white text-xs font-bold"
@@ -1162,7 +1164,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                     </div>
                                     {intercityFeeTotal > 0 && (
                                         <div className="flex items-center justify-between rounded-xl bg-brand-900 px-3 py-2 text-white">
-                                            <span className="text-[10px] font-black uppercase tracking-widest">Total inayohifadhiwa</span>
+                                            <span className="text-[10px] font-black uppercase tracking-widest">{copy('Saved total', 'Total inayohifadhiwa')}</span>
                                             <span className="text-sm font-black">TZS {intercityFeeTotal.toLocaleString()}</span>
                                         </div>
                                     )}
@@ -1174,7 +1176,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
 
                 <Button type="submit" disabled={isSaving} className={`w-full ${editingId ? 'bg-brand-600 hover:bg-brand-700' : 'bg-slate-900 hover:bg-slate-800'} h-11 rounded-xl font-black uppercase tracking-widest flex gap-2 shadow-lg ${editingId ? 'shadow-brand-600/20' : 'shadow-slate-900/20'} text-sm`}>
                     {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : (editingId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />)}
-                    {editingId ? 'SASISHA NJIA' : 'HIFADHI NJIA'}
+                    {editingId ? copy('UPDATE METHOD', 'SASISHA NJIA') : copy('SAVE METHOD', 'HIFADHI NJIA')}
                 </Button>
             </form>
         </div>

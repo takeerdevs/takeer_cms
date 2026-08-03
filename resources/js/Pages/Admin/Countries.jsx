@@ -18,8 +18,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useLocale } from '@/lib/i18n';
 
 export default function AdminCountries({ countries }) {
+    const { t, copy } = useLocale();
     const [searchQuery, setSearchQuery] = useState('');
 
 
@@ -30,22 +32,22 @@ export default function AdminCountries({ countries }) {
 
     const toggleStatus = (id) => {
         router.post(`/admin/countries/${id}/toggle`, {}, {
-            onSuccess: () => toast.success('Country status updated'),
+            onSuccess: () => toast.success(copy('Country status updated.', 'Hali ya nchi imesasishwa.')),
         });
     };
 
 
     return (
-        <AdminLayout title="Country Management">
-            <Head title="Admin Countries | Takeer" />
+        <AdminLayout title={t('adminUi.countries')}>
+            <Head title={`${t('adminUi.countries')} | Takeer`} />
 
             <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                            <Globe className="h-6 w-6 text-indigo-700" /> Country Management
+                            <Globe className="h-6 w-6 text-indigo-700" /> {t('adminUi.countries')}
                         </h1>
-                        <p className="text-slate-600 mt-1 text-sm">Manage global availability and country-specific configurations.</p>
+                        <p className="text-slate-600 mt-1 text-sm">{t('adminUi.countriesDescription')}</p>
                     </div>
                 </div>
 
@@ -53,14 +55,14 @@ export default function AdminCountries({ countries }) {
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <Input
-                            placeholder="Search by name or code..."
+                            placeholder={t('adminUi.searchNameCode')}
                             className="pl-10 h-11 border-slate-200 rounded-xl"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
                     <Button variant="outline" className="h-11 px-5 rounded-xl border-slate-200 text-slate-600 gap-2">
-                        <Filter className="h-4 w-4" /> Filters
+                        <Filter className="h-4 w-4" /> {copy('Filters', 'Filters')}
                     </Button>
                 </div>
 
@@ -101,9 +103,9 @@ export default function AdminCountries({ countries }) {
                                                     : "bg-slate-100 text-slate-400 border-slate-200"
                                             )}>
                                                 {country.is_active ? (
-                                                    <><CheckCircle2 className="h-3 w-3" /> Active</>
+                                                    <><CheckCircle2 className="h-3 w-3" /> {copy('Active', 'Hai')}</>
                                                 ) : (
-                                                    <><XCircle className="h-3 w-3" /> Disabled</>
+                                                    <><XCircle className="h-3 w-3" /> {copy('Disabled', 'Imezimwa')}</>
                                                 )}
                                             </div>
                                         </div>
@@ -137,4 +139,3 @@ export default function AdminCountries({ countries }) {
         </AdminLayout>
     );
 }
-

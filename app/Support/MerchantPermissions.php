@@ -46,10 +46,6 @@ class MerchantPermissions
                 'label' => 'Orders',
                 'actions' => ['view', 'update', 'dispatch', 'verify_pickup', 'refund', 'export'],
             ],
-            'wallet' => [
-                'label' => 'Wallet',
-                'actions' => ['view', 'withdraw', 'ledger'],
-            ],
             'bookkeeping' => [
                 'label' => 'Bookkeeping',
                 'actions' => ['view', 'create', 'update', 'delete', 'void', 'review', 'reconcile', 'export', 'lock_period'],
@@ -118,8 +114,6 @@ class MerchantPermissions
                 'orders.update',
                 'orders.dispatch',
                 'orders.verify_pickup',
-                'wallet.view',
-                'wallet.ledger',
                 'bookkeeping.view',
                 'bookkeeping.create',
                 'bookkeeping.update',
@@ -205,8 +199,6 @@ class MerchantPermissions
             'ACCOUNTANT' => [
                 'dashboard.view',
                 'orders.view',
-                'wallet.view',
-                'wallet.ledger',
                 'bookkeeping.view',
                 'bookkeeping.create',
                 'bookkeeping.update',

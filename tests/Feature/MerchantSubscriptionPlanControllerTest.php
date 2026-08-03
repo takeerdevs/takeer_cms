@@ -121,7 +121,7 @@ class MerchantSubscriptionPlanControllerTest extends TestCase
             'purchasable_id' => $plan->id,
             'unit_price' => 200,
             'total_paid' => 200,
-            'payment_status' => 'resolved_merchant_paid',
+            'payment_status' => 'payment_confirmed',
             'transaction_ref' => 'sub-order-display',
         ]);
 
@@ -131,7 +131,7 @@ class MerchantSubscriptionPlanControllerTest extends TestCase
             ->assertJsonPath('display_title', 'Premium Circle')
             ->assertJsonPath('display_kind', 'subscription_plan')
             ->assertJsonPath('display_icon', 'crown')
-            ->assertJsonPath('is_escrow_order', false);
+            ->assertJsonPath('is_protected_order', false);
     }
 
     public function test_merchant_cannot_directly_pause_or_cancel_paid_subscription_access(): void
@@ -155,7 +155,7 @@ class MerchantSubscriptionPlanControllerTest extends TestCase
                 'status' => 'cancelled',
             ])
             ->assertForbidden()
-            ->assertJsonPath('message', 'Subscription access changes are handled by Takeer support to protect paid subscribers and escrow records.');
+            ->assertJsonPath('message', 'Subscription access changes are handled by Takeer support to protect paid subscribers and provider settlement records.');
 
         $this->assertDatabaseHas('user_subscriptions', [
             'id' => $subscription->id,
@@ -197,7 +197,7 @@ class MerchantSubscriptionPlanControllerTest extends TestCase
             'purchasable_id' => $plan->id,
             'unit_price' => 200,
             'total_paid' => 200,
-            'payment_status' => 'resolved_merchant_paid',
+            'payment_status' => 'payment_confirmed',
             'transaction_ref' => 'renew-test-1',
         ]);
 
@@ -232,7 +232,7 @@ class MerchantSubscriptionPlanControllerTest extends TestCase
             'purchasable_id' => $content->id,
             'unit_price' => 500,
             'total_paid' => 500,
-            'payment_status' => 'resolved_merchant_paid',
+            'payment_status' => 'payment_confirmed',
             'transaction_ref' => 'content-order-1',
         ]);
         $subscription = UserSubscription::query()->create([
@@ -433,7 +433,7 @@ class MerchantSubscriptionPlanControllerTest extends TestCase
             'purchasable_id' => $plan->id,
             'unit_price' => 200,
             'total_paid' => 200,
-            'payment_status' => 'resolved_merchant_paid',
+            'payment_status' => 'payment_confirmed',
             'transaction_ref' => 'legacy-subscription-order',
         ]);
 
@@ -511,7 +511,7 @@ class MerchantSubscriptionPlanControllerTest extends TestCase
             'purchasable_id' => $plan->id,
             'unit_price' => 200,
             'total_paid' => 200,
-            'payment_status' => 'resolved_merchant_paid',
+            'payment_status' => 'payment_confirmed',
             'transaction_ref' => 'legacy-library-subscription-order',
         ]);
 

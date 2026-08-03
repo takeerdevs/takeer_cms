@@ -42,8 +42,10 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { productQuantityLabel, productStockLabel, productUnitLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 export default function PosTerminal({ merchant }) {
+    const { copy } = useLocale();
     const [hasTerminalSession, setHasTerminalSession] = useState(false);
     const [checkedTerminalSession, setCheckedTerminalSession] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -251,9 +253,9 @@ export default function PosTerminal({ merchant }) {
         try {
             const res = await window.axios.post('/api/retail/pos/lookup', { code: pickupCode });
             handleLoadOrder(res.data.data);
-            toast.success('Oda imepatikana!');
+            toast.success(copy('Order found!', 'Oda imepatikana!'));
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Oda haikupatikana.');
+            toast.error(err.response?.data?.message || copy('Order not found.', 'Oda haikupatikana.'));
         } finally {
             setSearchingCode(false);
         }
@@ -262,7 +264,7 @@ export default function PosTerminal({ merchant }) {
     const confirmReceiptFromPending = async (order) => {
         const receivable = receivableTransferTasks(order);
         if (receivable.length === 0) {
-            toast.info(`Verify at ${transferDestinationLabel(order)}.`);
+            toast.info(copy(`Verify at ${transferDestinationLabel(order)}.`, `Thibitisha kwenye ${transferDestinationLabel(order)}.`));
             return;
         }
 
@@ -271,10 +273,10 @@ export default function PosTerminal({ merchant }) {
             for (const task of receivable) {
                 await window.axios.patch(`/api/retail/transfers/${task.id}/receive`, {});
             }
-            toast.success('Bidhaa zimepokelewa kwenye shop.');
+            toast.success(copy('Products received at the shop.', 'Bidhaa zimepokelewa kwenye duka.'));
             await fetchPendingOrders();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindikana kuthibitisha mapokezi.');
+            toast.error(err.response?.data?.message || copy('Failed to confirm receipt.', 'Imeshindikana kuthibitisha mapokezi.'));
         } finally {
             setProcessing(false);
         }
@@ -309,7 +311,7 @@ export default function PosTerminal({ merchant }) {
         setAmountPaid(String(resolvedPaid || 0));
 
         if (order.manager_notes) {
-            toast.info(`Maelezo ya Meneja: ${order.manager_notes}`);
+            toast.info(`${copy('Manager notes:', 'Maelezo ya Meneja:')} ${order.manager_notes}`);
         }
 
         setLoadedOrderId(order.id);
@@ -367,7 +369,7 @@ export default function PosTerminal({ merchant }) {
         if (!requiresCustomerInfo) return true;
 
         if (!customerName.trim() || !customerPhone.trim()) {
-            toast.error('Customer name and phone are required for Pay Later or any sale with a remaining balance.');
+            toast.error(copy('Customer name and phone are required for Pay Later or any sale with a remaining balance.', 'Jina na simu ya mteja vinahitajika kwa Lipa Baadaye au uuzaji wenye salio.'));
             return false;
         }
 
@@ -442,7 +444,7 @@ export default function PosTerminal({ merchant }) {
         const currentInCart = existing ? existing.quantity : 0;
 
         if (available <= 0 || currentInCart >= available) {
-            toast.error(`Stock is insufficient. Available: ${available}`);
+                    toast.error(`${copy('Stock is insufficient. Available:', 'Stock haitoshi. Iliyopo:')} ${available}`);
             return;
         }
 
@@ -498,7 +500,7 @@ export default function PosTerminal({ merchant }) {
 
                 // Prevent exceeding available stock
                 if (delta > 0 && newQty > item.max_stock) {
-                    toast.error(`Cannot exceed available stock (${item.max_stock})`);
+                    toast.error(`${copy('Cannot exceed available stock', 'Haiwezi kuzidi stock iliyopo')} (${item.max_stock})`);
                     return item;
                 }
 
@@ -513,7 +515,7 @@ export default function PosTerminal({ merchant }) {
         setCart(cart.map(item => {
             if (item.product_id === productId && (item.variant_id || null) === (variantId || null)) {
                 if (parsed > item.max_stock) {
-                    toast.error(`Cannot exceed available stock (${productQuantityLabel(item.product || item, item.max_stock)})`);
+                    toast.error(`${copy('Cannot exceed available stock', 'Haiwezi kuzidi stock iliyopo')} (${productQuantityLabel(item.product || item, item.max_stock)})`);
                     return item;
                 }
 
@@ -547,7 +549,7 @@ export default function PosTerminal({ merchant }) {
             return { ...item, source_location_id: fallbackStoreId };
         }));
 
-        toast.success('Auto allocation imetumika: Shop kwanza, kisha Store.');
+        toast.success(copy('Auto allocation applied: Shop first, then Store.', 'Ugawaji wa kiotomatiki umetumika: Duka kwanza, kisha Store.'));
     };
 
     const openCheckout = () => {
@@ -557,7 +559,7 @@ export default function PosTerminal({ merchant }) {
     };
 
     const requestRemoteApproval = async () => {
-        if (!selectedStaff) return alert('Chagua mhudumu.');
+        if (!selectedStaff) return alert(copy('Choose a staff member.', 'Chagua mhudumu.'));
         if (!validateCustomerInfoForCredit()) return;
 
         setRequestingRemote(true);
@@ -583,9 +585,9 @@ export default function PosTerminal({ merchant }) {
             });
 
             setApprovalRequested(true);
-            toast.success('Ombi la idhini limetumwa kwa Meneja!');
+            toast.success(copy('Approval request sent to the Manager!', 'Ombi la idhini limetumwa kwa Meneja!'));
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindwa kutuma ombi.');
+            toast.error(err.response?.data?.message || copy('Failed to send request.', 'Imeshindwa kutuma ombi.'));
         } finally {
             setRequestingRemote(false);
         }
@@ -593,7 +595,7 @@ export default function PosTerminal({ merchant }) {
 
     const handleCheckout = async () => {
         if (!selectedStaff) {
-            alert('Tafadhali chagua mhudumu (Staff) kwanza.');
+            alert(copy('Please choose a staff member first.', 'Tafadhali chagua mhudumu (Staff) kwanza.'));
             return;
         }
 
@@ -632,7 +634,7 @@ export default function PosTerminal({ merchant }) {
             setManagerPin('');
             setIsCheckoutModalOpen(false);
             if (hasTransferRequests) {
-                toast.success('Ombi la bidhaa kutoka Store limetumwa. Oda ipo Pending hadi bidhaa zipokelewe.');
+                toast.success(copy('Store stock request sent. The order stays Pending until the stock is received.', 'Ombi la bidhaa kutoka Store limetumwa. Oda ipo Pending hadi bidhaa zipokelewe.'));
                 setIsOrdersDrawerOpen(true);
             } else {
                 setIsSuccessModalOpen(true);
@@ -687,7 +689,7 @@ export default function PosTerminal({ merchant }) {
         <div className={`flex flex-col h-full bg-white ${isMobile ? '' : 'shadow-2xl'}`}>
             <div className="p-6 border-b border-brand-50 flex items-center justify-between">
                 <h2 className="font-black text-xl flex items-center gap-2">
-                    Current Order <span className="h-6 w-6 rounded-full bg-brand-100 text-brand-600 text-xs flex items-center justify-center">{cart.length}</span>
+                            {copy('Current order', 'Oda ya sasa')} <span className="h-6 w-6 rounded-full bg-brand-100 text-brand-600 text-xs flex items-center justify-center">{cart.length}</span>
                 </h2>
                 {!isMobile ? (
                     <Button variant="ghost" size="icon" className="text-muted-foreground" onClick={() => setCart([])}>
@@ -735,11 +737,11 @@ export default function PosTerminal({ merchant }) {
                                     ].join(' ')}
                                 />
                                 {item.is_overridden && (
-                                    <span className="text-[8px] font-bold bg-amber-100 text-amber-700 px-1 rounded">Negotiated</span>
+                                    <span className="text-[8px] font-bold bg-amber-100 text-amber-700 px-1 rounded">{copy('Negotiated', 'Imekubaliwa')}</span>
                                 )}
                             </div>
                             <div className="mt-2">
-                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-500">Toa Stock Kutoka</label>
+                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-500">{copy('Take Stock From', 'Toa Stock Kutoka')}</label>
                                 <select
                                     value={item.source_location_id ?? ''}
                                     onChange={(e) => updateItemSource(item.product_id, item.variant_id, e.target.value)}
@@ -784,7 +786,7 @@ export default function PosTerminal({ merchant }) {
                 {cart.length === 0 && (
                     <div className="h-full flex flex-col items-center justify-center text-center py-20 opacity-40">
                         <ShoppingCart className="h-16 w-16 mb-4" />
-                        <p className="text-sm font-bold">Cart is empty</p>
+                        <p className="text-sm font-bold">{copy('Cart is empty', 'Kikapu kiko wazi')}</p>
                     </div>
                 )}
             </div>
@@ -793,11 +795,11 @@ export default function PosTerminal({ merchant }) {
                 <div className="space-y-4">
                     <div className="flex items-center justify-between gap-3">
                         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                            Customer Information {requiresCustomerInfo ? '(Required)' : '(Optional)'}
+                            {copy('Customer Information', 'Taarifa za mteja')} {requiresCustomerInfo ? `(${copy('Required', 'Inahitajika')})` : `(${copy('Optional', 'Si lazima')})`}
                         </p>
                         {requiresCustomerInfo && (
                             <span className="text-[9px] font-black uppercase tracking-widest text-amber-700 bg-amber-100 px-2 py-1 rounded-full">
-                                Credit
+                                {copy('Credit', 'Mkopo')}
                             </span>
                         )}
                     </div>
@@ -806,7 +808,7 @@ export default function PosTerminal({ merchant }) {
                             <div className="relative">
                                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                                 <Input
-                                    placeholder="Customer Name"
+                                    placeholder={copy('Customer Name', 'Jina la Mteja')}
                                     className="pl-9 h-10 rounded-xl text-xs border-brand-100 focus:ring-brand-500"
                                     value={customerName}
                                     onChange={(e) => setCustomerName(e.target.value)}
@@ -818,7 +820,7 @@ export default function PosTerminal({ merchant }) {
                             <div className="relative">
                                 <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                                 <Input
-                                    placeholder="Phone Number"
+                                    placeholder={copy('Phone Number', 'Namba ya Simu')}
                                     className="pl-9 h-10 rounded-xl text-xs border-brand-100 focus:ring-brand-500"
                                     value={customerPhone}
                                     onChange={(e) => setCustomerPhone(e.target.value)}
@@ -835,48 +837,48 @@ export default function PosTerminal({ merchant }) {
                 </div>
 
                 <div className="space-y-3">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Payment Method</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{copy('Payment Method', 'Njia ya Malipo')}</p>
                     <div className="grid grid-cols-2 gap-2">
                         <button
                             className={`flex items-center gap-2 p-3 rounded-xl text-xs font-bold border transition-all ${paymentMode === 'cash' ? 'bg-brand-600 text-white border-brand-600 shadow-md' : 'bg-white border-brand-100 text-muted-foreground hover:border-brand-300'}`}
                             onClick={() => setPaymentMode('cash')}
                         >
-                            <Banknote className="h-4 w-4" /> Cash
+                            <Banknote className="h-4 w-4" /> {copy('Cash', 'Taslimu')}
                         </button>
                         <button
                             className={`flex items-center gap-2 p-3 rounded-xl text-xs font-bold border transition-all ${paymentMode === 'merchant_mm' ? 'bg-brand-600 text-white border-brand-600 shadow-md' : 'bg-white border-brand-100 text-muted-foreground hover:border-brand-300'}`}
                             onClick={() => setPaymentMode('merchant_mm')}
                         >
-                            <Smartphone className="h-4 w-4" /> Mobile
+                            <Smartphone className="h-4 w-4" /> {copy('Mobile', 'Simu')}
                         </button>
                         <button
                             className={`flex items-center gap-2 p-3 rounded-xl text-xs font-bold border transition-all ${paymentMode === 'store_credit' ? 'bg-brand-600 text-white border-brand-600 shadow-md' : 'bg-white border-brand-100 text-muted-foreground hover:border-brand-300'}`}
                             onClick={() => setPaymentMode('store_credit')}
                         >
-                            <UserPlus className="h-4 w-4" /> Pay Later/Advance
+                            <UserPlus className="h-4 w-4" /> {copy('Pay Later/Advance', 'Lipa baadaye/Advance')}
                         </button>
                         <button
-                            className={`flex items-center gap-2 p-3 rounded-xl text-xs font-bold border transition-all ${paymentMode === 'online_escrow' ? 'bg-brand-600 text-white border-brand-600 shadow-md' : 'bg-white border-brand-100 text-muted-foreground hover:border-brand-300'}`}
-                            onClick={() => setPaymentMode('online_escrow')}
+                            className={`flex items-center gap-2 p-3 rounded-xl text-xs font-bold border transition-all ${paymentMode === 'online_psp' ? 'bg-brand-600 text-white border-brand-600 shadow-md' : 'bg-white border-brand-100 text-muted-foreground hover:border-brand-300'}`}
+                            onClick={() => setPaymentMode('online_psp')}
                         >
-                            <CreditCard className="h-4 w-4" /> Card
+                            <CreditCard className="h-4 w-4" /> {copy('Card', 'Kadi')}
                         </button>
                     </div>
                 </div>
 
                 <div className="space-y-4">
                     <div className="flex items-center justify-between text-muted-foreground text-[10px] font-bold uppercase tracking-widest">
-                        <span>Subtotal</span>
+                        <span>{copy('Subtotal', 'Jumla ndogo')}</span>
                         <span>{formatCurrency(totalAmount + totalDiscount)}</span>
                     </div>
                     {totalDiscount > 0 && (
                         <div className="flex items-center justify-between text-amber-600 text-[10px] font-bold uppercase tracking-widest">
-                            <span>Discount</span>
+                            <span>{copy('Discount', 'Punguzo')}</span>
                             <span>- {formatCurrency(totalDiscount)}</span>
                         </div>
                     )}
                     <div className="flex items-center justify-between pt-2 border-t border-brand-100">
-                        <span className="text-muted-foreground text-sm font-bold uppercase tracking-widest">Total</span>
+                        <span className="text-muted-foreground text-sm font-bold uppercase tracking-widest">{copy('Total', 'Jumla')}</span>
                         <span className="text-2xl font-black text-brand-700">{formatCurrency(totalAmount)}</span>
                     </div>
                     <Button
@@ -887,7 +889,7 @@ export default function PosTerminal({ merchant }) {
                         {processing ? (
                             <div className="animate-spin h-6 w-6 border-2 border-white/30 border-t-white rounded-full"></div>
                         ) : (
-                            <>Checkout <CheckCircle className="ml-2 h-5 w-5" /></>
+                            <>{copy('Checkout', 'Lipa')} <CheckCircle className="ml-2 h-5 w-5" /></>
                         )}
                     </Button>
                 </div>
@@ -898,14 +900,14 @@ export default function PosTerminal({ merchant }) {
     if (!checkedTerminalSession || !hasTerminalSession) {
         return (
             <AppLayout hideTabBar>
-                <Head title="Retail POS Terminal" />
+                <Head title={copy('Retail POS Terminal', 'Kituo cha POS cha Rejareja')} />
             </AppLayout>
         );
     }
 
     return (
         <AppLayout hideTabBar>
-            <Head title="Retail POS Terminal" />
+            <Head title={copy('Retail POS Terminal', 'Kituo cha POS cha Rejareja')} />
             <div className="relative min-h-screen">
                 {/* Desktop Layout */}
                 <div className="hidden md:flex min-h-screen">
@@ -915,7 +917,7 @@ export default function PosTerminal({ merchant }) {
                             <div className="relative w-full max-w-md">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="Search product..."
+                                    placeholder={copy('Search product...', 'Tafuta bidhaa...')}
                                     className="pl-9 h-11 rounded-xl bg-white"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -991,7 +993,7 @@ export default function PosTerminal({ merchant }) {
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
-                            placeholder="Search product..."
+                            placeholder={copy('Search product...', 'Tafuta bidhaa...')}
                             className="pl-9 h-11 rounded-xl bg-white"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -1041,7 +1043,7 @@ export default function PosTerminal({ merchant }) {
                             className="flex-1 h-14 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black shadow-lg shadow-brand-600/30 flex items-center justify-center gap-2"
                             onClick={() => setIsCartDrawerOpen(true)}
                         >
-                            Review Order <ShoppingCart className="h-5 w-5" />
+                            {copy('Review order', 'Kagua oda')} <ShoppingCart className="h-5 w-5" />
                             {cart.length > 0 && (
                                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-brand-600 text-[10px] font-black">
                                     {cart.length}
@@ -1079,12 +1081,12 @@ export default function PosTerminal({ merchant }) {
                         {/* Summary */}
                         <div className="bg-gray-50 p-4 rounded-2xl space-y-2 border border-brand-50">
                             <div className="flex justify-between text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                                <span>Jumla ya Oda:</span>
+                        <span>{copy('Order Total:', 'Jumla ya Oda:')}</span>
                                 <span>{formatCurrency(totalAmount)}</span>
                             </div>
                             {!hasTransferRequests && (
                                 <div className="flex justify-between items-center py-2">
-                                    <span className="text-sm font-black">Kiasi kilichopokelewa:</span>
+                                    <span className="text-sm font-black">{copy('Amount received:', 'Kiasi kilichopokelewa:')}</span>
                                     <div className="relative">
                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground">TZS</span>
                                         <input
@@ -1137,28 +1139,28 @@ export default function PosTerminal({ merchant }) {
                                         <div className="h-12 w-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto animate-pulse">
                                             <Smartphone className="h-6 w-6 text-amber-600" />
                                         </div>
-                                        <p className="text-xs font-black text-amber-700 uppercase tracking-widest">Inasubiri Idhini...</p>
-                                        <p className="text-[10px] text-amber-600 font-medium">Ombi limetumwa kwa Meneja. Unaweza kuendelea na mteja mwingine au kusubiri hapa.</p>
+                                        <p className="text-xs font-black text-amber-700 uppercase tracking-widest">{copy('Waiting for Approval...', 'Inasubiri Idhini...')}</p>
+                                        <p className="text-[10px] text-amber-600 font-medium">{copy('Request sent to the Manager. You can continue with another customer or wait here.', 'Ombi limetumwa kwa Meneja. Unaweza kuendelea na mteja mwingine au kusubiri hapa.')}</p>
                                         <Button
                                             variant="outline"
                                             className="w-full rounded-xl border-amber-200 text-amber-700 font-bold"
                                             onClick={() => setIsCheckoutModalOpen(false)}
                                         >
-                                            Funga na Kusubiri
+                                            {copy('Close and wait', 'Funga na Kusubiri')}
                                         </Button>
                                     </div>
                                 ) : (
                                     <>
                                         <div className="flex items-center gap-2 text-amber-700">
                                             <ShieldCheck className="h-5 w-5" />
-                                            <p className="text-[10px] font-black uppercase tracking-widest">Approval Required</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest">{copy('Approval Required', 'Idhini Inahitajika')}</p>
                                         </div>
                                         <p className="text-[10px] text-amber-600 font-medium leading-tight">
-                                            Punguzo kubwa au malipo ya advance yanahitaji idhini.
+                                            {copy('Large discounts or advance payments require approval.', 'Punguzo kubwa au malipo ya advance yanahitaji idhini.')}
                                         </p>
                                         <Input
                                             type="password"
-                                            placeholder="Enter approval PIN"
+                                            placeholder={copy('Enter approval PIN', 'Ingiza PIN ya idhini')}
                                             value={managerPin}
                                             onChange={(e) => setManagerPin(e.target.value)}
                                             className="h-12 rounded-xl text-center font-black tracking-[0.5em] text-lg border-amber-200 focus:ring-amber-500 bg-white"
@@ -1169,7 +1171,7 @@ export default function PosTerminal({ merchant }) {
                                             <div className="pt-2">
                                                 <div className="flex items-center gap-2 mb-3">
                                                     <div className="h-px flex-1 bg-amber-200"></div>
-                                                    <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest">au omba mbali</span>
+                                                    <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest">{copy('or request remotely', 'au omba mbali')}</span>
                                                     <div className="h-px flex-1 bg-amber-200"></div>
                                                 </div>
                                                 <Button
@@ -1179,7 +1181,7 @@ export default function PosTerminal({ merchant }) {
                                                     onClick={requestRemoteApproval}
                                                     disabled={requestingRemote}
                                                 >
-                                                    {requestingRemote ? 'Inatuma...' : 'Omba Idhini (Remote)'}
+                                                    {requestingRemote ? copy('Sending...', 'Inatuma...') : copy('Request approval (remote)', 'Omba idhini (remote)')}
                                                 </Button>
                                             </div>
                                         )}
@@ -1190,14 +1192,14 @@ export default function PosTerminal({ merchant }) {
 
                         <div className="flex gap-3 pt-2">
                             <Button variant="outline" className="rounded-xl flex-1 h-12 font-bold" onClick={() => setIsCheckoutModalOpen(false)}>
-                                Ghairi
+                                {copy('Cancel', 'Ghairi')}
                             </Button>
                             <Button
                                 className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl flex-1 h-12 font-black shadow-lg shadow-brand-600/20"
                                 onClick={handleCheckout}
                                 disabled={processing}
                             >
-                                {processing ? 'Inachakata...' : (hasTransferRequests ? 'Tuma Ombi la Store' : 'Thibitisha')}
+                                {processing ? copy('Processing...', 'Inachakata...') : (hasTransferRequests ? copy('Send store request', 'Tuma ombi la Store') : copy('Confirm', 'Thibitisha'))}
                             </Button>
                         </div>
                     </div>
@@ -1240,14 +1242,14 @@ export default function PosTerminal({ merchant }) {
                                 <History className="h-5 w-5 text-brand-600" />
                                 Orders Hub
                             </DialogTitle>
-                            <DialogDescription className="font-medium">Search pickup codes or manage pending approvals.</DialogDescription>
+                            <DialogDescription className="font-medium">{copy('Search pickup codes or manage pending approvals.', 'Tafuta misimbo ya pickup au simamia idhini zinazosubiri.')}</DialogDescription>
                         </DialogHeader>
 
                         {/* Search Pickup Code */}
                         <form onSubmit={handleLookupByCode} className="relative">
                             <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-400" />
                             <Input
-                                placeholder="Enter Pickup Code (e.g. AB12XY)"
+                                placeholder={copy('Enter Pickup Code (e.g. AB12XY)', 'Ingiza Msimbo wa Pickup (mf. AB12XY)')}
                                 value={pickupCode}
                                 onChange={(e) => setPickupCode(e.target.value.toUpperCase())}
                                 className="h-12 pl-11 pr-24 rounded-xl border-brand-200 bg-white font-black text-brand-900 focus:ring-brand-500"
@@ -1264,18 +1266,18 @@ export default function PosTerminal({ merchant }) {
 
                     <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         <div className="px-2 mb-2">
-                            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-400">Pending Approvals</h4>
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-400">{copy('Pending Approvals', 'Idhini Zinazosubiri')}</h4>
                         </div>
 
                         {fetchingOrders && pendingOrders.length === 0 ? (
                             <div className="py-12 text-center space-y-3">
                                 <Loader2 className="h-8 w-8 text-brand-200 animate-spin mx-auto" />
-                                <p className="text-xs text-muted-foreground font-medium">Checking for updates...</p>
+                                <p className="text-xs text-muted-foreground font-medium">{copy('Checking for updates...', 'Inatafuta masasisho...')}</p>
                             </div>
                         ) : pendingOrders.length === 0 ? (
                             <div className="py-12 text-center space-y-3 border-2 border-dashed border-brand-50 rounded-[32px] bg-brand-50/20">
                                 <Inbox className="h-8 w-8 text-brand-100 mx-auto" />
-                                <p className="text-xs text-muted-foreground font-medium">Hakuna maombi yanayosubiri.</p>
+                                <p className="text-xs text-muted-foreground font-medium">{copy('No pending requests.', 'Hakuna maombi yanayosubiri.')}</p>
                             </div>
                         ) : (
                             pendingOrders.map(order => (
@@ -1308,9 +1310,9 @@ export default function PosTerminal({ merchant }) {
                                                 {formatCurrency(order.counter_total > 0 ? order.counter_total : order.grand_total)}
                                             </p>
                                             {order.approval_status === 'approved' ? (
-                                                <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase">Approved</span>
+                                                <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase">{copy('Approved', 'Imeidhinishwa')}</span>
                                             ) : (
-                                                <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 uppercase">Pending</span>
+                                                <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 uppercase">{copy('Pending', 'Inasubiri')}</span>
                                             )}
                                         </div>
                                         </div>
@@ -1336,7 +1338,7 @@ export default function PosTerminal({ merchant }) {
                                                         className="h-8 rounded-lg text-[10px] font-black bg-amber-600 hover:bg-amber-700 text-white"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            toast.info(`Verify at ${transferDestinationLabel(order)}.`);
+                                                            toast.info(copy(`Verify at ${transferDestinationLabel(order)}.`, `Thibitisha kwenye ${transferDestinationLabel(order)}.`));
                                                         }}
                                                     >
                                                         Verify at {transferDestinationLabel(order)}
@@ -1359,12 +1361,12 @@ export default function PosTerminal({ merchant }) {
                         <div className="h-20 w-20 bg-white/20 backdrop-blur-md rounded-3xl flex items-center justify-center mx-auto mb-6">
                             <CheckCircle className="h-10 w-10 text-white" />
                         </div>
-                        <h2 className="text-2xl font-black mb-2">Sale Completed!</h2>
-                        <p className="text-white/80 text-sm">The transaction has been successfully recorded.</p>
+                        <h2 className="text-2xl font-black mb-2">{copy('Sale Completed!', 'Uuzaji Umekamilika!')}</h2>
+                        <p className="text-white/80 text-sm">{copy('The transaction has been successfully recorded.', 'Muamala umehifadhiwa kikamilifu.')}</p>
                     </div>
                     <div className="p-8 text-center space-y-6">
                         <div className="space-y-1">
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Order ID</p>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{copy('Order ID', 'Kitambulisho cha Oda')}</p>
                             <p className="text-2xl font-black text-brand-700">#POS-{lastOrder?.public_id}</p>
                         </div>
 
@@ -1419,7 +1421,7 @@ export default function PosTerminal({ merchant }) {
                                     {selectedProductForDetails.description && (
                                         <div className="p-5 rounded-3xl bg-white border border-slate-100 shadow-sm space-y-2">
                                             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
-                                                <div className="h-1 w-1 rounded-full bg-brand-500" /> Maelezo ya Bidhaa
+                                                <div className="h-1 w-1 rounded-full bg-brand-500" /> {copy('Product description', 'Maelezo ya bidhaa')}
                                             </h4>
                                             <p className="text-xs text-slate-600 leading-relaxed font-medium">
                                                 {selectedProductForDetails.description}
@@ -1431,19 +1433,19 @@ export default function PosTerminal({ merchant }) {
                                     <div className="flex flex-wrap gap-2">
                                         {selectedProductForDetails.attributes?.category && (
                                             <div className="px-4 py-2.5 rounded-2xl bg-brand-50/30 border border-brand-100/50 flex items-center gap-2 shadow-sm">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Kategoria:</span>
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{copy('Category:', 'Kategoria:')}</span>
                                                 <span className="text-[11px] font-black text-brand-700">{selectedProductForDetails.attributes.category}</span>
                                             </div>
                                         )}
                                         {selectedProductForDetails.attributes?.brand_name && (
                                             <div className="px-4 py-2.5 rounded-2xl bg-brand-50/30 border border-brand-100/50 flex items-center gap-2 shadow-sm">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Brand:</span>
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{copy('Brand:', 'Chapa:')}</span>
                                                 <span className="text-[11px] font-black text-brand-700">{selectedProductForDetails.attributes.brand_name}</span>
                                             </div>
                                         )}
                                         {selectedProductForDetails.attributes?.model_name && (
                                             <div className="px-4 py-2.5 rounded-2xl bg-brand-50/30 border border-brand-100/50 flex items-center gap-2 shadow-sm">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Model:</span>
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{copy('Model:', 'Modeli:')}</span>
                                                 <span className="text-[11px] font-black text-brand-700">{selectedProductForDetails.attributes.model_name}</span>
                                             </div>
                                         )}
@@ -1454,7 +1456,7 @@ export default function PosTerminal({ merchant }) {
                                       (selectedProductForDetails.attributes?.ai_extracted && Object.keys(selectedProductForDetails.attributes.ai_extracted).length > 0)) && (
                                         <div className="space-y-4 pt-2 border-t border-slate-100 pt-6">
                                             <h4 className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-600 flex items-center gap-2">
-                                                SIFA ZA BIDHAA (SPECIFICATION)
+                                                {copy('PRODUCT SPECIFICATIONS', 'SIFA ZA BIDHAA')}
                                             </h4>
                                             <div className="flex flex-wrap gap-2">
                                                 {/* Priority: Category Attribute Values (Verified) */}
@@ -1487,8 +1489,8 @@ export default function PosTerminal({ merchant }) {
                                     {selectedProductForDetails.has_variants && (
                                         <div className="space-y-4 pt-2">
                                             <div className="flex items-center justify-between ml-1">
-                                                <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-500">Chagua Tofauti (Variants)</h4>
-                                                <span className="text-[10px] font-bold text-slate-400">{selectedProductForDetails.variants?.length} Options</span>
+                                                <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-500">{copy('Choose variant', 'Chagua tofauti')}</h4>
+                                                <span className="text-[10px] font-bold text-slate-400">{selectedProductForDetails.variants?.length} {copy('Options', 'Chaguo')}</span>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 {selectedProductForDetails.variants.map((variant) => {

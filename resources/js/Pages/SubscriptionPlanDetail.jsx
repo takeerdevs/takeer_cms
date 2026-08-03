@@ -5,14 +5,16 @@ import { Button } from '@/Components/ui/Button';
 import AppLayout from '@/Layouts/AppLayout';
 import PostCard from '@/Components/PostCard';
 import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
+import { useLocale } from '@/lib/i18n';
 
 export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = false, viewerSubscription = null, communityPosts = [], totalLinkedContent = 0 }) {
+    const { t, copy } = useLocale();
     const merchant = subscriptionPlan?.merchant || {};
     const items = Array.isArray(subscriptionPlan?.items) ? subscriptionPlan.items : [];
     const hasAssignedItems = items.length > 0;
     const memberPosts = Array.isArray(communityPosts) ? communityPosts : [];
-    const cadenceLabel = formatBillingCadence(subscriptionPlan.billing_interval, subscriptionPlan.interval_count);
-    const durationLabel = formatMembershipDuration(subscriptionPlan.billing_interval, subscriptionPlan.interval_count);
+    const cadenceLabel = formatBillingCadence(subscriptionPlan.billing_interval, subscriptionPlan.interval_count, copy);
+    const durationLabel = formatMembershipDuration(subscriptionPlan.billing_interval, subscriptionPlan.interval_count, copy);
     const trialDays = Number(subscriptionPlan.trial_days || 0);
     const checkoutItem = {
         ...subscriptionPlan,
@@ -34,7 +36,7 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
             <div className="max-w-5xl mx-auto px-4 md:px-8 py-6 md:py-8 pb-24">
                 <Link href={merchant?.slug ? `/m/${merchant.slug}` : '/'} className="inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground">
                     <ArrowLeft className="h-4 w-4" />
-                    Rudi dukani
+                    {t('publicCommerce.backToStore')}
                 </Link>
 
                 <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)] items-start">
@@ -45,7 +47,7 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                     <div className="min-w-0">
                                         <div className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-1 text-xs font-black uppercase tracking-widest text-emerald-700 shadow-sm">
                                             <Crown className="h-3.5 w-3.5" />
-                                            Membership
+                                            {t('publicCommerce.membership')}
                                         </div>
                                         <h1 className="mt-4 text-3xl font-black leading-tight tracking-tight text-slate-950 md:text-4xl">
                                             {subscriptionPlan.name}
@@ -57,7 +59,7 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                 </div>
 
                                 <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600">
-                                    {subscriptionPlan.description || 'Jiunge kupata maudhui ya wanachama, masomo, downloads, na updates mpya kadri zinavyoongezwa.'}
+                                    {subscriptionPlan.description || t('publicCommerce.subscriptionDescription')}
                                 </p>
 
                                 <div className="mt-6 flex flex-wrap gap-2">
@@ -67,7 +69,7 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                     </span>
                                     <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-slate-700">
                                         <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                                        Safe checkout
+                                        {t('publicCommerce.safeCheckout')}
                                     </span>
                                 </div>
                             </div>
@@ -76,11 +78,11 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                 <div className="px-6 py-6 md:px-8">
                                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                                         <div>
-                                            <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Utakachopata</p>
-                                            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">Included access</h2>
+                                            <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('publicCommerce.subscriptionBenefits')}</p>
+                                            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">{t('publicCommerce.includedAccess')}</h2>
                                         </div>
                                         <p className="max-w-sm text-xs font-semibold leading-5 text-muted-foreground sm:text-right">
-                                            Available in <Link href="/orders" className="font-black text-brand-600 hover:underline">Orders</Link> while your membership is active.
+                                            {t('publicCommerce.availableIn')} <Link href="/orders" className="font-black text-brand-600 hover:underline">{copy('Orders', 'Orders')}</Link> {t('publicCommerce.subscriptionOrders').replace('Subscription items stay in Orders until membership ends.', copy('while your membership is active.', 'wakati uanachama wako ukiwa hai.'))}
                                         </p>
                                     </div>
 
@@ -91,10 +93,10 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                                     <p className="truncate text-sm font-black text-slate-950">{item.title || item.item_type.replace('_', ' ')}</p>
                                                     <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
                                                         {item.unlock_after_days > 0
-                                                            ? `Unlocks after ${item.unlock_after_days} day(s), then stays in Orders while active.`
+                                                            ? t('publicCommerce.accessItemAfterDays', { days: item.unlock_after_days })
                                                             : item.item_type === 'bundle'
-                                                                ? (item.is_course ? 'Course access in Orders while active.' : 'Bundle access in Orders while active.')
-                                                                : 'Access in Orders while active.'}
+                                                                ? (item.is_course ? t('publicCommerce.courseAccess') : t('publicCommerce.bundleAccess'))
+                                                                : t('publicCommerce.accessInOrders')}
                                                     </p>
                                                 </div>
                                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
@@ -109,7 +111,7 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                     </div>
 
                                     <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-semibold leading-5 text-slate-600">
-                                        Membership ikiisha, subscription access inaisha. Items ulizonunua moja kwa moja hubaki zako.
+                                        {t('publicCommerce.membershipExpiredNote')}
                                     </p>
                                 </div>
                             )}
@@ -130,9 +132,9 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                 ) : (
                                     <div className="rounded-[28px] border border-dashed bg-card p-6 md:p-8 text-center">
                                         <CalendarClock className="mx-auto h-9 w-9 text-brand-600" />
-                                        <p className="mt-3 font-black">No member posts yet</p>
+                                        <p className="mt-3 font-black">{t('publicCommerce.noMemberPosts')}</p>
                                         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                                            New subscriber-only posts will appear here when the creator publishes them to this plan.
+                                            {copy('New subscriber-only posts will appear here when the creator publishes them to this plan.', 'Machapisho mapya ya wanachama yataonekana hapa creator akiyachapisha kwenye mpango huu.')}
                                         </p>
                                     </div>
                                 )}
@@ -154,7 +156,7 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                 </div>
 
                                 <div className="mt-6 rounded-[24px] bg-slate-50 px-5 py-5">
-                                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">Bei ya subscription</p>
+                                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">{t('publicCommerce.subscriptionPrice')}</p>
                                     <p className="mt-2 text-4xl font-black tracking-tight text-brand-600">
                                         TZS {Number(subscriptionPlan.price || 0).toLocaleString()}
                                     </p>
@@ -168,9 +170,9 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                                 <Crown className="h-5 w-5" />
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Membership active</p>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">{t('publicCommerce.membershipActive')}</p>
                                                 <p className="mt-1 text-sm font-black tabular-nums text-foreground">{timeLeftLabel}</p>
-                                                <p className="mt-1 text-xs font-semibold text-muted-foreground">Ends {membershipEndsLabel}</p>
+                                                <p className="mt-1 text-xs font-semibold text-muted-foreground">{t('publicCommerce.membershipEnds', { date: membershipEndsLabel })}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -178,7 +180,7 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
 
                                 <Button className="mt-5 h-12 w-full rounded-2xl font-black shadow-lg shadow-brand-600/15" onClick={() => window.__openCheckout?.(checkoutItem)}>
                                     <Zap className="mr-2 h-4 w-4" />
-                                    {hasMembership ? 'Renew access' : (hasAccess ? 'Renew / Manage Access' : 'Jiunge Sasa')}
+                                    {hasMembership ? t('publicCommerce.renewAccess') : (hasAccess ? t('publicCommerce.renewManage') : t('publicCommerce.joinNow'))}
                                 </Button>
 
                                 {hasAccess && (
@@ -186,7 +188,7 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                         href="#community"
                                         className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl border text-sm font-black transition-colors hover:bg-accent"
                                     >
-                                        Open member feed
+                                        {t('publicCommerce.memberFeed')}
                                     </a>
                                 )}
                             </div>
@@ -195,16 +197,16 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                 <div className="space-y-3 text-sm font-semibold leading-6 text-slate-600">
                                     <div className="flex items-start gap-3">
                                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                                        <span>Access hufunguka baada ya malipo kukamilika.</span>
+                                        <span>{t('publicCommerce.accessAfterPayment')}</span>
                                     </div>
                                     <div className="flex items-start gap-3">
                                         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                                        <span>Malipo yanalindwa na Takeer checkout.</span>
+                                        <span>{t('publicCommerce.protectedCheckout')}</span>
                                     </div>
                                     {hasAssignedItems && (
                                         <div className="flex items-start gap-3">
                                             <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                                            <span>Subscription items stay in Orders until membership ends.</span>
+                                            <span>{t('publicCommerce.subscriptionOrders')}</span>
                                         </div>
                                     )}
                                 </div>
@@ -217,20 +219,25 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
     );
 }
 
-function formatBillingCadence(interval = 'month', count = 1) {
+function formatBillingCadence(interval = 'month', count = 1, copy = (english) => english) {
     const safeCount = Math.max(1, Number(count || 1));
     const unit = membershipIntervalUnit(interval);
     const plural = safeCount === 1 ? unit : `${unit}s`;
 
-    return safeCount === 1 ? `Every ${unit}` : `Every ${safeCount} ${plural}`;
+    return safeCount === 1 ? `${copy('Every', 'Kila')} ${copy(unit, membershipIntervalUnitSwahili(unit))}` : `${copy('Every', 'Kila')} ${safeCount} ${copy(plural, membershipIntervalUnitSwahili(unit, true))}`;
 }
 
-function formatMembershipDuration(interval = 'month', count = 1) {
+function formatMembershipDuration(interval = 'month', count = 1, copy = (english) => english) {
     const safeCount = Math.max(1, Number(count || 1));
     const unit = membershipIntervalUnit(interval);
     const plural = safeCount === 1 ? unit : `${unit}s`;
 
-    return `${safeCount} ${plural}`;
+    return `${safeCount} ${copy(plural, membershipIntervalUnitSwahili(unit, true))}`;
+}
+
+function membershipIntervalUnitSwahili(unit, plural = false) {
+    const labels = { hour: ['saa', 'saa'], day: ['siku', 'siku'], week: ['wiki', 'wiki'], month: ['mwezi', 'miezi'] };
+    return labels[unit]?.[plural ? 1 : 0] || unit;
 }
 
 function membershipIntervalUnit(interval = 'month') {

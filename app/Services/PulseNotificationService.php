@@ -63,7 +63,7 @@ class PulseNotificationService
         $order->loadMissing(['product', 'merchant', 'delivery']);
         $this->orderCreated($order);
 
-        if (in_array($order->payment_status, ['resolved_merchant_paid', 'escrow_locked', 'awaiting_merchant_confirmation', 'disputed', 'failed'], true)) {
+        if (in_array($order->payment_status, ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out', 'disputed', 'failed'], true)) {
             $this->paymentStatusChanged($order);
         }
 
@@ -619,23 +619,23 @@ class PulseNotificationService
     {
         $earned = number_format((float) $order->total_paid);
         $event = match ($order->payment_status) {
-            'resolved_merchant_paid' => [
+            'paid_out' => [
                 'payment_completed',
                 'Payment completed',
-                $order->requiresPhysicalFulfillment() ? 'Order completed and merchant has been paid.' : 'Payment completed. Access is available in your Library.',
-                "Payment completed. You earned TZS {$earned} from this order.",
+                $order->requiresPhysicalFulfillment() ? 'Order completed and provider payout has been confirmed.' : 'Payment completed. Access is available in your Library.',
+                "Provider payout completed for TZS {$earned}.",
                 'shield_check',
                 'emerald',
             ],
-            'escrow_locked' => [
+            'pending_fulfillment' => [
                 'payment_held',
                 'Payment protected',
                 'Payment is protected while this order is being fulfilled.',
-                'Customer payment is protected in escrow while this order is being fulfilled.',
+                'Customer payment is recorded by the payment provider while this order is being fulfilled.',
                 'shield_check',
                 'amber',
             ],
-            'awaiting_merchant_confirmation' => [
+            'payment_confirmed' => [
                 'merchant_confirmation_needed',
                 'Waiting for merchant',
                 'Payment is complete. Merchant needs to confirm and prepare the order.',

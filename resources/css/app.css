@@ -129,6 +129,43 @@
 
 /* Fluid animations & PWA utilities */
 @layer utilities {
+  .legal-document-content {
+    @apply text-sm leading-7 text-slate-700;
+  }
+
+  .legal-document-content h1 {
+    @apply mb-6 text-3xl font-black tracking-tight text-slate-950;
+  }
+
+  .legal-document-content h2 {
+    @apply mb-3 mt-8 text-lg font-black tracking-tight text-slate-950;
+  }
+
+  .legal-document-content h3 {
+    @apply mb-2 mt-6 text-base font-black text-slate-950;
+  }
+
+  .legal-document-content p {
+    @apply mb-4;
+  }
+
+  .legal-document-content ul,
+  .legal-document-content ol {
+    @apply mb-4 ml-5 space-y-2;
+  }
+
+  .legal-document-content ul {
+    @apply list-disc;
+  }
+
+  .legal-document-content ol {
+    @apply list-decimal;
+  }
+
+  .legal-document-content strong {
+    @apply font-black text-slate-950;
+  }
+
   .glass {
     @apply bg-background/70 backdrop-blur-xl border-b border-border/50;
   }

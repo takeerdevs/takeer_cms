@@ -9,6 +9,7 @@ import Embed from '@editorjs/embed';
 import ImageTool from '@editorjs/image';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 function toEditorData(value) {
     if (!value) {
@@ -41,6 +42,8 @@ export default function LongFormBlockEditor({
     uploadUrl = '/merchant/upload/media',
     uploadFields = {},
 }) {
+    const { copy } = useLocale();
+    const translatedPlaceholder = copy(placeholder, placeholder === 'Start writing your long-form content...' ? 'Anza kuandika content yako ndefu...' : placeholder);
     const holderIdRef = useRef(`editorjs-${Math.random().toString(36).slice(2)}`);
     const editorRef = useRef(null);
     const onChangeRef = useRef(onChange);
@@ -70,7 +73,7 @@ export default function LongFormBlockEditor({
 
             const editor = new EditorJS({
                 holder: holderIdRef.current,
-                placeholder,
+                placeholder: translatedPlaceholder,
                 autofocus: false,
                 data: toEditorData(initialValueRef.current),
                 inlineToolbar: true,
@@ -125,7 +128,7 @@ export default function LongFormBlockEditor({
                                             },
                                         };
                                     } catch (error) {
-                                        toast.error(error.response?.data?.message || 'Image upload failed.');
+                                        toast.error(error.response?.data?.message || copy('Image upload failed.', 'Imeshindikana kupakia picha.'));
                                         return { success: 0 };
                                     } finally {
                                         setUploadingImage(false);
@@ -155,14 +158,14 @@ export default function LongFormBlockEditor({
                 editorRef.current = null;
             }
         };
-    }, [placeholder]);
+    }, [translatedPlaceholder]);
 
     return (
         <div className="space-y-2">
             <div className="rounded-2xl border bg-background">
                 <div id={holderIdRef.current} className="px-4 py-4 min-h-[100px]" />
             </div>
-            {uploadingImage ? <p className="text-xs text-muted-foreground">Uploading image...</p> : null}
+            {uploadingImage ? <p className="text-xs text-muted-foreground">{copy('Uploading image...', 'Inapakia picha...')}</p> : null}
         </div>
     );
 }

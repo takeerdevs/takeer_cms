@@ -18,8 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('orders:release-expired')->everyMinute();
         $schedule->command('orders:send-pickup-reminders')->everyFifteenMinutes()->withoutOverlapping();
         $schedule->command('orders:mark-overdue-pickups')->everyFiveMinutes()->withoutOverlapping();
-        $schedule->command('orders:auto-release-delivery-escrow')->hourly()->withoutOverlapping();
-        $schedule->command('payments:reconcile-selcom')->everyThreeMinutes()->withoutOverlapping();
+        $schedule->command('orders:auto-release-delivery-settlement')->hourly()->withoutOverlapping();
+        $schedule->command('providers:reconcile-order-settlements')->dailyAt('01:30')->withoutOverlapping();
         $schedule->command('currency:update-rates')->dailyAt('03:15')->withoutOverlapping();
         $schedule->command('service-credentials:monitor-expiry')->dailyAt('04:15')->withoutOverlapping();
         $schedule->command('bundle-courses:log-reminders')->everyFifteenMinutes()->withoutOverlapping();

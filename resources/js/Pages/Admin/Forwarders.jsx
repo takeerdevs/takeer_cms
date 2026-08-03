@@ -7,6 +7,7 @@ import { Card } from '@/Components/ui/Card';
 import AddressPickerModal from '@/Components/AddressPickerModal';
 import { Building2, CheckCircle2, ExternalLink, FileText, Globe, Mail, MapPin, Phone, Plus, Search, Ship, Trash2, UserRound, Warehouse } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -61,10 +62,22 @@ const serviceLabel = (key) => ({
 }[key] || String(key || '').replaceAll('_', ' '));
 
 function DetailItem({ label, value, href = null, icon: Icon = null }) {
-    const display = value || 'Not provided';
+    const { copy } = useLocale();
+    const display = value || copy('Not provided', 'Haijatolewa');
+    const labelTranslations = {
+        'Trading name': 'Jina la biashara',
+        'Legal registered name': 'Jina la kisheria lililosajiliwa',
+        'Registration number': 'Namba ya usajili',
+        'Contact person': 'Mtu wa mawasiliano',
+        'Primary phone': 'Simu kuu',
+        'WhatsApp phone': 'Simu ya WhatsApp',
+        'Email address': 'Anwani ya barua pepe',
+        'Website / social profile': 'Tovuti / wasifu wa kijamii',
+        'Main address / internal label': 'Anwani kuu / lebo ya ndani',
+    };
     const content = (
         <div className={`rounded-xl border px-3 py-2 ${value ? 'border-slate-200 bg-white' : 'border-dashed border-slate-200 bg-slate-50'}`}>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy(label, labelTranslations[label] || label)}</p>
             <p className={`mt-1 flex items-center gap-2 break-words text-sm font-bold ${value ? 'text-slate-900' : 'text-slate-400'}`}>
                 {Icon && <Icon className="h-4 w-4 shrink-0 text-slate-400" />}
                 {display}
@@ -84,6 +97,7 @@ function DetailItem({ label, value, href = null, icon: Icon = null }) {
 }
 
 export default function AdminForwarders() {
+    const { copy } = useLocale();
     const { countries = [] } = usePage().props;
     const [forwarders, setForwarders] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -120,7 +134,7 @@ export default function AdminForwarders() {
                 headers: { Accept: 'application/json' },
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to load forwarders.');
+            if (!res.ok) throw new Error(data.message || copy('Failed to load forwarders.', 'Imeshindikana kupakia wasafirishaji.'));
             const paged = data.forwarders || {};
             setForwarders(paged.data || []);
             setPage(paged.current_page || 1);
@@ -156,8 +170,8 @@ export default function AdminForwarders() {
                 body: JSON.stringify(payload),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to save forwarder.');
-            toast.success('Forwarder created.');
+            if (!res.ok) throw new Error(data.message || copy('Failed to save forwarder.', 'Imeshindikana kuhifadhi msafirishaji.'));
+            toast.success(copy('Forwarder created.', 'Msafirishaji ameundwa.'));
             setForm(emptyForwarder);
             await fetchForwarders(1);
             setSelectedForwarderId(data.forwarder?.id || null);
@@ -176,8 +190,8 @@ export default function AdminForwarders() {
                 body: JSON.stringify({ verification_status, admin_notes: forwarder.admin_notes || '' }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to update status.');
-            toast.success('Forwarder status updated.');
+            if (!res.ok) throw new Error(data.message || copy('Failed to update status.', 'Imeshindikana kusasisha hali.'));
+            toast.success(copy('Forwarder status updated.', 'Hali ya msafirishaji imesasishwa.'));
             fetchForwarders(page);
         } catch (error) {
             toast.error(error.message);
@@ -209,11 +223,11 @@ export default function AdminForwarders() {
         e.preventDefault();
         if (!selectedForwarder) return;
         if ((locationForm.roles || []).length === 0) {
-            toast.error('Choose whether this location is an origin, destination, or both.');
+            toast.error(copy('Choose whether this location is an origin, destination, or both.', 'Chagua kama eneo hili ni chanzo, lengwa au vyote viwili.'));
             return;
         }
         if (!locationForm.latitude || !locationForm.longitude || !(locationForm.country_id || locationForm.country_iso2 || locationForm.country_name)) {
-            toast.error('Pick the exact location on the map first so country, region, city, and coordinates are linked correctly.');
+            toast.error(copy('Pick the exact location on the map first so country, region, city, and coordinates are linked correctly.', 'Chagua eneo kamili kwenye ramani kwanza ili nchi, mkoa, jiji na viwianishi viunganishwe kwa usahihi.'));
             return;
         }
         setSaving(true);
@@ -224,8 +238,8 @@ export default function AdminForwarders() {
                 body: JSON.stringify({ ...locationForm, roles: Array.from(new Set(locationForm.roles || [])).filter(Boolean) }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to add location.');
-            toast.success('Location added.');
+            if (!res.ok) throw new Error(data.message || copy('Failed to add location.', 'Imeshindikana kuongeza eneo.'));
+            toast.success(copy('Location added.', 'Eneo limeongezwa.'));
             setLocationForm(emptyLocation);
             fetchForwarders(page);
         } catch (error) {
@@ -243,8 +257,8 @@ export default function AdminForwarders() {
                 body: JSON.stringify({ ...location, ...patch }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to update location.');
-            toast.success('Location updated.');
+            if (!res.ok) throw new Error(data.message || copy('Failed to update location.', 'Imeshindikana kusasisha eneo.'));
+            toast.success(copy('Location updated.', 'Eneo limesasishwa.'));
             fetchForwarders(page);
         } catch (error) {
             toast.error(error.message);
@@ -252,15 +266,15 @@ export default function AdminForwarders() {
     };
 
     const deleteLocation = async (location) => {
-        if (!confirm(`Delete ${location.name}?`)) return;
+        if (!confirm(`${copy('Delete', 'Futa')} ${location.name}?`)) return;
         try {
             const res = await fetch(`/admin/api/forwarder-locations/${location.id}`, {
                 method: 'DELETE',
                 headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf() },
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to delete location.');
-            toast.success('Location deleted.');
+            if (!res.ok) throw new Error(data.message || copy('Failed to delete location.', 'Imeshindikana kufuta eneo.'));
+            toast.success(copy('Location deleted.', 'Eneo limefutwa.'));
             fetchForwarders(page);
         } catch (error) {
             toast.error(error.message);
@@ -281,16 +295,16 @@ export default function AdminForwarders() {
     };
 
     return (
-        <AdminLayout title="Forwarders">
-            <Head title="Forwarders | Admin" />
+        <AdminLayout title={copy('Forwarders', 'Wasafirishaji')}>
+            <Head title={`${copy('Forwarders', 'Wasafirishaji')} | Admin`} />
 
             <div className="space-y-6">
                 <div>
                     <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-                        <Ship className="h-6 w-6 text-indigo-700" /> Forwarder Network
+                        <Ship className="h-6 w-6 text-indigo-700" /> {copy('Forwarder network', 'Mtandao wa wasafirishaji')}
                     </h1>
                     <p className="mt-1 text-sm text-slate-600">
-                        Verify cargo companies, China warehouses, and African collection offices before customers can import them.
+                        {copy('Verify cargo companies, China warehouses, and African collection offices before customers can import them.', 'Thibitisha kampuni za mizigo, maghala ya China na ofisi za kukusanyia Afrika kabla wateja hawajaziagiza.')}
                     </p>
                 </div>
 
@@ -299,23 +313,23 @@ export default function AdminForwarders() {
                         <div className="mb-4 grid gap-2 md:grid-cols-[1fr_160px_auto]">
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                                <Input className="pl-9" placeholder="Search forwarders..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                                <Input className="pl-9" placeholder={copy('Search forwarders...', 'Tafuta wasafirishaji...')} value={search} onChange={(e) => setSearch(e.target.value)} />
                             </div>
                             <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
-                                <option value="all">All</option>
-                                <option value="pending">Pending</option>
-                                <option value="verified">Verified</option>
-                                <option value="rejected">Rejected</option>
-                                <option value="suspended">Suspended</option>
+                                <option value="all">{copy('All', 'Zote')}</option>
+                                <option value="pending">{copy('Pending', 'Inasubiri')}</option>
+                                <option value="verified">{copy('Verified', 'Imethibitishwa')}</option>
+                                <option value="rejected">{copy('Rejected', 'Imekataliwa')}</option>
+                                <option value="suspended">{copy('Suspended', 'Imesimamishwa')}</option>
                             </select>
-                            <Button variant="outline" onClick={() => fetchForwarders(1)}>Apply</Button>
+                            <Button variant="outline" onClick={() => fetchForwarders(1)}>{copy('Apply', 'Tumia')}</Button>
                         </div>
 
                         <div className="space-y-2">
                             {loading ? (
-                                <div className="py-12 text-center text-sm font-semibold text-slate-500">Loading forwarders...</div>
+                                <div className="py-12 text-center text-sm font-semibold text-slate-500">{copy('Loading forwarders...', 'Inapakia wasafirishaji...')}</div>
                             ) : forwarders.length === 0 ? (
-                                <div className="py-12 text-center text-sm font-semibold text-slate-500">No forwarders yet.</div>
+                                <div className="py-12 text-center text-sm font-semibold text-slate-500">{copy('No forwarders yet.', 'Hakuna wasafirishaji bado.')}</div>
                             ) : forwarders.map((forwarder) => (
                                 <button
                                     key={forwarder.id}
@@ -326,11 +340,11 @@ export default function AdminForwarders() {
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
                                             <p className="font-black text-slate-900">{forwarder.name}</p>
-                                            <p className="text-xs font-semibold text-slate-500">{forwarder.contact_phone || forwarder.contact_email || 'No contact'}</p>
-                                            <p className="mt-1 text-xs text-slate-500">{forwarder.locations?.length || 0} locations · {forwarder.user_addresses_count || 0} customer imports</p>
+                                            <p className="text-xs font-semibold text-slate-500">{forwarder.contact_phone || forwarder.contact_email || copy('No contact', 'Hakuna mawasiliano')}</p>
+                                            <p className="mt-1 text-xs text-slate-500">{forwarder.locations?.length || 0} {copy('locations', 'maeneo')} · {forwarder.user_addresses_count || 0} {copy('customer imports', 'uagizaji wa wateja')}</p>
                                         </div>
                                         <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${forwarder.verification_status === 'verified' ? 'bg-emerald-100 text-emerald-700' : forwarder.verification_status === 'suspended' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                                            {forwarder.verification_status || 'pending'}
+                                            {forwarder.verification_status === 'verified' ? copy('Verified', 'Imethibitishwa') : forwarder.verification_status === 'rejected' ? copy('Rejected', 'Imekataliwa') : forwarder.verification_status === 'suspended' ? copy('Suspended', 'Imesimamishwa') : copy('Pending', 'Inasubiri')}
                                         </span>
                                     </div>
                                 </button>
@@ -338,29 +352,29 @@ export default function AdminForwarders() {
                         </div>
 
                         <div className="mt-4 flex items-center justify-end gap-2">
-                            <Button variant="outline" disabled={page <= 1} onClick={() => fetchForwarders(page - 1)}>Prev</Button>
-                            <span className="text-sm text-slate-600">Page {page} / {lastPage}</span>
-                            <Button variant="outline" disabled={page >= lastPage} onClick={() => fetchForwarders(page + 1)}>Next</Button>
+                            <Button variant="outline" disabled={page <= 1} onClick={() => fetchForwarders(page - 1)}>{copy('Previous', 'Iliyotangulia')}</Button>
+                            <span className="text-sm text-slate-600">{copy('Page', 'Ukurasa')} {page} / {lastPage}</span>
+                            <Button variant="outline" disabled={page >= lastPage} onClick={() => fetchForwarders(page + 1)}>{copy('Next', 'Inayofuata')}</Button>
                         </div>
                     </Card>
 
                     <Card className="border-slate-200 bg-white p-4 shadow-sm">
                         <h2 className="mb-3 flex items-center gap-2 text-sm font-black uppercase text-slate-700">
-                            <Plus className="h-4 w-4" /> Add Forwarder
+                            <Plus className="h-4 w-4" /> {copy('Add forwarder', 'Ongeza msafirishaji')}
                         </h2>
                         <form onSubmit={saveForwarder} className="space-y-3">
-                            <Input placeholder="Company name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-                            <Input placeholder="Legal name" value={form.legal_name} onChange={(e) => setForm({ ...form, legal_name: e.target.value })} />
-                            <Input placeholder="Main address" value={form.address_line} onChange={(e) => setForm({ ...form, address_line: e.target.value })} required />
+                            <Input placeholder={copy('Company name', 'Jina la kampuni')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                            <Input placeholder={copy('Legal name', 'Jina la kisheria')} value={form.legal_name} onChange={(e) => setForm({ ...form, legal_name: e.target.value })} />
+                            <Input placeholder={copy('Main address', 'Anwani kuu')} value={form.address_line} onChange={(e) => setForm({ ...form, address_line: e.target.value })} required />
                             <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.country_id} onChange={(e) => setForm({ ...form, country_id: e.target.value })}>
-                                <option value="">Primary country</option>
+                                <option value="">{copy('Primary country', 'Nchi kuu')}</option>
                                 {countries.map((country) => <option key={country.id} value={country.id}>{country.name}</option>)}
                             </select>
-                            <Input placeholder="Contact person" value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} />
-                            <Input placeholder="Phone / WhatsApp" value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} />
-                            <Input placeholder="Email" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} />
-                            <Input placeholder="Required fields, comma separated" value={Array.isArray(form.required_fields) ? form.required_fields.join(', ') : form.required_fields} onChange={(e) => setForm({ ...form, required_fields: e.target.value })} />
-                            <Button type="submit" disabled={saving} className="w-full">Create Forwarder</Button>
+                            <Input placeholder={copy('Contact person', 'Mtu wa mawasiliano')} value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} />
+                            <Input placeholder={copy('Phone / WhatsApp', 'Simu / WhatsApp')} value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} />
+                            <Input placeholder={copy('Email', 'Barua pepe')} value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} />
+                            <Input placeholder={copy('Required fields, comma separated', 'Sehemu zinazohitajika, zitenganishwe kwa koma')} value={Array.isArray(form.required_fields) ? form.required_fields.join(', ') : form.required_fields} onChange={(e) => setForm({ ...form, required_fields: e.target.value })} />
+                            <Button type="submit" disabled={saving} className="w-full">{copy('Create forwarder', 'Unda forwarder')}</Button>
                         </form>
                     </Card>
                 </div>
@@ -370,9 +384,9 @@ export default function AdminForwarders() {
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                             <div>
                                 <h2 className="text-xl font-black text-slate-900">{selectedForwarder.name}</h2>
-                                <p className="text-sm text-slate-500">{selectedForwarder.description || 'No description yet.'}</p>
+                                <p className="text-sm text-slate-500">{selectedForwarder.description || copy('No description yet.', 'Hakuna maelezo bado.')}</p>
                                 <p className="mt-1 text-xs font-semibold text-slate-500">
-                                    {selectedForwarder.legal_name || 'No legal name'} · {selectedForwarder.business_registration_number || 'No registration number'}
+                                    {selectedForwarder.legal_name || copy('No legal name', 'Hakuna jina la kisheria')} · {selectedForwarder.business_registration_number || copy('No registration number', 'Hakuna namba ya usajili')}
                                 </p>
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     {selectedForwarder.merchant && (
@@ -410,11 +424,11 @@ export default function AdminForwarders() {
                         <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                             <div className="mb-3 flex items-center justify-between gap-3">
                                 <div>
-                                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">Application details</p>
-                                    <p className="mt-1 text-xs font-semibold text-slate-500">Full information entered by the forwarder applicant.</p>
+                                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">{copy('Application details', 'Maelezo ya ombi')}</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Full information entered by the forwarder applicant.', 'Taarifa kamili iliyoingizwa na mwombaji wa forwarder.')}</p>
                                 </div>
                                 <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${selectedForwarder.verification_status === 'verified' ? 'bg-emerald-100 text-emerald-700' : selectedForwarder.verification_status === 'rejected' || selectedForwarder.verification_status === 'suspended' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                                    {selectedForwarder.verification_status || 'pending'}
+                                    {selectedForwarder.verification_status === 'verified' ? copy('Verified', 'Imethibitishwa') : selectedForwarder.verification_status === 'rejected' ? copy('Rejected', 'Imekataliwa') : selectedForwarder.verification_status === 'suspended' ? copy('Suspended', 'Imesimamishwa') : copy('Pending', 'Inasubiri')}
                                 </span>
                             </div>
 
@@ -431,30 +445,37 @@ export default function AdminForwarders() {
                             </div>
 
                             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">How the business operates</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('How the business operates', 'Jinsi biashara inavyofanya kazi')}</p>
                                 <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700">
-                                    {selectedForwarder.application_summary || selectedForwarder.description || 'No application summary submitted.'}
+                                    {selectedForwarder.application_summary || selectedForwarder.description || copy('No application summary submitted.', 'Hakuna muhtasari wa ombi uliowasilishwa.')}
                                 </p>
                             </div>
 
                             <div className="mt-4 grid gap-4 lg:grid-cols-2">
                                 <div className="rounded-xl border border-slate-200 bg-white p-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Services offered</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Services offered', 'Huduma zinazotolewa')}</p>
                                     <div className="mt-2 flex flex-wrap gap-2">
                                         {(selectedForwarder.service_types || []).length > 0 ? (
                                             selectedForwarder.service_types.map((service) => (
                                                 <span key={service} className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700">
-                                                    {serviceLabel(service)}
+                                                    {copy(serviceLabel(service), {
+                                                        'Sea cargo': 'Mizigo ya baharini',
+                                                        'Air cargo': 'Mizigo ya angani',
+                                                        'Customs clearing': 'Clearing ya forodha',
+                                                        Warehousing: 'Uhifadhi wa mizigo',
+                                                        'Last-mile delivery': 'Delivery ya mwisho',
+                                                        'Import forwarding': 'Forwarding ya uagizaji',
+                                                    }[serviceLabel(service)] || serviceLabel(service))}
                                                 </span>
                                             ))
                                         ) : (
-                                            <p className="text-sm font-semibold text-slate-500">No services submitted.</p>
+                                            <p className="text-sm font-semibold text-slate-500">{copy('No services submitted.', 'Hakuna huduma zilizowasilishwa.')}</p>
                                         )}
                                     </div>
                                 </div>
 
                             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Operating countries</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Operating countries', 'Nchi za uendeshaji')}</p>
                                 <div className="mt-2 flex flex-wrap gap-2">
                                     {(selectedForwarder.operating_country_ids || []).length > 0 ? (
                                         selectedForwarder.operating_country_ids.map((id) => (
@@ -463,18 +484,18 @@ export default function AdminForwarders() {
                                             </span>
                                         ))
                                     ) : (
-                                        <p className="text-sm font-semibold text-slate-500">No operating countries submitted.</p>
+                                        <p className="text-sm font-semibold text-slate-500">{copy('No operating countries submitted.', 'Hakuna nchi za uendeshaji zilizowasilishwa.')}</p>
                                     )}
                                 </div>
                             </div>
                             </div>
 
                             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Proof documents</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Proof documents', 'Nyaraka za uthibitisho')}</p>
                                 <div className="mt-2 space-y-2">
                                     {(selectedDocuments.files || []).map((file) => (
                                         <a key={file.path || file.url} href={file.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg bg-white px-2 py-2 text-xs font-bold text-indigo-700 hover:text-indigo-900">
-                                            <FileText className="h-4 w-4" /> {file.name || 'Uploaded file'} <ExternalLink className="ml-auto h-3.5 w-3.5" />
+                                            <FileText className="h-4 w-4" /> {file.name || copy('Uploaded file', 'Faili iliyopakiwa')} <ExternalLink className="ml-auto h-3.5 w-3.5" />
                                         </a>
                                     ))}
                                     {(selectedDocuments.links || []).map((link) => (
@@ -483,22 +504,22 @@ export default function AdminForwarders() {
                                         </a>
                                     ))}
                                     {(selectedDocuments.files || []).length === 0 && (selectedDocuments.links || []).length === 0 && (
-                                        <p className="text-sm font-semibold text-slate-500">No proof documents submitted.</p>
+                                        <p className="text-sm font-semibold text-slate-500">{copy('No proof documents submitted.', 'Hakuna nyaraka za uthibitisho zilizowasilishwa.')}</p>
                                     )}
                                 </div>
                             </div>
                         </div>
 
                         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                            <label className="text-xs font-black uppercase tracking-widest text-amber-800">Admin notes</label>
+                            <label className="text-xs font-black uppercase tracking-widest text-amber-800">{copy('Admin notes', 'Maelezo ya msimamizi')}</label>
                             <textarea
                                 className="mt-2 min-h-20 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
-                                placeholder="Visible to merchant if the application needs updates."
+                                placeholder={copy('Visible to merchant if the application needs updates.', 'Yataonekana kwa muuzaji ikiwa ombi linahitaji masasisho.')}
                                 value={selectedForwarder.admin_notes || ''}
                                 onChange={(e) => updateSelectedForwarder({ admin_notes: e.target.value })}
                             />
                             <p className="mt-1 text-xs font-semibold text-amber-800">
-                                These notes are sent with status changes, especially rejected or suspended applications.
+                                {copy('These notes are sent with status changes, especially rejected or suspended applications.', 'Maelezo haya hutumwa pamoja na mabadiliko ya hali, hasa maombi yaliyokataliwa au kusimamishwa.')}
                             </p>
                         </div>
 
@@ -514,19 +535,19 @@ export default function AdminForwarders() {
                                                 </p>
                                                 <p className="mt-1 text-xs font-semibold text-slate-500">{location.address_line}</p>
                                                 <p className="mt-1 text-xs text-slate-500">
-                                                    {[location.city_record?.name, location.state?.name, location.country?.name].filter(Boolean).join(', ') || 'No geography linked'}
+                                                    {[location.city_record?.name, location.state?.name, location.country?.name].filter(Boolean).join(', ') || copy('No geography linked', 'Hakuna eneo la kijiografia lililounganishwa')}
                                                 </p>
                                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                                     {(location.roles || []).map((role) => (
                                                         <span key={role} className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${roleMeta[role]?.badge || 'bg-slate-100 text-slate-600'}`}>
-                                                            {role}
+                                                            {role === 'origin' ? copy('Origin warehouse/drop-off', 'Ghala / eneo la kushushia chanzo') : role === 'destination' ? copy('Destination collection office', 'Ofisi ya kukusanyia lengwa') : role}
                                                         </span>
                                                     ))}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <Button variant="outline" size="sm" onClick={() => updateLocation(location, { is_verified: !location.is_verified })}>
-                                                    {location.is_verified ? 'Verified' : 'Verify'}
+                                                    {location.is_verified ? copy('Verified', 'Imethibitishwa') : copy('Verify', 'Thibitisha')}
                                                 </Button>
                                                 <Button variant="ghost" size="icon" className="text-red-600" onClick={() => deleteLocation(location)}>
                                                     <Trash2 className="h-4 w-4" />
@@ -538,7 +559,7 @@ export default function AdminForwarders() {
                             </div>
 
                             <form onSubmit={addLocation} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                <h3 className="text-sm font-black uppercase text-slate-700">Add warehouse / office</h3>
+                                <h3 className="text-sm font-black uppercase text-slate-700">{copy('Add warehouse / office', 'Ongeza ghala / ofisi')}</h3>
                                 <div className="grid gap-2">
                                     {Object.entries(roleMeta).map(([role, meta]) => {
                                         const active = (locationForm.roles || []).includes(role);
@@ -549,43 +570,43 @@ export default function AdminForwarders() {
                                                 onClick={() => toggleLocationRole(role)}
                                                 className={`flex min-h-10 items-center justify-between rounded-lg border px-3 text-left text-sm font-bold ${active ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-500'}`}
                                             >
-                                                {meta.label}
+                                                {copy(meta.label, role === 'origin' ? 'Ghala / eneo la kushushia chanzo' : 'Ofisi ya kukusanyia lengwa')}
                                                 <span className={`h-2.5 w-2.5 rounded-full ${active ? 'bg-indigo-600' : 'bg-slate-200'}`} />
                                             </button>
                                         );
                                     })}
                                 </div>
-                                <Input placeholder="Location name" value={locationForm.name} onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })} required />
-                                <Input placeholder="Official address" value={locationForm.address_line} onChange={(e) => setLocationForm({ ...locationForm, address_line: e.target.value })} required />
+                                <Input placeholder={copy('Location name', 'Jina la eneo')} value={locationForm.name} onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })} required />
+                                <Input placeholder={copy('Official address', 'Anwani rasmi')} value={locationForm.address_line} onChange={(e) => setLocationForm({ ...locationForm, address_line: e.target.value })} required />
                                 <Button type="button" variant="outline" className="w-full justify-center border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" onClick={() => setIsLocationPickerOpen(true)}>
                                     <MapPin className="mr-2 h-4 w-4" /> Pick exact location on map (required)
                                 </Button>
-                                <Input className="bg-slate-100" placeholder="Country from map pin" value={geoCountryLabel} readOnly />
-                                <Input className="bg-slate-100" placeholder="State / region from map pin" value={locationForm.state_name} readOnly />
-                                <Input className="bg-slate-100" placeholder="City from map pin" value={locationForm.city_name} readOnly />
+                                <Input className="bg-slate-100" placeholder={copy('Country from map pin', 'Nchi kutoka kwenye pini ya ramani')} value={geoCountryLabel} readOnly />
+                                <Input className="bg-slate-100" placeholder={copy('State / region from map pin', 'Mkoa kutoka kwenye pini ya ramani')} value={locationForm.state_name} readOnly />
+                                <Input className="bg-slate-100" placeholder={copy('City from map pin', 'Jiji kutoka kwenye pini ya ramani')} value={locationForm.city_name} readOnly />
                                 <div className="grid grid-cols-2 gap-2">
                                     <Input className="bg-slate-100" placeholder="Latitude" value={locationForm.latitude} readOnly />
                                     <Input className="bg-slate-100" placeholder="Longitude" value={locationForm.longitude} readOnly />
                                 </div>
-                                <Input placeholder="Contact phone" value={locationForm.contact_phone} onChange={(e) => setLocationForm({ ...locationForm, contact_phone: e.target.value })} />
+                                <Input placeholder={copy('Contact phone', 'Simu ya mawasiliano')} value={locationForm.contact_phone} onChange={(e) => setLocationForm({ ...locationForm, contact_phone: e.target.value })} />
                                 <Input
-                                    placeholder="Business hours, e.g. Mon-Fri (09:00 AM - 2:00 PM), Sat (09:00 AM - 12:00 PM)"
+                                    placeholder={copy('Business hours, e.g. Mon-Fri (09:00 AM - 2:00 PM), Sat (09:00 AM - 12:00 PM)', 'Masaa ya biashara, mf. Jumatatu-Ijumaa (09:00 AM - 2:00 PM), Jumamosi (09:00 AM - 12:00 PM)')}
                                     value={locationForm.business_hours}
                                     onChange={(e) => setLocationForm({ ...locationForm, business_hours: e.target.value })}
                                 />
                                 <textarea
                                     className="min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                                    placeholder="Seller instructions, e.g. write customer code on carton and send packing list on WhatsApp."
+                                    placeholder={copy('Seller instructions, e.g. write customer code on carton and send packing list on WhatsApp.', 'Maelekezo kwa muuzaji, mf. andika namba ya mteja kwenye mzigo na tuma packing list kwenye WhatsApp.')}
                                     value={locationForm.merchant_instructions}
                                     onChange={(e) => setLocationForm({ ...locationForm, merchant_instructions: e.target.value })}
                                 />
                                 <textarea
                                     className="min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                                    placeholder="Customer instructions, e.g. bring ID and order code when collecting cargo."
+                                    placeholder={copy('Customer instructions, e.g. bring ID and order code when collecting cargo.', 'Maelekezo kwa mteja, mf. leta kitambulisho na namba ya oda wakati wa kuchukua mzigo.')}
                                     value={locationForm.customer_instructions}
                                     onChange={(e) => setLocationForm({ ...locationForm, customer_instructions: e.target.value })}
                                 />
-                                <Button type="submit" disabled={saving} className="w-full">Add Location</Button>
+                                <Button type="submit" disabled={saving} className="w-full">{copy('Add location', 'Ongeza eneo')}</Button>
                             </form>
                             <AddressPickerModal
                                 isOpen={isLocationPickerOpen}

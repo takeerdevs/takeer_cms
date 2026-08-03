@@ -8,7 +8,6 @@ use App\Models\MerchantLocation;
 use App\Models\Message;
 use App\Models\Order;
 use App\Models\RefundRequest;
-use App\Models\Transaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,7 +22,7 @@ class PickupAgreementService
             return null;
         }
 
-        if (!in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true)) {
+        if (!in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed'], true)) {
             return null;
         }
 
@@ -34,7 +33,11 @@ class PickupAgreementService
         $location = $this->resolvePickupLocation($order);
         $existingSnapshot = $order->pickup_policy_snapshot ?: [];
         $buyerSlot = $existingSnapshot['buyer_requested_slot'] ?? null;
-        $snapshot = array_merge($existingSnapshot, $this->buildPolicySnapshot($order, $location));
+        // The checkout snapshot is the source of truth for the buyer's
+        // disclosed pickup policy. Merchant settings may change after the
+        // order is created, so do not overwrite the accepted penalty with a
+        // later location edit.
+        $snapshot = array_merge($this->buildPolicySnapshot($order, $location), $existingSnapshot);
         $readyAt ??= now();
 
         if ($buyerSlot && !empty($buyerSlot['start_at']) && !empty($buyerSlot['end_at'])) {
@@ -159,8 +162,17 @@ class PickupAgreementService
                 abort(422, 'Pickup cancellation applies only to pickup orders.');
             }
 
-            if ($order->pickup_completed_at || in_array($order->payment_status, ['resolved_merchant_paid', 'resolved_buyer_refunded', 'refund_pending'], true)) {
+            if ($order->pickup_completed_at || in_array($order->payment_status, ['paid_out', 'refunded', 'refund_pending'], true)) {
                 return $order;
+            }
+
+            if (! in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed', 'release_eligible'], true)) {
+                abort(422, 'Only a paid, unsettled pickup order can be cancelled after the pickup deadline.');
+            }
+
+            $settlement = $order->settlement()->lockForUpdate()->first();
+            if (! $settlement || in_array($settlement->settlement_state, ['release_requested', 'payout_processing', 'paid_out', 'refund_requested', 'refunded'], true)) {
+                abort(422, 'This pickup order is already in provider settlement or refund processing.');
             }
 
             if (!$order->pickup_deadline_at || $order->pickup_deadline_at->isFuture()) {
@@ -169,15 +181,11 @@ class PickupAgreementService
 
             $snapshot = $order->pickup_policy_snapshot ?: [];
             $percent = max(0, min(100, (float) ($snapshot['cancellation_penalty_percent'] ?? 0)));
-            $paidAmount = max(0, (float) $order->total_paid);
+            $paidAmount = round(max(0, (int) $settlement->buyer_paid_amount_minor) / 100, 2);
             $penaltyAmount = round($paidAmount * ($percent / 100), 2);
             $refundAmount = max(0, round($paidAmount - $penaltyAmount, 2));
 
             $order->releaseInventory();
-
-            if ($penaltyAmount > 0 && $order->merchant?->user) {
-                $this->creditMerchantPenalty($order, $penaltyAmount);
-            }
 
             $order->forceFill([
                 'pickup_status' => 'cancelled_after_grace',
@@ -197,18 +205,15 @@ class PickupAgreementService
 
             $extraChargeOrders = Order::query()
                 ->where('merchant_id', $order->merchant_id)
-                ->where('payment_status', 'escrow_locked')
-                ->whereNull('paid_out_at')
+                ->whereIn('payment_status', ['pending_fulfillment', 'payment_confirmed'])
                 ->where('extra_items->type', 'extra_charge')
                 ->where('extra_items->parent_order_id', $order->id)
                 ->lockForUpdate()
                 ->get();
 
             foreach ($extraChargeOrders as $feeOrder) {
-                $this->creditMerchantPenalty($feeOrder, (float) $feeOrder->total_paid, 'PICKUP-LATE-FEE');
                 $feeOrder->forceFill([
-                    'payment_status' => 'resolved_merchant_paid',
-                    'paid_out_at' => now(),
+                    'payment_status' => 'release_eligible',
                 ])->save();
             }
 
@@ -349,11 +354,11 @@ class PickupAgreementService
             abort(422, 'Extra pickup costs apply only to self-pickup orders.');
         }
 
-        if (!in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'], true)) {
+        if (!in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed', 'release_eligible'], true)) {
             abort(422, 'Order must be paid before adding an extra pickup cost.');
         }
 
-        if ($order->pickup_completed_at || in_array($order->payment_status, ['resolved_merchant_paid', 'resolved_buyer_refunded', 'refund_pending'], true)) {
+        if ($order->pickup_completed_at || in_array($order->payment_status, ['paid_out', 'refunded', 'refund_pending'], true)) {
             abort(422, 'This pickup order is already closed.');
         }
 
@@ -554,7 +559,7 @@ class PickupAgreementService
             'account_phone' => $order->account_phone,
             'country_code' => $order->country_code,
             'source' => 'online',
-            'payment_mode' => 'online_escrow',
+            'payment_mode' => 'online_psp',
             'transaction_ref' => 'EXTRA-' . $order->id . '-' . strtoupper(Str::random(10)),
             'extra_items' => [
                 'type' => 'extra_charge',
@@ -622,7 +627,7 @@ class PickupAgreementService
         }
 
         $paymentOrder->forceFill([
-            'payment_status' => 'escrow_locked',
+            'payment_status' => 'payment_confirmed',
             'gateway_ref' => $gatewayRef,
             'payment_gateway' => $gateway,
         ])->save();
@@ -652,7 +657,7 @@ class PickupAgreementService
         $this->writeActionMessage($parent, [
             'sender_id' => $parent->buyer_id,
             'receiver_id' => $parent->merchant?->user_id,
-            'body' => 'Extra charge payment is held in escrow.',
+            'body' => 'Extra charge payment was confirmed by the payment provider.',
             'action_type' => 'extra_charge_paid_held',
             'acting_as' => 'buyer',
             'amount' => $amount,
@@ -795,7 +800,7 @@ class PickupAgreementService
             'account_phone' => $order->account_phone,
             'country_code' => $order->country_code,
             'source' => 'online',
-            'payment_mode' => 'online_escrow',
+            'payment_mode' => 'online_psp',
             'transaction_ref' => 'DELV-' . $order->id . '-' . strtoupper(Str::random(10)),
             'extra_items' => [
                 'type' => 'pickup_delivery_fee',
@@ -838,7 +843,7 @@ class PickupAgreementService
         $conversion = $snapshot['delivery_conversion'] ?? [];
 
         $paymentOrder->forceFill([
-            'payment_status' => 'escrow_locked',
+            'payment_status' => 'payment_confirmed',
             'gateway_ref' => $gatewayRef,
             'payment_gateway' => $gateway,
         ])->save();
@@ -864,7 +869,7 @@ class PickupAgreementService
         $this->writeActionMessage($parent, [
             'sender_id' => $parent->buyer_id,
             'receiver_id' => $parent->merchant?->user_id,
-            'body' => 'Delivery conversion fee is paid and held in escrow.',
+            'body' => 'Delivery conversion fee was confirmed by the payment provider.',
             'action_type' => 'delivery_conversion_paid_held',
             'acting_as' => 'buyer',
             'shipping_fee' => (float) $paymentOrder->total_paid,
@@ -892,6 +897,14 @@ class PickupAgreementService
             return MerchantLocation::query()->find($order->pickup_location_id);
         }
 
+        $snapshotLocationId = data_get($order->pickup_policy_snapshot, 'location_id');
+        if ($snapshotLocationId) {
+            return MerchantLocation::query()
+                ->whereKey((int) $snapshotLocationId)
+                ->where('merchant_id', $order->merchant_id)
+                ->first();
+        }
+
         return $order->merchant?->locations
             ? $order->merchant->locations
                 ->where('allow_self_pickup', true)
@@ -916,62 +929,16 @@ class PickupAgreementService
             'available_windows' => $location?->pickup_available_windows ?: null,
             'instructions' => $location?->pickup_instructions,
             'extension_allowed' => (bool) ($order->product?->pickup_extension_allowed ?? true),
-            'cancellation_penalty_percent' => (float) ($location?->pickup_cancellation_penalty_percent ?? 0),
+            'cancellation_penalty_percent' => max(0, min(99.99, (float) ($location?->pickup_cancellation_penalty_percent ?? 0))),
             'pickup_advance_days' => $location?->pickup_advance_days ?? 2,
             'product_note' => $order->product?->pickup_policy_note,
             'accepted_at' => now()->toISOString(),
         ];
     }
 
-    private function creditMerchantPenalty(Order $order, float $amount, string $referencePrefix = 'PICKUP-CANCEL-PENALTY'): void
-    {
-        $amount = round(max(0, $amount), 2);
-        if ($amount <= 0) {
-            return;
-        }
-
-        $merchant = $order->merchant ?: $order->product?->merchant;
-        if (!$merchant?->user) {
-            return;
-        }
-
-        $wallet = $merchant->wallet()->lockForUpdate()->firstOrCreate(
-            ['merchant_id' => $merchant->id],
-            ['user_id' => $merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
-        );
-
-        if (Transaction::query()
-            ->where('order_id', $order->id)
-            ->where('type', 'order_revenue')
-            ->where('reference', 'like', $referencePrefix . '-%')
-            ->exists()) {
-            return;
-        }
-
-        Transaction::create([
-            'user_id' => $merchant->user_id,
-            'merchant_id' => $merchant->id,
-            'order_id' => $order->id,
-            'type' => 'order_revenue',
-            'gross_amount' => $amount,
-            'fee_amount' => 0,
-            'tax_amount' => 0,
-            'provider_cost_amount' => 0,
-            'takeer_margin_amount' => 0,
-            'net_amount' => $amount,
-            'reference' => $referencePrefix . '-' . $order->id . '-' . Str::random(6),
-        ]);
-
-        $wallet->balance = round((float) $wallet->balance + $amount, 2);
-        if ($wallet->frozen_balance >= $amount) {
-            $wallet->frozen_balance = round((float) $wallet->frozen_balance - $amount, 2);
-        }
-        $wallet->save();
-    }
-
     private function createPickupRefundRequest(Order $order, float $refundAmount, float $penaltyAmount, float $penaltyPercent, ?string $reason = null): ?RefundRequest
     {
-        if ($refundAmount <= 0) {
+        if ($refundAmount < 0) {
             return null;
         }
 
@@ -1003,6 +970,10 @@ class PickupAgreementService
                 'total_paid' => (float) $order->total_paid,
                 'penalty_amount' => $penaltyAmount,
                 'refund_amount' => $refundAmount,
+                'provider_refund_required' => $refundAmount > 0,
+                'provider_settlement_instruction' => $penaltyAmount > 0
+                    ? 'The PSP must retain or allocate the disclosed penalty under its approved marketplace settlement structure.'
+                    : 'No penalty is retained; the PSP refund covers the full paid amount.',
                 'created_from' => 'pickup_grace_cancellation',
             ],
         ]);

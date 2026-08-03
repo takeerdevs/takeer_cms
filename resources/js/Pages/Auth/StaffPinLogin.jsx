@@ -5,8 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
+import LanguageSwitcher from '@/Components/LanguageSwitcher';
 
 export default function StaffPinLogin({ merchant }) {
+    const { t } = useLocale();
     const [form, setForm] = useState({
         phone_number: '',
         pin: '',
@@ -40,7 +43,7 @@ export default function StaffPinLogin({ merchant }) {
             
             if (res.data.status === 'needs_otp') {
                 setShowOtp(true);
-                toast.success('Verification required. Check your phone for OTP.');
+                toast.success(t('staffTerminal.verificationRequired'));
                 return;
             }
 
@@ -53,7 +56,7 @@ export default function StaffPinLogin({ merchant }) {
             // Role-based landing after staff login
             router.visit(res.data.landing_path || `/merchant/${res.data.merchant.username}/retail/pos`);
         } catch (err) {
-            setError(err.response?.data?.message || 'Login failed. Please check your phone and PIN.');
+            setError(err.response?.data?.message || t('staffTerminal.loginFailed'));
         } finally {
             setLoading(false);
         }
@@ -61,7 +64,8 @@ export default function StaffPinLogin({ merchant }) {
 
     return (
         <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4">
-            <Head title={`Staff Terminal | ${merchant.display_name || merchant.username}`} />
+            <Head title={t('staffTerminal.title', { merchant: merchant.display_name || merchant.username })} />
+            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
             
             <Card className="w-full max-w-md border-none shadow-2xl rounded-[32px] overflow-hidden bg-white">
                 <CardHeader className="pt-12 pb-6 text-center flex flex-col items-center">
@@ -74,17 +78,17 @@ export default function StaffPinLogin({ merchant }) {
                             <ShieldCheck className="h-10 w-10 text-white" />
                         </div>
                     )}
-                    <CardTitle className="text-2xl font-black">Staff Terminal Login</CardTitle>
+                    <CardTitle className="text-2xl font-black">{t('staffTerminal.heading')}</CardTitle>
                     <div className="mt-1">
                         <span className="text-[11px] font-black text-brand-600 uppercase tracking-[0.2em]">{merchant.display_name || merchant.username}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-4">Enter your phone and terminal PIN to continue.</p>
+                    <p className="text-sm text-muted-foreground mt-4">{t('staffTerminal.description')}</p>
                 </CardHeader>
                 <CardContent className="p-8">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                <Smartphone className="h-3 w-3" /> Mobile Number
+                                <Smartphone className="h-3 w-3" /> {t('staffTerminal.mobileNumber')}
                             </label>
                             <Input 
                                 required
@@ -98,7 +102,7 @@ export default function StaffPinLogin({ merchant }) {
                         {!showOtp ? (
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                    <Key className="h-3 w-3" /> 4-Digit PIN
+                                    <Key className="h-3 w-3" /> {t('staffTerminal.pin')}
                                 </label>
                                 <Input 
                                     required
@@ -113,7 +117,7 @@ export default function StaffPinLogin({ merchant }) {
                         ) : (
                             <div className="space-y-2 animate-in slide-in-from-right-4 duration-300">
                                 <label className="text-xs font-bold text-brand-600 uppercase tracking-widest flex items-center gap-2">
-                                    <ShieldCheck className="h-3 w-3" /> 6-Digit Verification Code
+                                    <ShieldCheck className="h-3 w-3" /> {t('staffTerminal.verificationCode')}
                                 </label>
                                 <Input 
                                     required
@@ -128,7 +132,7 @@ export default function StaffPinLogin({ merchant }) {
                                     onClick={() => setShowOtp(false)}
                                     className="text-[10px] font-bold text-muted-foreground hover:text-brand-600 uppercase tracking-widest"
                                 >
-                                    Re-enter PIN
+                                    {t('staffTerminal.reenterPin')}
                                 </button>
                             </div>
                         )}
@@ -147,13 +151,13 @@ export default function StaffPinLogin({ merchant }) {
                             {loading ? (
                                 <div className="animate-spin h-6 w-6 border-2 border-white/30 border-t-white rounded-full"></div>
                             ) : (
-                                <>Unlock Terminal <ArrowRight className="ml-2 h-5 w-5" /></>
+                                <>{t('staffTerminal.unlock')} <ArrowRight className="ml-2 h-5 w-5" /></>
                             )}
                         </Button>
                     </form>
 
                     <div className="mt-8 text-center">
-                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Powered by Takeer Retail Engine</p>
+                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">{t('staffTerminal.poweredBy')}</p>
                     </div>
                 </CardContent>
             </Card>

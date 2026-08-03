@@ -13,6 +13,7 @@ import UserAddressManager from './UserAddressManager';
 import axios from 'axios';
 import { checkoutAttributionFields, trackAttributionEvent } from '@/lib/attribution';
 import { formatQuantity } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 const DEFAULT_CENTER = {
     lat: -6.7924, // Dar es Salaam
@@ -52,12 +53,13 @@ const isoWeekday = (date) => {
     const day = date.getDay();
     return day === 0 ? 7 : day;
 };
-const formatPickupSlot = (start, end) => {
+const formatPickupSlot = (start, end, locale = 'en') => {
     const sameDay = start.toDateString() === end.toDateString();
-    const dateLabel = start.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-    const startTime = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    const endTime = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    return `${dateLabel}, ${startTime}-${sameDay ? endTime : `${end.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${endTime}`}`;
+    const dateLocale = locale === 'sw' ? 'sw-TZ' : 'en-TZ';
+    const dateLabel = start.toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric' });
+    const startTime = start.toLocaleTimeString(dateLocale, { hour: 'numeric', minute: '2-digit' });
+    const endTime = end.toLocaleTimeString(dateLocale, { hour: 'numeric', minute: '2-digit' });
+    return `${dateLabel}, ${startTime}-${sameDay ? endTime : `${end.toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric' })} ${endTime}`}`;
 };
 
 const formatKmRadius = (value) => {
@@ -168,7 +170,7 @@ function DeliveryCoverageMap({ anchors, customerLat, customerLng, height = 220 }
                 {customerPosition && (
                     <Marker
                         position={customerPosition}
-                        title="Anwani yako"
+                        title={copy('Your address', 'Anwani yako')}
                         icon={{
                             path: window.google.maps.SymbolPath.CIRCLE,
                             scale: 8,
@@ -187,6 +189,7 @@ function DeliveryCoverageMap({ anchors, customerLat, customerLng, height = 220 }
 
 export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const { auth, country } = usePage().props;
+    const { locale, t, copy } = useLocale();
     const isGuest = !auth?.user;
     const detectedIso2 = (country?.iso_alpha2 || '').toUpperCase();
 
@@ -230,6 +233,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
     const [step, setStep] = useState(1); // 1: Details/Shipping, 2: Payment
     const [paymentMethod, setPaymentMethod] = useState('mobile'); // 'mobile', 'card'
+    const [acceptTerms, setAcceptTerms] = useState(false);
     const [mobileSubMethod, setMobileSubMethod] = useState('account'); // 'account', 'other'
     const [couponCode, setCouponCode] = useState('');
     const [isCouponExpanded, setIsCouponExpanded] = useState(false);
@@ -413,7 +417,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
         if (bestLocalMatch) {
             setSelectedShippingZoneId(String(bestLocalMatch.zone.id));
-            toast.info('Tumekupatia gharama ya usafiri ya local ya karibu!');
+            toast.info(copy('We found the nearest local shipping cost for you!', 'Tumekupatia gharama ya usafiri ya local ya karibu!'));
             return;
         }
 
@@ -445,8 +449,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             setSelectedShippingZoneId(String(bestIntercityMatch.zone.id));
             setSelectedHotspot(null);
             toast.info(Number(bestIntercityMatch.zone.flat_rate_fee || 0) > 0
-                ? `Tumekupatia gharama ya inter-city: ${bestIntercityMatch.zone.zone_name}`
-                : `Destination ya inter-city imepatikana: ${bestIntercityMatch.zone.zone_name}. Gharama itathibitishwa kwenye chat.`
+                ? copy(`Inter-city cost found: ${bestIntercityMatch.zone.zone_name}`, `Tumekupatia gharama ya inter-city: ${bestIntercityMatch.zone.zone_name}`)
+                : copy(`Inter-city destination found: ${bestIntercityMatch.zone.zone_name}. The cost will be confirmed in chat.`, `Destination ya inter-city imepatikana: ${bestIntercityMatch.zone.zone_name}. Gharama itathibitishwa kwenye chat.`)
             );
             return;
         }
@@ -554,7 +558,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         findBestShippingZone(customerLat, customerLng, customerRegion, customerCity, customerCountry, customerCountryId);
     }, [isOpen, isSelfPickupChoice, shippingZones.length, customerLat, customerLng, customerRegion, customerCity, customerCountry, customerCountryId, shippingProfile?.outside_area_policy]);
 
-    const itemTitle = activeProduct?.title || activeProduct?.name || 'Inapatikana kwa malipo';
+    const itemTitle = activeProduct?.title || activeProduct?.name || copy('Available for payment', 'Inapatikana kwa malipo');
     const requiresOwnedStock = activeProduct?.type === 'physical' && (activeProduct?.fulfillment_mode || 'own_stock') === 'own_stock';
     const variants = useMemo(() => (
         (activeProduct?.variants || []).filter((variant) => (
@@ -738,7 +742,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const packageContentQuantity = Number(activeProduct?.package_content_quantity || 0);
     const packageContentUnit = activeProduct?.package_content_unit_type || null;
     const checkoutQuantitySummary = packageContentQuantity && packageContentUnit
-        ? '1 package'
+        ? `1 ${copy('package', 'kifurushi')}`
         : `${formatQuantity(requestedPhysicalQuantity)} ${unitSymbol}`;
     const serviceBaseMultiplier = activeProduct?.type === 'service' && !hasExplicitCheckoutPrice
         ? servicePricingMultiplier(selectedServiceOption?.price_display || activeProduct?.service_price_display)
@@ -789,30 +793,36 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         );
     const fulfillmentMode = activeProduct?.fulfillment_mode || 'own_stock';
     const fulfillmentLeadTimeLabel = fulfillmentMode === 'supplier_sourced' && activeProduct?.availability_lead_time_hours
-        ? `Estimated confirmation: ${activeProduct.availability_lead_time_hours} hour${Number(activeProduct.availability_lead_time_hours) === 1 ? '' : 's'}`
+        ? t('checkout.expectedConfirmation', {
+            hours: activeProduct.availability_lead_time_hours,
+            plural: Number(activeProduct.availability_lead_time_hours) === 1 ? '' : 's',
+        })
         : activeProduct?.availability_lead_time_days
-            ? `Estimated preparation: ${activeProduct.availability_lead_time_days} day${Number(activeProduct.availability_lead_time_days) === 1 ? '' : 's'}`
+            ? t('checkout.expectedPreparation', {
+                days: activeProduct.availability_lead_time_days,
+                plural: Number(activeProduct.availability_lead_time_days) === 1 ? '' : 's',
+            })
             : null;
     const checkoutFulfillmentGuidance = isPhysicalProduct && itemType === 'product' ? ({
         supplier_sourced: {
-            title: 'Availability confirmation',
-            body: 'The seller will source and confirm this item after your order. Payment stays protected while fulfillment is confirmed.',
+            title: t('checkout.fulfillment.supplier_sourced.title'),
+            body: t('checkout.fulfillment.supplier_sourced.body'),
         },
         made_to_order: {
-            title: 'Made after order',
-            body: 'The seller starts preparing or crafting this item after your order is confirmed. Delivery begins when it is ready.',
+            title: t('checkout.fulfillment.made_to_order.title'),
+            body: t('checkout.fulfillment.made_to_order.body'),
         },
         farm_harvest: {
-            title: 'Harvest / farm stock',
-            body: 'The seller will fulfill this from harvest or farm stock around the expected availability date.',
+            title: t('checkout.fulfillment.farm_harvest.title'),
+            body: t('checkout.fulfillment.farm_harvest.body'),
         },
         preorder: {
-            title: 'Preorder',
-            body: 'This item is ordered before it is ready. Fulfillment starts around the expected availability date.',
+            title: t('checkout.fulfillment.preorder.title'),
+            body: t('checkout.fulfillment.preorder.body'),
         },
         group_sale: {
-            title: 'Group sale preorder',
-            body: 'This order follows the group sale target and campaign timing.',
+            title: t('checkout.fulfillment.group_sale.title'),
+            body: t('checkout.fulfillment.group_sale.body'),
         },
     }[fulfillmentMode] || null) : null;
     const activeShippingZone = shippingZones.find(z => String(z.id) === String(selectedShippingZoneId));
@@ -862,7 +872,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                             value: toLocalInputValue(cursor),
                             start: cursor.toISOString(),
                             end: cappedDeadline.toISOString(),
-                            label: formatPickupSlot(cursor, cappedDeadline),
+                            label: formatPickupSlot(cursor, cappedDeadline, locale),
                         });
                     }
                     cursor = new Date(cursor.getTime() + 60 * 60 * 1000);
@@ -887,7 +897,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             slots.push(...slotsForDay(offset));
         }
         return slots.slice(0, 48);
-    }, [isPhysicalProduct, pickupLocation?.id, pickupLocation?.pickup_available_windows, pickupMaxDays]);
+    }, [isPhysicalProduct, pickupLocation?.id, pickupLocation?.pickup_available_windows, pickupMaxDays, locale]);
     const selectedPickupSlot = pickupSlotOptions.find((slot) => slot.value === selectedPickupSlotValue) || pickupSlotOptions[0] || null;
 
     useEffect(() => {
@@ -911,11 +921,11 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         const a = min !== null && min !== undefined && min !== '' ? Number(min) : null;
         const b = max !== null && max !== undefined && max !== '' ? Number(max) : null;
         if (a === null && b === null) return '';
-        if (a !== null && b !== null && a !== b) return `${a}-${b} days`;
+        if (a !== null && b !== null && a !== b) return `${a}-${b} ${copy('days', 'siku')}`;
         const value = b ?? a;
-        if (value === 0) return 'same day';
-        if (value === 1) return '1 day';
-        return `${value} days`;
+        if (value === 0) return copy('same day', 'siku hiyo hiyo');
+        if (value === 1) return `1 ${copy('day', 'siku')}`;
+        return `${value} ${copy('days', 'siku')}`;
     };
     const deliveryPromiseSource = activeProduct?.delivery_promise?.override_enabled
         ? activeProduct.delivery_promise
@@ -924,7 +934,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         const promise = deliveryPromiseSource || {};
         const label = promise.label || promise.delivery_promise_label;
         if (label) return label;
-        if (promise.requires_confirmation || promise.requires_delivery_confirmation) return 'Delivery time will be confirmed in order chat';
+        if (promise.requires_confirmation || promise.requires_delivery_confirmation) return copy('Delivery time will be confirmed in order chat', 'Muda wa delivery utathibitishwa kwenye chat ya order');
         const handling = formatPromiseDayRange(promise.handling_min_days, promise.handling_max_days);
         const transit = formatPromiseDayRange(promise.transit_min_days, promise.transit_max_days);
         if (handling && transit) return `${handling} preparation + ${transit} delivery`;
@@ -993,27 +1003,27 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         .filter(Boolean);
     const radiusCoverageMessage = deliveryCoverageAnchors.length
         ? (deliveryCoverageAnchors.length === 1
-            ? `Tunasafirisha ndani ya kilomita ${deliveryCoverageAnchors[0].radiusLabel} kutoka ${deliveryCoverageAnchors[0].label}.`
-            : `Tunasafirisha ndani ya maeneo ${deliveryCoverageAnchors.length} ya biashara${coveragePreviewLabels.length ? `, ikiwemo ${coveragePreviewLabels.join(' na ')}` : ''}.`)
-        : 'Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.';
+            ? t('checkout.deliveryRadius', { radius: deliveryCoverageAnchors[0].radiusLabel, label: deliveryCoverageAnchors[0].label })
+            : t('checkout.deliveryAreas', { count: deliveryCoverageAnchors.length, labels: coveragePreviewLabels.length ? `, ikiwemo ${coveragePreviewLabels.join(locale === 'sw' ? ' na ' : ' and ')}` : '' }))
+        : t('checkout.noDeliveryArea');
     const intercityDestinations = useMemo(() => (
         shippingZones
             .filter((zone) => zone?.is_active !== false && zone?.delivery_type === 'intercity_bus')
             .map((zone) => {
-                if (zone.coverage_scope === 'countrywide') return `nchi nzima${zone.destination_country ? ` (${zone.destination_country})` : ''}`;
-                if (zone.coverage_scope === 'international') return `international: ${zone.destination_country || zone.zone_name}`;
+                if (zone.coverage_scope === 'countrywide') return `${locale === 'sw' ? 'nchi nzima' : 'country-wide'}${zone.destination_country ? ` (${zone.destination_country})` : ''}`;
+                if (zone.coverage_scope === 'international') return `${locale === 'sw' ? 'kimataifa' : 'international'}: ${zone.destination_country || zone.zone_name}`;
                 return zone.destination_city || zone.zone_name || zone.destination_region;
             })
             .filter(Boolean)
             .filter((value, index, values) => values.indexOf(value) === index)
     ), [shippingZones]);
     const intercityCoverageMessage = intercityDestinations.length
-        ? ` Inter-city inapatikana kwenda: ${intercityDestinations.join(', ')}.`
+        ? t('checkout.intercityAvailable', { destinations: intercityDestinations.join(', ') })
         : '';
-    const outsideAreaMessage = `${radiusCoverageMessage}${intercityCoverageMessage} Chagua anwani iliyo karibu au pickup (Kuchukua mwenyewe)`;
+    const outsideAreaMessage = `${radiusCoverageMessage}${intercityCoverageMessage}${t('checkout.chooseNearbySuffix')}`;
     const radiusCoverageNode = deliveryCoverageAnchors.length === 1 ? (
         <span>
-            Tunasafirisha ndani ya kilomita {deliveryCoverageAnchors[0].radiusLabel} kutoka{' '}
+            {t('checkout.deliveryRadiusPrefix', { radius: deliveryCoverageAnchors[0].radiusLabel })}{' '}
             <button
                 type="button"
                 onClick={(event) => {
@@ -1028,8 +1038,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         </span>
     ) : deliveryCoverageAnchors.length > 1 ? (
         <span>
-            Tunasafirisha ndani ya maeneo {deliveryCoverageAnchors.length} ya biashara
-            {coveragePreviewLabels.length ? `, ikiwemo ${coveragePreviewLabels.join(' na ')}` : ''}.{' '}
+            {t('checkout.deliveryAreas', { count: deliveryCoverageAnchors.length, labels: coveragePreviewLabels.length ? `, ${locale === 'sw' ? 'ikiwemo' : 'including'} ${coveragePreviewLabels.join(locale === 'sw' ? ' na ' : ' and ')}` : '' })}{' '}
             <button
                 type="button"
                 onClick={(event) => {
@@ -1038,19 +1047,19 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 }}
                 className="underline decoration-amber-700/40 underline-offset-2 hover:text-amber-700"
             >
-                Fungua ramani
+                {t('checkout.openMap')}
             </button>{' '}
-            kuona yote.
+            {t('checkout.seeAll')}
         </span>
     ) : (
-        <span>Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.</span>
+        <span>{t('checkout.noDeliveryArea')}</span>
     );
     const isIntercityDelivery = activeShippingZone?.delivery_type === 'intercity_bus';
     const isInternationalDelivery = activeShippingZone?.coverage_scope === 'international';
     const isCountrywideDelivery = activeShippingZone?.coverage_scope === 'countrywide';
     const matchedShippingFeeLabel = Number(activeShippingZone?.flat_rate_fee || 0) > 0
-        ? `Fee ${formatCheckoutMoney(displayAmount(activeShippingZone.flat_rate_fee || 0))}`
-        : (isIntercityDelivery ? 'Shipping fee will be confirmed in order chat' : 'Free shipping');
+        ? `${t('common.fee')} ${formatCheckoutMoney(displayAmount(activeShippingZone.flat_rate_fee || 0))}`
+        : (isIntercityDelivery ? t('checkout.shippingFeeConfirmed') : t('common.freeShipping'));
     const intercityDestinationLabel = isInternationalDelivery
         ? (activeShippingZone?.destination_country || activeShippingZone?.zone_name)
         : (isCountrywideDelivery
@@ -1172,21 +1181,27 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         e.preventDefault();
 
         if (isGuest && (!name || name.trim().length < 2)) {
-            return toast.error("Tafadhali weka jina lako kamili");
+            return toast.error(t('checkout.enterFullName'));
         }
 
         if (!normalizedAccountPhone) {
-            return toast.error("Tafadhali weka namba sahihi ya akaunti");
+            return toast.error(t('checkout.validAccountPhone'));
         }
         if (!resolvedPaymentPhone) {
-            return toast.error("Tafadhali weka namba sahihi ya malipo");
+            return toast.error(t('checkout.validPaymentPhone'));
+        }
+        if (!acceptTerms) {
+            return toast.error(t('checkout.acceptTermsError'));
         }
 
         if (isPhysicalProduct && !isPickup && (!customerLat || !customerLng)) {
-            return toast.error("Tafadhali chagua eneo/mtaa wako kwenye ramani ili tuweze kufikisha mzigo wako kwa usahihi.");
+            return toast.error(t('checkout.chooseMapArea'));
         }
         if (isWholesaleProduct && requestedPhysicalQuantity < minimumPhysicalQuantity) {
-            return toast.error(`Minimum wholesale order is ${formatQuantity(minimumPhysicalQuantity)} ${unitSymbol}.`);
+            return toast.error(t('checkout.minimumWholesale', {
+                quantity: formatQuantity(minimumPhysicalQuantity),
+                unit: unitSymbol,
+            }));
         }
 
         if (isOutsideAreaBlocked) {
@@ -1195,16 +1210,16 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
         if (activeProduct?.type === 'service' && !startsAsServiceInquiry) {
             if (needsPeopleInput && Number(servicePricingInputs.people || 0) < 1) {
-                return toast.error("Tafadhali weka idadi ya watu/wageni.");
+                return toast.error(copy('Enter the number of people/guests.', 'Tafadhali weka idadi ya watu/wageni.'));
             }
             if (needsHoursInput && Number(servicePricingInputs.hours || 0) <= 0) {
-                return toast.error("Tafadhali weka idadi ya saa.");
+                return toast.error(copy('Enter the number of hours.', 'Tafadhali weka idadi ya saa.'));
             }
             if (needsQuantityInput && Number(servicePricingInputs.quantity || 0) < 1) {
-                return toast.error("Tafadhali weka quantity.");
+                return toast.error(copy('Enter a quantity.', 'Tafadhali weka quantity.'));
             }
             if (needsDateRangeInput && (!servicePricingInputs.start_date || !servicePricingInputs.end_date || servicePricingInputs.end_date <= servicePricingInputs.start_date)) {
-                return toast.error("Tafadhali chagua tarehe ya kuanza na kumaliza.");
+                return toast.error(copy('Choose valid start and end dates.', 'Tafadhali chagua tarehe ya kuanza na kumaliza.'));
             }
         }
 
@@ -1246,6 +1261,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 customer_city_id: isPhysicalProduct ? (customerCityId || undefined) : undefined,
                 quantity: isPhysicalProduct && itemType === 'product' ? requestedPhysicalQuantity : 1,
                 idempotency_key: `q-${itemType}-${activeProduct.id}-${activeProduct.service_request_payment?.id || activeProduct.service_request_id || 'standard'}-${Date.now()}`,
+                accept_terms: acceptTerms,
                 buyer_lat: isPhysicalProduct ? customerLat : undefined,
                 buyer_lng: isPhysicalProduct ? customerLng : undefined,
                 physical_address: isPhysicalProduct ? (extraAddressDetails ? `${physicalAddress} (${extraAddressDetails})` : physicalAddress) : undefined,
@@ -1271,16 +1287,16 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
             if (isPhysicalProduct && !isPickup) {
                 if (!physicalAddress || physicalAddress.trim().length < 5) {
-                    throw new Error('Tafadhali weka anwani yako ya usafirishaji ili muuzaji ajue mahali pa kuleta mzigo.');
+                    throw new Error(copy('Enter your shipping address so the merchant knows where to deliver the package.', 'Tafadhali weka anwani yako ya usafirishaji ili muuzaji ajue mahali pa kuleta mzigo.'));
                 }
             }
 
             if (isPhysicalProduct && isSelfPickupChoice && !selectedPickupSlot) {
-                throw new Error('Tafadhali chagua muda wa kuchukua bidhaa.');
+                throw new Error(copy('Choose a pickup time.', 'Tafadhali chagua muda wa kuchukua bidhaa.'));
             }
 
             if (activeProduct?.has_variants && !selectedVariant?.id) {
-                throw new Error('Tafadhali chagua sifa za bidhaa kabla ya kuendelea.');
+                throw new Error(copy('Choose the product options before continuing.', 'Tafadhali chagua sifa za bidhaa kabla ya kuendelea.'));
             }
 
             const endpoint = isInquiry ? '/api/v1/checkout/inquire' : '/api/v1/checkout/initiate';
@@ -1294,7 +1310,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.message || 'Hitilafu imetokea');
+                throw new Error(data.message || copy('Something went wrong.', 'Hitilafu imetokea'));
             }
 
             if (data.token) {
@@ -1303,8 +1319,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             }
 
             const successMessage = isInquiry
-                ? (data.message || 'Oda yako imeanzishwa! Sasa mnawasiliana na muuzaji.')
-                : (data.message || 'Malipo yameanzishwa! Kamilisha malipo kwenye simu yako.');
+                ? (data.message || copy('Your request has started. You can now chat with the merchant.', 'Oda yako imeanzishwa! Sasa mnawasiliana na muuzaji.'))
+                : (data.message || t('checkout.paymentStarted'));
 
             toast.success(successMessage);
             onOpenChange(false);
@@ -1324,7 +1340,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             }
 
         } catch (error) {
-            toast.error(error.message || 'Imeshindikana kuanzisha malipo. Jaribu tena.');
+            toast.error(error.message || copy('Could not start the payment. Please try again.', 'Imeshindikana kuanzisha malipo. Jaribu tena.'));
         } finally {
             setLoading(false);
         }
@@ -1368,12 +1384,12 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                 itemId,
                                 itemType: type,
                                 orderId,
-                                productTitle: activeProduct?.title || activeProduct?.name || 'Bidhaa Yako',
+                                productTitle: activeProduct?.title || activeProduct?.name || copy('Your product', 'Bidhaa yako'),
                             }
                         }));
                     } else {
                         // Content unlock: signal the card/detail to refetch
-                        toast.success('Malipo yamepokelewa! Content imefunguliwa.');
+                        toast.success(t('checkout.paymentReceived'));
                         window.dispatchEvent(new CustomEvent('takeer:access-unlocked', {
                             detail: { itemId, itemType: type }
                         }));
@@ -1411,13 +1427,13 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     };
 
     const itemLabel = {
-        'product': 'Bei ya Bidhaa',
-        'bundle': 'Malipo ya Bundle',
-        'offering_group': 'Malipo ya Offering',
-        'subscription_plan': 'Malipo ya Kifurushi',
-        'post': 'Malipo ya Maandishi/Picha',
-        'content_item': 'Malipo ya Maandishi/Picha',
-    }[itemType] || 'Malipo ya Bidhaa';
+        product: copy('Product payment', 'Malipo ya bidhaa'),
+        bundle: copy('Bundle payment', 'Malipo ya bundle'),
+        offering_group: copy('Offering payment', 'Malipo ya ofa'),
+        subscription_plan: copy('Membership payment', 'Malipo ya uanachama'),
+        post: copy('Text/image payment', 'Malipo ya maandishi/picha'),
+        content_item: copy('Text/image payment', 'Malipo ya maandishi/picha'),
+    }[itemType] || copy('Product payment', 'Malipo ya bidhaa');
 
     const formatAttributeLabel = (key) => (
         String(key || '')
@@ -1428,36 +1444,36 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     return (
         <>
             <Drawer open={isOpen} onOpenChange={onOpenChange}>
-                <DrawerContent className="w-full sm:max-w-xl sm:mx-auto p-0 border border-brand-100/70 dark:border-brand-900/60 bg-background dark:bg-slate-950 shadow-2xl shadow-brand-900/10 dark:shadow-black/50 rounded-t-[2.5rem] overflow-hidden">
+                <DrawerContent className="w-full sm:max-w-xl sm:mx-auto h-[calc(100dvh-0.75rem)] max-h-[calc(100dvh-0.75rem)] sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)] p-0 border border-brand-100/70 dark:border-brand-900/60 bg-background dark:bg-slate-950 shadow-2xl shadow-brand-900/10 dark:shadow-black/50 rounded-t-[2.5rem] overflow-hidden">
                     {/* Visual Header */}
-                    <div className="bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-4 sm:px-6 pt-5 pb-4 sm:py-6 text-white relative overflow-hidden">
+                    <div className="shrink-0 bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-4 sm:px-6 pt-3 pb-3 sm:py-5 text-white relative overflow-hidden">
                         <div className="absolute -top-20 -right-16 h-56 w-56 rounded-full bg-white/10 blur-3xl pointer-events-none" />
                         <div className="absolute -bottom-24 -left-20 h-56 w-56 rounded-full bg-sky-300/20 blur-3xl pointer-events-none" />
                         <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,rgba(255,255,255,0.09)_35%,transparent_70%)] pointer-events-none" />
 
                         <DrawerHeader className="relative z-10 text-left p-0">
                             <div className="flex items-center gap-2 mb-2">
-                                <div className="bg-white/15 p-2 rounded-xl backdrop-blur-md inline-flex border border-white/25 shadow-sm">
-                                    <Zap className="h-5 w-5 fill-white" />
+                                <div className="bg-white/15 p-1.5 rounded-xl backdrop-blur-md inline-flex border border-white/25 shadow-sm">
+                                    <Zap className="h-4 w-4 fill-white" />
                                 </div>
-                                <span className="font-black text-xs uppercase tracking-[0.2em] text-white/90">Malipo ya Haraka</span>
+                                <span className="font-black text-xs uppercase tracking-[0.2em] text-white/90">{t('checkout.quickPayment')}</span>
                             </div>
-                            <DrawerTitle className="text-[28px] sm:text-3xl font-[900] leading-tight mb-1">
+                            <DrawerTitle className="text-2xl sm:text-3xl font-[900] leading-tight mb-1">
                                 {itemTitle}
                             </DrawerTitle>
                             <DrawerDescription className="text-white/80 text-sm flex items-center gap-1.5 font-bold">
                                 <Store className="h-3.5 w-3.5" />
-                                {activeProduct?.merchant?.display_name || activeProduct?.merchant?.name || 'Takeer Store'}
+                                {activeProduct?.merchant?.display_name || activeProduct?.merchant?.name || copy('Takeer Store', 'Duka la Takeer')}
                             </DrawerDescription>
                         </DrawerHeader>
                     </div>
 
-                    <div className="flex flex-col max-h-[85vh]">
-                        <div className="overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 scrollbar-hide">
+                    <div className="min-h-0 flex flex-1 flex-col">
+                        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 scrollbar-hide">
                             {/* Variant Selection (Common for both if applicable) */}
                             {activeProduct?.has_variants && (
                                 <div className="rounded-2xl border border-brand-100 dark:border-slate-700 bg-brand-50/40 dark:bg-slate-900/70 p-3 sm:p-4 space-y-3">
-                                    <p className="text-xs font-black uppercase tracking-wider text-brand-700/80 dark:text-brand-300/80">Chagua Sifa Za Bidhaa</p>
+                                    <p className="text-xs font-black uppercase tracking-wider text-brand-700/80 dark:text-brand-300/80">{t('checkout.productOptions')}</p>
 
                                     {variantAttributeKeys.map((key) => {
                                         const options = variantOptionsByKey[key] || [];
@@ -1496,7 +1512,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                                             <img src={swatch} alt={option} className="h-full w-full object-cover" />
                                                                         ) : (
                                                                             <div className="h-full w-full flex items-center justify-center text-[10px] font-semibold text-slate-500">
-                                                                                No swatch
+                                                                                {t('product.noSwatch')}
                                                                             </div>
                                                                         )}
                                                                     </div>
@@ -1548,7 +1564,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                     {/* Physical: Shipping Form */}
                                     <div className="rounded-2xl border border-brand-100 dark:border-slate-700 bg-brand-50/40 dark:bg-slate-900/70 p-3 sm:p-4 space-y-3">
                                         <div className="flex items-center justify-between mb-1">
-                                            <p className="text-xs font-black uppercase tracking-wider text-brand-700/80 dark:text-brand-300/80">Usafirishaji</p>
+                                            <p className="text-xs font-black uppercase tracking-wider text-brand-700/80 dark:text-brand-300/80">{copy('Shipping', 'Usafirishaji')}</p>
                                         </div>
 
                                         {activeProduct?.merchant?.can_self_pickup && (
@@ -1558,21 +1574,21 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                     onClick={() => setIsSelfPickupChoice(false)}
                                                     className={`h-11 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${!isSelfPickupChoice ? 'bg-brand-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                                                 >
-                                                    Kuletewa
+                                                    {t('checkout.deliveryOption')}
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => setIsSelfPickupChoice(true)}
                                                     className={`h-11 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${isSelfPickupChoice ? 'bg-brand-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                                                 >
-                                                    Kuchukua (Pickup)
+                                                    {t('checkout.pickup')}
                                                 </button>
                                             </div>
                                         )}
 
                                         {!isSelfPickupChoice ? (
                                             <div className="space-y-3 pt-1 animate-in fade-in slide-in-from-top-1">
-                                                <label className="text-[11px] font-black uppercase tracking-widest text-muted-foreground ml-1">Sehemu ya Kufikishiwa</label>
+                                                <label className="text-[11px] font-black uppercase tracking-widest text-muted-foreground ml-1">{t('checkout.deliveryAddress')}</label>
                                                 <UserAddressManager
                                                     mode="select"
                                                     isGuest={isGuest}
@@ -1590,15 +1606,15 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                         }`}>
                                                         {isForwarderAddressSelected ? (
                                                             <span>
-                                                                Seller will send this order to your forwarder warehouse. {matchedShippingFeeLabel} covers seller-to-forwarder only; pay the forwarder separately for freight to your collection area.
+                                                                {t('checkout.sellerToForwarder', { fee: matchedShippingFeeLabel })}
                                                             </span>
                                                         ) : isInternationalDelivery ? (
                                                             <span>
-                                                                International shipping to {intercityDestinationLabel}. {matchedShippingFeeLabel}{deliveryPromiseText ? ` · ${deliveryPromiseText}` : ''}. Customs, courier office, and final handoff can be confirmed in order chat.
+                                                                {t('checkout.internationalShipping', { destination: intercityDestinationLabel, fee: matchedShippingFeeLabel, promise: deliveryPromiseText ? ` · ${deliveryPromiseText}` : '' })}
                                                             </span>
                                                         ) : isIntercityDelivery ? (
                                                             <span>
-                                                                Inter-city shipping to {intercityDestinationLabel}. {matchedShippingFeeLabel}{deliveryPromiseText ? ` · ${deliveryPromiseText}` : ''}. Exact pickup/drop-off office will be confirmed by transporter or waybill.
+                                                                {t('checkout.intercityShipping', { destination: intercityDestinationLabel, fee: matchedShippingFeeLabel, promise: deliveryPromiseText ? ` · ${deliveryPromiseText}` : '' })}
                                                             </span>
                                                         ) : activeShippingZone ? (
                                                             deliveryCoverageAnchors.length ? (
@@ -1607,27 +1623,27 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                                     onClick={() => setIsCoverageMapOpen(true)}
                                                                     className="text-right underline decoration-emerald-700/30 underline-offset-2 hover:text-emerald-700"
                                                                 >
-                                                                    Delivery {matchedShippingFeeLabel}{deliveryPromiseText ? ` · ${deliveryPromiseText}` : ''}.
+                                                                    {t('checkout.delivery', { fee: matchedShippingFeeLabel, promise: deliveryPromiseText ? ` · ${deliveryPromiseText}` : '' })}
                                                                 </button>
                                                             ) : (
                                                                 <span>
-                                                                    Delivery {matchedShippingFeeLabel}{deliveryPromiseText ? ` · ${deliveryPromiseText}` : ''}.
+                                                                    {t('checkout.delivery', { fee: matchedShippingFeeLabel, promise: deliveryPromiseText ? ` · ${deliveryPromiseText}` : '' })}
                                                                 </span>
                                                             )
                                                         ) : isOutsideAreaBlocked ? (
                                                             <>
-                                                                <span>{radiusCoverageNode} Chagua anwani iliyo karibu, pickup, au muuzaji mwingine.</span>
+                                                                <span>{radiusCoverageNode} {t('checkout.chooseNearby')}</span>
                                                             </>
                                                         ) : (
                                                             <>
                                                                 <span>
-                                                                    Anwani hii iko nje ya eneo la kawaida la kufikisha. Muuzaji bado anaweza kuikagua oda na kuthibitisha kwenye chat. {radiusCoverageNode}
+                                                                    {t('checkout.outsideArea')} {radiusCoverageNode}
                                                                 </span>
                                                             </>
                                                         )}
                                                         {(deliveryCutoffTime || deliveryPromiseNote) && (
                                                             <div className="mt-2 text-[11px] font-semibold leading-4 opacity-80">
-                                                                {deliveryCutoffTime && <span>Order before {String(deliveryCutoffTime).slice(0, 5)} for this estimate. </span>}
+                                                                {deliveryCutoffTime && <span>{t('checkout.orderBefore', { time: String(deliveryCutoffTime).slice(0, 5) })}</span>}
                                                                 {deliveryPromiseNote && <span>{deliveryPromiseNote}</span>}
                                                             </div>
                                                         )}
@@ -1637,9 +1653,9 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                         ) : (
                                             <div className="space-y-3 rounded-2xl border border-brand-100 bg-brand-100/40 p-4 shadow-sm mt-2">
                                                 <div>
-                                                    <p className="text-[11px] font-black uppercase tracking-widest text-brand-700">Chagua muda wa pickup</p>
+                                                    <p className="text-[11px] font-black uppercase tracking-widest text-brand-700">{t('checkout.pickupTime')}</p>
                                                     <p className="mt-1 text-xs font-bold leading-5 text-brand-800">
-                                                        Chagua muda wa juu ambao unaweza kufika. Unaweza kuchukua mapema kuliko muda huu; ukihitaji extension, makubaliano yaandikwe kwenye order chat.
+                                                        {t('checkout.pickupTimeHelp')}
                                                     </p>
                                                 </div>
                                                 {pickupSlotOptions.length > 0 ? (
@@ -1655,7 +1671,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                                 aria-haspopup="listbox"
                                                                 aria-expanded={isPickupSlotMenuOpen}
                                                             >
-                                                                <span className="min-w-0 truncate">{selectedPickupSlot?.label || 'Chagua muda wa pickup'}</span>
+                                                                <span className="min-w-0 truncate">{selectedPickupSlot?.label || t('checkout.pickupTime')}</span>
                                                                 <ChevronRight className={`h-4 w-4 shrink-0 text-brand-700 transition-transform ${isPickupSlotMenuOpen ? '-rotate-90' : 'rotate-90'}`} />
                                                             </button>
                                                             {isPickupSlotMenuOpen && (
@@ -1690,7 +1706,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                                     </div>
                                                                     <div className="min-w-0 flex-1">
                                                                         <div className="flex flex-wrap items-center gap-2">
-                                                                            <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">Eneo la pickup</span>
+                                                                            <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">{t('checkout.pickupArea')}</span>
                                                                             {pickupLocationMapUrl && (
                                                                                 <a
                                                                                     href={pickupLocationMapUrl}
@@ -1698,12 +1714,12 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                                                     rel="noreferrer"
                                                                                     className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-sky-700 underline-offset-2 hover:underline"
                                                                                 >
-                                                                                    Ramani <ExternalLink className="h-3 w-3" />
+                                                                                    {t('checkout.pickupMap')} <ExternalLink className="h-3 w-3" />
                                                                                 </a>
                                                                             )}
                                                                         </div>
                                                                         <p className="mt-0.5 truncate text-sm font-black text-brand-950">
-                                                                            {pickupLocation?.name || 'Eneo la pickup'}
+                                                                            {pickupLocation?.name || copy('Pickup location', 'Eneo la pickup')}
                                                                         </p>
                                                                         {pickupLocation?.address && (
                                                                             <p className="mt-0.5 text-[11px] font-bold leading-4 text-brand-800/75">
@@ -1714,7 +1730,10 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                                 </div>
                                                                 {pickupCancellationPenaltyPercent > 0 && (
                                                                     <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-amber-900">
-                                                                        Penalty ukishindwa kuchukua na order ikacanceliwa: {pickupCancellationPenaltyPercent.toLocaleString()}% ({formatCheckoutMoney(displayAmount(pickupCancellationPenaltyAmount))}).
+                                                                        {t('checkout.pickupPenalty', {
+                                                                            percent: pickupCancellationPenaltyPercent.toLocaleString(locale === 'sw' ? 'sw-TZ' : 'en-TZ'),
+                                                                            amount: formatCheckoutMoney(displayAmount(pickupCancellationPenaltyAmount)),
+                                                                        })}
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -1722,7 +1741,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                     </>
                                                 ) : (
                                                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
-                                                        Hakuna muda wa pickup uliopatikana kwenye masaa ya kazi ya merchant kwa sasa. Unaweza kuanzisha order na kukubaliana muda kwenye chat.
+                                                        {t('checkout.noPickupSlots')}
                                                     </div>
                                                 )}
                                             </div>
@@ -1734,13 +1753,13 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                             <Input
                                                 value={name}
                                                 onChange={(e) => setName(e.target.value)}
-                                                placeholder="Andika jina lako..."
+                                                placeholder={copy('Enter your name...', 'Andika jina lako...')}
                                                 className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
                                             />
                                             <Input
                                                 value={accountPhone}
                                                 onChange={(e) => setAccountPhone(e.target.value)}
-                                                placeholder="Namba ya simu"
+                                                placeholder={copy('Phone number', 'Namba ya simu')}
                                                 type="tel"
                                                 inputMode="numeric"
                                                 className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
@@ -1754,7 +1773,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                         <Input
                                             value={name}
                                             onChange={(e) => setName(e.target.value)}
-                                            placeholder="Andika jina lako..."
+                                            placeholder={copy('Enter your name...', 'Andika jina lako...')}
                                             className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
                                         />
                                     )}
@@ -1768,7 +1787,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'mobile' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-md ring-1 ring-brand-100' : 'text-slate-400 hover:text-slate-600'}`}
                                             >
                                                 <Zap className={`h-3.5 w-3.5 ${paymentMethod === 'mobile' ? 'fill-current' : ''}`} />
-                                                Lipa kwa Simu
+                                                {copy('Pay by phone', 'Lipa kwa simu')}
                                             </button>
                                             <button
                                                 type="button"
@@ -1776,7 +1795,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'card' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-md ring-1 ring-brand-100' : 'text-slate-400 hover:text-slate-600'}`}
                                             >
                                                 <Briefcase className="h-3.5 w-3.5" />
-                                                Lipa kwa Kadi
+                                                {copy('Pay by card', 'Lipa kwa kadi')}
                                             </button>
                                         </div>
 
@@ -1784,7 +1803,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                             <div className="p-4 rounded-3xl bg-brand-50/30 border border-brand-100 space-y-3 animate-in fade-in slide-in-from-top-2">
                                                 <div className="space-y-2">
                                                     <div className="flex items-center justify-between px-1">
-                                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600">Namba ya Kulipia</label>
+                                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600">{copy('Payment number', 'Namba ya Kulipia')}</label>
                                                         <span className="text-[9px] font-bold text-brand-400 uppercase">USSD Push</span>
                                                     </div>
                                                     <Input
@@ -1805,8 +1824,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                         {paymentMethod === 'card' && (
                                             <div className="p-10 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 text-center animate-in fade-in zoom-in-95">
                                                 <Briefcase className="h-8 w-8 text-slate-300 mx-auto mb-4" />
-                                                <p className="font-black text-slate-600 uppercase tracking-widest text-[10px]">Inakuja Hivi Karibuni</p>
-                                                <p className="text-[11px] text-slate-400 mt-1">Kwa sasa tunapokea malipo ya simu pekee kwa usalama zaidi.</p>
+                                                <p className="font-black text-slate-600 uppercase tracking-widest text-[10px]">{copy('Coming soon', 'Inakuja Hivi Karibuni')}</p>
+                                                <p className="text-[11px] text-slate-400 mt-1">{copy('For now, we accept mobile payments only for added security.', 'Kwa sasa tunapokea malipo ya simu pekee kwa usalama zaidi.')}</p>
                                             </div>
                                         )}
                                     </div>
@@ -1816,8 +1835,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                             {activeProduct?.type === 'service' && !startsAsServiceInquiry && activePricingUnits.length > 0 && (
                                 <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-3 sm:p-4 space-y-3">
                                     <div>
-                                        <p className="text-xs font-black uppercase tracking-wider text-brand-700/80">Booking details</p>
-                                        <p className="text-[11px] text-brand-700/70 mt-0.5">Used to calculate service charges before payment.</p>
+                                        <p className="text-xs font-black uppercase tracking-wider text-brand-700/80">{copy('Booking details', 'Maelezo ya booking')}</p>
+                                        <p className="text-[11px] text-brand-700/70 mt-0.5">{copy('Used to calculate service charges before payment.', 'Hutumika kukokotoa gharama za huduma kabla ya malipo.')}</p>
                                         {selectedServiceOption && (
                                             <p className="text-xs font-black text-brand-900 mt-2">
                                                 {selectedServiceOption.name}
@@ -1827,40 +1846,40 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {needsPeopleInput && (
                                             <label className="space-y-1.5">
-                                                <span className="text-xs font-bold text-brand-700/80">People / guests</span>
+                                                <span className="text-xs font-bold text-brand-700/80">{copy('People / guests', 'Watu / wageni')}</span>
                                                 <Input
                                                     type="number"
                                                     min="1"
                                                     value={servicePricingInputs.people}
                                                     onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, people: e.target.value }))}
-                                                    placeholder="Mf. 2"
+                                                    placeholder={copy('E.g. 2', 'Mf. 2')}
                                                     className="h-12 bg-white rounded-xl font-bold"
                                                 />
                                             </label>
                                         )}
                                         {needsHoursInput && (
                                             <label className="space-y-1.5">
-                                                <span className="text-xs font-bold text-brand-700/80">Hours</span>
+                                                <span className="text-xs font-bold text-brand-700/80">{copy('Hours', 'Saa')}</span>
                                                 <Input
                                                     type="number"
                                                     min="0.25"
                                                     step="0.25"
                                                     value={servicePricingInputs.hours}
                                                     onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, hours: e.target.value }))}
-                                                    placeholder="Mf. 3"
+                                                    placeholder={copy('E.g. 3', 'Mf. 3')}
                                                     className="h-12 bg-white rounded-xl font-bold"
                                                 />
                                             </label>
                                         )}
                                         {needsQuantityInput && (
                                             <label className="space-y-1.5">
-                                                <span className="text-xs font-bold text-brand-700/80">Quantity</span>
+                                                <span className="text-xs font-bold text-brand-700/80">{copy('Quantity', 'Kiasi')}</span>
                                                 <Input
                                                     type="number"
                                                     min="1"
                                                     value={servicePricingInputs.quantity}
                                                     onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, quantity: e.target.value }))}
-                                                    placeholder="Mf. 1"
+                                                    placeholder={copy('E.g. 1', 'Mf. 1')}
                                                     className="h-12 bg-white rounded-xl font-bold"
                                                 />
                                             </label>
@@ -1868,7 +1887,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                         {needsDateRangeInput && (
                                             <>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-brand-700/80">Start / check-in</span>
+                                                    <span className="text-xs font-bold text-brand-700/80">{copy('Start / check-in', 'Mwanzo / check-in')}</span>
                                                     <Input
                                                         type="date"
                                                         value={servicePricingInputs.start_date}
@@ -1877,7 +1896,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                     />
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-brand-700/80">End / check-out</span>
+                                                    <span className="text-xs font-bold text-brand-700/80">{copy('End / check-out', 'Mwisho / check-out')}</span>
                                                     <Input
                                                         type="date"
                                                         value={servicePricingInputs.end_date}
@@ -1893,9 +1912,9 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                         </div>
 
                         {/* Fixed Footer */}
-                        <div className="px-4 sm:px-6 pb-6 pt-4 bg-white border-t border-brand-50 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
-                            <form onSubmit={handleCheckout} className="space-y-4">
-                                <div className="flex items-center justify-between mb-4 px-1">
+                        <div className="shrink-0 max-h-[46%] overflow-y-auto overscroll-contain px-4 sm:px-6 pb-4 pt-3 sm:pb-5 sm:pt-4 bg-white border-t border-brand-50 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] scrollbar-hide">
+                            <form onSubmit={handleCheckout} className="space-y-3">
+                                <div className="flex items-center justify-between mb-2 px-1">
                                     <div className="flex flex-col">
                                         <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">{itemLabel}</span>
                                         <span className="text-sm font-black text-brand-900 truncate max-w-[150px] sm:max-w-[250px]">{itemTitle}</span>
@@ -1906,11 +1925,11 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                         )}
                                     </div>
                                     <div className="text-right">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">Jumla</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">{t('common.total')}</span>
                                         <p className="text-xl font-[900] text-brand-900">{formatCheckoutMoney(displayAmount(price))}</p>
                                         {checkoutIncludedChargesTotal > 0 && activeProduct?.type === 'service' && (
                                             <p className="text-[10px] font-bold text-emerald-700">
-                                                Includes {formatCheckoutMoney(displayAmount(checkoutIncludedChargesTotal))} extras
+                                                {copy('Includes', 'Imejumuisha')} {formatCheckoutMoney(displayAmount(checkoutIncludedChargesTotal))} {copy('extras', 'viongezi')}
                                             </p>
                                         )}
                                     </div>
@@ -1919,7 +1938,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                 {isWholesaleProduct && itemType === 'product' && (
                                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-emerald-800">
-                                            Wholesale quantity
+                                                {t('checkout.wholesaleQuantity')}
                                         </label>
                                         <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                                             <Input
@@ -1936,7 +1955,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                             </span>
                                         </div>
                                         <p className="mt-2 text-xs leading-5 text-emerald-900">
-                                            The merchant will send an official Takeer proforma. Payment remains protected in SafePay.
+                                            {t('checkout.proforma')}
                                         </p>
                                     </div>
                                 )}
@@ -1950,7 +1969,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                             className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
                                         >
                                             <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">
-                                                {couponCode ? 'Punguzo limeongezwa' : 'Una kodi ya punguzo?'}
+                                                {couponCode ? t('checkout.discountAdded') : t('checkout.discountPrompt')}
                                             </span>
                                             <ChevronRight className={`h-4 w-4 text-brand-500 transition-transform ${isCouponExpanded ? 'rotate-90' : ''}`} />
                                         </button>
@@ -1964,7 +1983,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                     className="h-11 rounded-xl bg-white font-black tracking-wide"
                                                 />
                                                 <p className="mt-1 text-[10px] font-semibold text-brand-700/70">
-                                                    Punguzo litahakikiwa unapoanza malipo.
+                                                    {t('checkout.discountChecked')}
                                                 </p>
                                             </div>
                                         )}
@@ -1993,21 +2012,37 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                 )}
                                                 {activeProduct?.available_from && (
                                                     <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-blue-800">
-                                                        Expected availability: {activeProduct.available_from}
+                                                        {copy('Expected availability:', 'Upatikanaji unaotarajiwa:')} {activeProduct.available_from}
                                                     </span>
                                                 )}
                                             </div>
                                         )}
                                         <p className="mt-2 text-[10px] font-bold text-blue-700/80">
-                                            Takeer protects payment until fulfillment or receipt confirmation.
+                                            {t('checkout.licensedPsp')}
                                         </p>
                                     </div>
                                 )}
 
+                                <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3 text-[11px] font-semibold leading-5 text-slate-600">
+                                    <input
+                                        type="checkbox"
+                                        checked={acceptTerms}
+                                        onChange={(event) => setAcceptTerms(event.target.checked)}
+                                        className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600"
+                                    />
+                                    <span>
+                                        {t('checkout.acceptPrefix')}{' '}
+                                        <a href="/legal/buyer-terms" target="_blank" rel="noreferrer" className="font-black text-brand-700 underline">{t('checkout.buyerTerms')}</a>,{' '}
+                                        <a href="/legal/payment-provider-processing-terms" target="_blank" rel="noreferrer" className="font-black text-brand-700 underline">{t('checkout.pspTerms')}</a>,{' '}
+                                        <a href="/legal/refund-return-cancellation-dispute-policy" target="_blank" rel="noreferrer" className="font-black text-brand-700 underline">{t('checkout.refundPolicy')}</a>, {t('checkout.and')}{' '}
+                                        <a href="/legal/privacy-notice" target="_blank" rel="noreferrer" className="font-black text-brand-700 underline">{t('checkout.privacyNotice')}</a>.
+                                    </span>
+                                </label>
+
                                 <Button
                                     type="submit"
-                                    disabled={loading || (paymentMethod === 'card' && !isPhysicalProduct) || isCheckoutDisabledByDeliveryArea}
-                                    className={`h-14 sm:h-16 w-full rounded-2xl sm:rounded-3xl text-white font-black text-base sm:text-lg uppercase tracking-widest shadow-xl transition-all active:scale-[0.98] group ${isCheckoutDisabledByDeliveryArea
+                                    disabled={loading || !acceptTerms || (paymentMethod === 'card' && !isPhysicalProduct) || isCheckoutDisabledByDeliveryArea}
+                                    className={`h-12 sm:h-14 w-full rounded-2xl sm:rounded-3xl text-white font-black text-base sm:text-lg uppercase tracking-widest shadow-xl transition-all active:scale-[0.98] group ${isCheckoutDisabledByDeliveryArea
                                         ? 'bg-slate-300 cursor-not-allowed shadow-none'
                                         : 'bg-brand-600 hover:bg-brand-700 shadow-brand-600/20'
                                         }`}
@@ -2016,7 +2051,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                         <Loader2 className="h-6 w-6 animate-spin" />
                                     ) : (
                                         <>
-                                            {isPhysicalProduct ? 'Anzisha Oda' : 'Kamilisha Malipo'}
+                                            {isPhysicalProduct ? t('checkout.startOrder') : t('checkout.completePayment')}
                                             <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                                         </>
                                     )}
@@ -2025,7 +2060,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                 {!isPhysicalProduct && (
                                     <div className="flex items-center gap-2 justify-center py-1">
                                         <ShieldCheck className="h-3.5 w-3.5 text-green-600" />
-                                        <p className="text-[10px] font-bold text-slate-500">Malipo Yako Ni Salama</p>
+                                        <p className="text-[10px] font-bold text-slate-500">{t('checkout.paymentSecure')}</p>
                                     </div>
                                 )}
                             </form>
@@ -2041,16 +2076,16 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                 ? (activeProduct.variants.find(v => v.id === selectedVariantId)?.location_inventories || [])
                                 : (activeProduct?.location_inventories || [])
                         }
-                        productName={activeProduct?.title || 'Bidhaa'}
+                        productName={activeProduct?.title || copy('Product', 'Bidhaa')}
                     />
                 </DrawerContent>
             </Drawer>
             <Drawer open={isCoverageMapOpen} onOpenChange={setIsCoverageMapOpen} shouldScaleBackground={false}>
                 <DrawerContent className="w-full sm:max-w-2xl sm:mx-auto border border-brand-100 bg-white p-0 rounded-t-[2rem] overflow-hidden">
                     <DrawerHeader className="text-left px-5 py-4 border-b border-slate-100">
-                        <DrawerTitle className="text-lg font-black text-slate-950">Eneo la kufikisha</DrawerTitle>
+                        <DrawerTitle className="text-lg font-black text-slate-950">{copy('Delivery area', 'Eneo la kufikisha')}</DrawerTitle>
                         <DrawerDescription className="text-xs font-bold text-slate-500">
-                            Usafirishaji unapatikana kwa maeneo yaliyo ndani ya duara. Alama nyekundu ni biashara ilipo.
+                            {copy('Delivery is available for areas within the circle. The red marker shows the business location.', 'Usafirishaji unapatikana kwa maeneo yaliyo ndani ya duara. Alama nyekundu ni biashara ilipo.')}
                         </DrawerDescription>
                     </DrawerHeader>
                     <div className="px-5 pb-5">

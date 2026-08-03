@@ -6,9 +6,11 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Store, ArrowRight, CheckCircle2, User } from 'lucide-react';
 import axios from 'axios';
+import { useLocale } from '@/lib/i18n';
 
 export default function MerchantRegister({ countries = [], currencies = [] }) {
     const { auth } = usePage().props;
+    const { t } = useLocale();
     const hasVerifiedPhone = Boolean(auth?.user?.phone_number && auth?.user?.phone_verified_at);
     const hasVerifiedEmail = Boolean(auth?.user?.email && auth?.user?.email_verified_at);
     const existingUserName = auth?.user?.name && !String(auth.user.name).startsWith('User ') ? auth.user.name : '';
@@ -84,7 +86,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
             });
             setStep(2);
         } catch (err) {
-            setError(err.response?.data?.message || 'Kuna tatizo wakati wa kutuma OTP.');
+            setError(err.response?.data?.message || t('merchantRegister.otpSendFailed'));
         } finally {
             setLoading(false);
         }
@@ -103,7 +105,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
             const username = res.data.merchant?.username || res.data.user?.merchant_profiles?.[0]?.username;
             window.location.href = '/profile';
         } catch (err) {
-            setError(err.response?.data?.message || 'Maelezo sio sahihi. Tafadhali jaribu tena.');
+            setError(err.response?.data?.message || t('merchantRegister.invalidDetails'));
         } finally {
             setLoading(false);
         }
@@ -111,16 +113,16 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
 
     return (
         <AppLayout>
-            <Head title="Fungua Akaunti Yako | Takeer" />
+            <Head title={t('merchantRegister.pageTitle')} />
 
             <div className="max-w-md mx-auto py-10 px-4">
                 <div className="text-center mb-8">
                     <div className="inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-brand-600 text-white mb-6 shadow-xl shadow-brand-600/20 border-4 border-white dark:border-muted animate-in zoom-in duration-500">
                         <User className="h-10 w-10" />
                     </div>
-                    <h1 className="text-3xl font-black text-foreground tracking-tight">Fungua Akaunti Yako</h1>
+                    <h1 className="text-3xl font-black text-foreground tracking-tight">{t('merchantRegister.heading')}</h1>
                     <p className="text-muted-foreground mt-3 leading-relaxed">
-                        Anza safari yako kwa wasifu wa binafsi. Utapata uwezo wa kuuza, kununua, na kuongeza biashara zako baadaye.
+                        {t('merchantRegister.intro')}
                     </p>
                 </div>
 
@@ -128,9 +130,9 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                     <Card className="glass-card overflow-hidden border-none shadow-2xl">
                         <div className="bg-amber-500 h-1.5 w-full" />
                         <CardHeader className="pb-4">
-                            <CardTitle className="text-xl font-bold">Unganisha Google Kwanza</CardTitle>
+                            <CardTitle className="text-xl font-bold">{t('merchantRegister.connectGoogleFirst')}</CardTitle>
                             <CardDescription>
-                                Tunahitaji email iliyothibitishwa kabla ya kuanza kuuza ili utumie risiti, taarifa muhimu na usalama wa akaunti.
+                                {t('merchantRegister.verifiedEmailRequired')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -139,10 +141,10 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                 className="w-full h-14 rounded-2xl bg-white border border-slate-200 text-slate-900 text-lg font-black shadow-sm hover:bg-slate-50 flex items-center justify-center gap-3"
                             >
                                 <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-5 w-5" alt="Google" />
-                                Unganisha Google
+                                {t('merchantRegister.connectGoogle')}
                             </a>
                             <p className="text-xs text-muted-foreground text-center">
-                                Ukimaliza, utarudi kuendelea na kufungua personal profile yako.
+                                {t('merchantRegister.returnToProfile')}
                             </p>
                         </CardContent>
                     </Card>
@@ -151,16 +153,16 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                     <div className="bg-brand-600 h-1.5 w-full" />
                     <CardHeader className="pb-4">
                         <CardTitle className="text-xl font-bold">
-                            {step === 1 ? 'Nambari ya Simu' : useVerifiedPhone ? 'Simu Imethibitishwa' : isExisting ? 'Karibu Tena' : 'Maelezo ya Wasifu'}
+                            {step === 1 ? t('merchantRegister.phoneNumber') : useVerifiedPhone ? t('merchantRegister.verifiedPhone') : isExisting ? t('merchantRegister.welcomeBack') : t('merchantRegister.profileDetails')}
                         </CardTitle>
                         <CardDescription>
                             {step === 1
-                                ? 'Ingiza nambari yako ya simu kupokea nambari ya siri (OTP).'
+                                ? t('merchantRegister.phoneStepDescription')
                                 : useVerifiedPhone
-                                    ? 'Tutatumia nambari ya simu ambayo tayari umethibitisha.'
+                                    ? t('merchantRegister.verifiedPhoneDescription')
                                 : isExisting
-                                    ? 'Ingiza nambari ya siri kukamilisha mchakato huu.'
-                                    : 'Kamilisha usajili wa wasifu wako wa binafsi.'}
+                                    ? t('merchantRegister.existingDescription')
+                                    : t('merchantRegister.profileDescription')}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
@@ -173,7 +175,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                         {step === 1 ? (
                             <form onSubmit={handleSendOtp} className="space-y-6">
                                 <div className="space-y-3">
-                                    <label htmlFor="country" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Nchi</label>
+                                    <label htmlFor="country" className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('merchantRegister.country')}</label>
                                     <select
                                         id="country"
                                         value={form.country_id}
@@ -181,7 +183,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                         required
                                         className="flex h-14 w-full rounded-2xl border-2 bg-background/50 px-4 py-2 text-base font-bold focus:outline-none focus:border-brand-500 shadow-sm"
                                     >
-                                        <option value="" disabled>Chagua nchi yako</option>
+                                        <option value="" disabled>{t('merchantRegister.chooseCountry')}</option>
                                         {countries.map(country => (
                                             <option key={country.id} value={String(country.id)}>
                                                 {country.name}
@@ -191,7 +193,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                 </div>
 
                                 <div className="space-y-3">
-                                    <label htmlFor="phone" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Nambari ya Simu</label>
+                                    <label htmlFor="phone" className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('merchantRegister.phoneNumber')}</label>
                                     <div className="relative">
                                         <Input
                                             id="phone"
@@ -207,11 +209,11 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                         />
                                     </div>
                                     <p className="text-xs text-muted-foreground italic">
-                                        * Namba hii itatumika kuingia na kurejesha access ya akaunti yako.
+                                        {t('merchantRegister.phoneAccessNote')}
                                     </p>
                                 </div>
                                 <Button type="submit" className="w-full h-14 text-lg font-black rounded-2xl bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-600/20 active:scale-95 transition-all" disabled={loading}>
-                                    {loading ? 'Inatuma...' : 'Tuma OTP'}
+                                    {loading ? t('merchantRegister.sending') : t('merchantRegister.sendOtp')}
                                     {!loading && <ArrowRight className="ml-2 h-5 w-5" />}
                                 </Button>
                             </form>
@@ -221,13 +223,13 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4 flex items-start gap-3">
                                         <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
                                         <div>
-                                            <p className="text-sm font-black text-emerald-900">Nambari ya simu imethibitishwa</p>
+                                            <p className="text-sm font-black text-emerald-900">{t('merchantRegister.phoneVerified')}</p>
                                             <p className="text-xs font-semibold text-emerald-700 mt-1">{form.phone_number}</p>
                                         </div>
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        <label htmlFor="otp" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Nambari ya Siri (OTP)</label>
+                                        <label htmlFor="otp" className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('merchantRegister.otp')}</label>
                                         <Input
                                             id="otp"
                                             type="tel"
@@ -244,11 +246,11 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                 {!isExisting && (
                                     <div className="space-y-5 pt-2 animate-in fade-in duration-700">
                                         <div className="space-y-3">
-                                            <label htmlFor="store_name" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Username (Yatatumika kwenye profile yako)</label>
+                                            <label htmlFor="store_name" className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('merchantRegister.username')}</label>
                                             <Input
                                                 id="store_name"
                                                 type="text"
-                                                placeholder="mf. james_peter"
+                                                placeholder={t('merchantRegister.usernamePlaceholder')}
                                                 value={form.store_name}
                                                 onChange={e => setForm({ ...form, store_name: e.target.value })}
                                                 required={!isExisting}
@@ -257,11 +259,11 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                         </div>
 
                                         <div className="space-y-3">
-                                            <label htmlFor="display_name" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Jina lako Kamili</label>
+                                            <label htmlFor="display_name" className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('merchantRegister.fullName')}</label>
                                             <Input
                                                 id="display_name"
                                                 type="text"
-                                                placeholder="mf. James Peter"
+                                                placeholder={t('merchantRegister.fullNamePlaceholder')}
                                                 value={form.display_name}
                                                 onChange={e => setForm({ ...form, display_name: e.target.value })}
                                                 required={!isExisting}
@@ -271,13 +273,13 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
 
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Nchi</label>
+                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('merchantRegister.country')}</label>
                                                 <select
                                                     value={form.country_id}
                                                     onChange={e => updateCountry(e.target.value)}
                                                     className="flex h-14 w-full rounded-2xl border-2 bg-background/50 px-3 py-2 text-sm font-bold focus:outline-none focus:border-brand-500 shadow-sm"
                                                 >
-                                                    <option value="" disabled>Chagua Nchi</option>
+                                                    <option value="" disabled>{t('merchantRegister.chooseCountryShort')}</option>
                                                     {countries.map(country => (
                                                         <option key={country.id} value={String(country.id)}>
                                                             {country.name}
@@ -287,13 +289,13 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                             </div>
 
                                             <div className="space-y-2">
-                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Sarafu</label>
+                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('merchantRegister.currency')}</label>
                                                 <select
                                                     value={form.currency_id}
                                                     onChange={e => setForm({ ...form, currency_id: e.target.value })}
                                                     className="flex h-14 w-full rounded-2xl border-2 bg-background/50 px-3 py-2 text-sm font-bold focus:outline-none focus:border-brand-500 shadow-sm"
                                                 >
-                                                    <option value="" disabled>Sarafu</option>
+                                                    <option value="" disabled>{t('merchantRegister.currency')}</option>
                                                     {currencies.map(currency => (
                                                         <option key={currency.id} value={String(currency.id)}>
                                                             {currency.code}
@@ -305,7 +307,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
 
                                         {showTimezoneSelect && (
                                             <div className="space-y-2">
-                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Timezone</label>
+                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('merchantRegister.timezone')}</label>
                                                 <select
                                                     value={form.timezone}
                                                     onChange={e => setForm({ ...form, timezone: e.target.value })}
@@ -323,7 +325,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                 )}
 
                                 <Button type="submit" className="w-full h-16 text-xl font-black rounded-2xl bg-brand-600 hover:bg-brand-700 shadow-xl shadow-brand-600/20 mt-4 active:scale-95 transition-all" disabled={loading}>
-                                    {loading ? 'Inasubiri...' : useVerifiedPhone ? 'Endelea' : isExisting ? 'Ingia Ndani' : 'Kamilisha Usajili'}
+                                    {loading ? t('merchantRegister.waiting') : useVerifiedPhone ? t('merchantRegister.continue') : isExisting ? t('merchantRegister.logIn') : t('merchantRegister.completeRegistration')}
                                     {!loading && <CheckCircle2 className="ml-2 h-6 w-6" />}
                                 </Button>
 
@@ -331,7 +333,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                     setUseVerifiedPhone(false);
                                     setStep(1);
                                 }} className="w-full text-center text-sm text-brand-600 font-bold hover:underline transition-all">
-                                    Badili nambari ya simu
+                                    {t('merchantRegister.changePhone')}
                                 </button>
                             </form>
                         )}

@@ -6,6 +6,7 @@ import { MapPin, Plus, Trash2, Loader2, Globe, CheckCircle2, Pencil, X, Truck, C
 import { toast } from 'sonner';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import ShippingZonesManager from './ShippingZonesManager';
+import { useLocale } from '@/lib/i18n';
 
 const MAP_CONTAINER_STYLE = {
     width: '100%',
@@ -28,6 +29,7 @@ const PICKUP_DAYS = [
     { day: 6, label: 'Sat' },
     { day: 7, label: 'Sun' },
 ];
+const PICKUP_DAY_TRANSLATIONS = { Mon: 'Jumatatu', Tue: 'Jumanne', Wed: 'Jumatano', Thu: 'Alhamisi', Fri: 'Ijumaa', Sat: 'Jumamosi', Sun: 'Jumapili' };
 
 const defaultPickupWindows = () => PICKUP_DAYS.map(({ day }) => ({
     day,
@@ -50,6 +52,7 @@ const normalizePickupWindows = (windows) => {
 };
 
 export default function ShopLocationsManager({ locations = [], onRefresh, loading: propLoading, profiles = [], onRefreshZones, merchantId = null, personalMode = false, countries = [] }) {
+    const { copy } = useLocale();
     const [loading, setLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -253,7 +256,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.address || !formData.latitude) {
-            toast.error('Tafadhali chagua eneo sahihi kwenye ramani.');
+            toast.error(copy('Choose a valid location on the map.', 'Tafadhali chagua eneo sahihi kwenye ramani.'));
             return;
         }
 
@@ -270,16 +273,16 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             };
             if (editingId) {
                 await window.axios.put(`/api/merchant/locations/${editingId}`, payload);
-                toast.success('Eneo limebadilishwa kwa mafanikio!');
+            toast.success(copy('Location updated successfully!', 'Eneo limebadilishwa kwa mafanikio!'));
                 resetForm();
             } else {
                 await window.axios.post('/api/merchant/locations', payload);
                 resetForm();
-                toast.success(personalMode ? 'Eneo la stock/pickup limehifadhiwa!' : 'Eneo la duka limehifadhiwa!');
+            toast.success(personalMode ? copy('Stock/pickup location saved!', 'Eneo la stock/pickup limehifadhiwa!') : copy('Shop location saved!', 'Eneo la duka limehifadhiwa!'));
             }
             if (onRefresh) onRefresh();
         } catch (err) {
-            const fallback = editingId ? 'Imeshindikana kubadilisha eneo.' : 'Imeshindikana kuhifadhi eneo hili.';
+            const fallback = editingId ? copy('Could not update the location.', 'Imeshindikana kubadilisha eneo.') : copy('Could not save this location.', 'Imeshindikana kuhifadhi eneo hili.');
             toast.error(err.response?.data?.message || fallback);
         } finally {
             setIsSaving(false);
@@ -294,22 +297,22 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                 type: String(loc.type || 'shop').toLowerCase(),
                 allow_self_pickup: !loc.allow_self_pickup
             });
-            toast.success(`Kuchukua mwenyewe ${!loc.allow_self_pickup ? 'kumeruhusiwa' : 'kumezimwa'} kwa ${loc.name}`);
+            toast.success(copy(`Self-pickup ${!loc.allow_self_pickup ? 'enabled' : 'disabled'} for ${loc.name}`, `Kuchukua mwenyewe ${!loc.allow_self_pickup ? 'kumeruhusiwa' : 'kumezimwa'} kwa ${loc.name}`));
             if (onRefresh) onRefresh();
         } catch (err) {
-            toast.error('Imeshindikana kubadilisha mipangilio ya kuchukua mwenyewe.');
+            toast.error(copy('Could not update self-pickup settings.', 'Imeshindikana kubadilisha mipangilio ya kuchukua mwenyewe.'));
         }
     };
 
     const handleDelete = async (id) => {
-        if (!confirm('Je, una uhakika unataka kufuta eneo hili?')) return;
+        if (!confirm(copy('Are you sure you want to delete this location?', 'Je, una uhakika unataka kufuta eneo hili?'))) return;
 
         try {
             await window.axios.delete(`/api/merchant/locations/${id}`, { data: { merchant_id: merchantId } });
             if (onRefresh) onRefresh();
-            toast.success('Eneo limefutwa.');
+            toast.success(copy('Location deleted.', 'Eneo limefutwa.'));
         } catch (err) {
-            toast.error('Imeshindikana kufuta.');
+            toast.error(copy('Could not delete.', 'Imeshindikana kufuta.'));
         }
     };
 
@@ -349,16 +352,16 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
 
     const typeLabel = (type) => {
         const normalized = String(type || 'shop').toLowerCase();
-        if (personalMode) return 'Stock / kuchukua';
-        if (normalized === 'warehouse') return 'Ghala';
-        if (normalized === 'store') return 'Stoo';
-        if (normalized === 'office') return 'Ofisi';
-        return 'Duka';
+        if (personalMode) return copy('Stock / pickup', 'Stock / kuchukua');
+        if (normalized === 'warehouse') return copy('Warehouse', 'Ghala');
+        if (normalized === 'store') return copy('Store', 'Stoo');
+        if (normalized === 'office') return copy('Office', 'Ofisi');
+        return copy('Shop', 'Duka');
     };
 
     const deliveryStatus = (loc) => {
-        if (expandedShippingId === loc.id) return 'Inasanidiwa';
-        return 'Bonyeza usafirishaji kusanidi';
+        if (expandedShippingId === loc.id) return copy('Configuring', 'Inasanidiwa');
+        return copy('Click to configure shipping', 'Bonyeza usafirishaji kusanidi');
     };
 
     const saveShopRoutes = async () => {
@@ -369,10 +372,10 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                 ...retailSettings,
                 shop_routes: shopRoutes,
             });
-            toast.success('Mpangilio wa mtiririko wa bidhaa umehifadhiwa.');
+            toast.success(copy('Product flow settings saved.', 'Mpangilio wa mtiririko wa bidhaa umehifadhiwa.'));
             setRetailSettings((prev) => ({ ...(prev || {}), shop_routes: shopRoutes }));
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindikana kuhifadhi mpangilio wa duka na stoo.');
+            toast.error(err.response?.data?.message || copy('Could not save shop and stock settings.', 'Imeshindikana kuhifadhi mpangilio wa duka na stoo.'));
         } finally {
             setSavingRoutes(false);
         }
@@ -381,22 +384,22 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
     return (
         <Card className="glass-card shadow-sm mt-6">
             <CardHeader className="p-5 pb-2">
-                <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-muted-foreground uppercase tracking-wider">
-                    <MapPin className="h-4 w-4" /> {personalMode ? 'Maeneo ya stock / pickup' : 'Maeneo ya ofisi / stock / duka'}
+                    <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-muted-foreground uppercase tracking-wider">
+                    <MapPin className="h-4 w-4" /> {personalMode ? copy('Stock / pickup locations', 'Maeneo ya stock / pickup') : copy('Office / stock / shop locations', 'Maeneo ya ofisi / stock / duka')}
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-5 space-y-5">
                 <div className="flex flex-col gap-3 rounded-2xl border border-brand-100 bg-brand-50/40 p-4 md:flex-row md:items-center md:justify-between">
                     <div>
                         <p className="text-xs font-black uppercase tracking-wide text-brand-700">
-                            {personalMode ? 'Eneo la stock na pickup' : 'Eneo kuu la biashara'}
+                            {personalMode ? copy('Stock and pickup location', 'Eneo la stock na pickup') : copy('Main business location', 'Eneo kuu la biashara')}
                         </p>
                         <p className="mt-1 text-xs font-semibold leading-5 text-brand-900/75">
                             {primaryLocation
-                                ? `${primaryLocation.name} ndio linaonekana kwanza kwenye mipangilio yako.`
+                                ? copy(`${primaryLocation.name} is shown first in your settings.`, `${primaryLocation.name} ndio linaonekana kwanza kwenye mipangilio yako.`)
                                 : personalMode
-                                    ? 'Anza kwa kuweka eneo moja ambalo bidhaa zako zipo au mteja anaweza kuchukua.'
-                                    : 'Anza kwa kuweka duka, ofisi, au stoo kuu. Usafirishaji na mtiririko wa stock zitasanidiwa baada ya eneo kuwepo.'}
+                                    ? copy('Start by adding one location where your products are kept or where the customer can collect them.', 'Anza kwa kuweka eneo moja ambalo bidhaa zako zipo au mteja anaweza kuchukua.')
+                                    : copy('Start by adding your main shop, office, or store. Shipping and stock routing will be configured after a location exists.', 'Anza kwa kuweka duka, ofisi, au stoo kuu. Usafirishaji na mtiririko wa stock zitasanidiwa baada ya eneo kuwepo.')}
                         </p>
                     </div>
                     <Button
@@ -406,7 +409,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                         disabled={personalLimitReached}
                     >
                         <Plus className="mr-2 h-4 w-4" />
-                        {locations.length === 0 ? 'Weka eneo la kwanza' : 'Ongeza eneo'}
+                        {locations.length === 0 ? copy('Add the first location', 'Weka eneo la kwanza') : copy('Add location', 'Ongeza eneo')}
                     </Button>
                 </div>
 
@@ -418,12 +421,12 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                             <div className="rounded-2xl border border-dashed border-brand-200 bg-white p-5 text-center">
                                 <MapPin className="mx-auto h-8 w-8 text-brand-500" />
                                 <p className="mt-3 text-sm font-black text-slate-900">
-                                    {personalMode ? 'Bado hujaweka eneo la stock/pickup.' : 'Bado hujaweka eneo la biashara.'}
+                                    {personalMode ? copy('You have not added a stock/pickup location yet.', 'Bado hujaweka eneo la stock/pickup.') : copy('You have not added a business location yet.', 'Bado hujaweka eneo la biashara.')}
                                 </p>
                                 <p className="mx-auto mt-1 max-w-xl text-xs font-semibold leading-5 text-muted-foreground">
                                     {personalMode
-                                        ? 'Hili linahitajika kama unauza bidhaa uliyonayo mkononi. Anwani kamili hutumika baada ya order kuanzishwa.'
-                                        : 'Eneo husaidia pickup, usafirishaji, na mtiririko wa stock kufanya kazi bila kumchanganya mteja.'}
+                                        ? copy('This is required when you sell stock on hand. The full address is used after an order starts.', 'Hili linahitajika kama unauza bidhaa uliyonayo mkononi. Anwani kamili hutumika baada ya order kuanzishwa.')
+                                        : copy('A location keeps pickup, shipping, and stock routing clear for the customer.', 'Eneo husaidia pickup, usafirishaji, na mtiririko wa stock kufanya kazi bila kumchanganya mteja.')}
                                 </p>
                             </div>
                         ) : (
@@ -502,9 +505,9 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                 {showStockRouting && (
                     <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-4 space-y-3">
                         <div>
-                            <p className="text-xs font-black uppercase text-brand-700">Bidhaa zinatoka wapi?</p>
+                            <p className="text-xs font-black uppercase text-brand-700">{copy('Where do products come from?', 'Bidhaa zinatoka wapi?')}</p>
                             <p className="text-[11px] font-semibold leading-5 text-brand-700/80">
-                                Kwa kila duka, chagua stoo au ghala linalotoa bidhaa. Hii ni muhimu kwa biashara zenye maeneo mengi.
+                                {copy('For each shop, choose the store or warehouse that supplies products. This matters for businesses with multiple locations.', 'Kwa kila duka, chagua stoo au ghala linalotoa bidhaa. Hii ni muhimu kwa biashara zenye maeneo mengi.')}
                             </p>
                         </div>
 
@@ -514,17 +517,17 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                 return (
                                     <div key={shop.id} className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-xl border border-brand-100 bg-white p-3">
                                         <div>
-                                            <p className="text-[10px] font-black uppercase text-slate-500">Duka</p>
+                                            <p className="text-[10px] font-black uppercase text-slate-500">{copy('Shop', 'Duka')}</p>
                                             <p className="text-sm font-bold text-slate-900">{shop.name}</p>
                                         </div>
                                         <div>
-                                            <label className="text-[10px] font-black uppercase text-slate-500">Stoo / ghala linalohudumia</label>
+                                            <label className="text-[10px] font-black uppercase text-slate-500">{copy('Serving store / warehouse', 'Stoo / ghala linalohudumia')}</label>
                                             <select
                                                 className="mt-1 h-9 w-full rounded-lg border border-input bg-white px-2 text-xs font-semibold"
                                                 value={route.serving_store_location_id ?? ''}
                                                 onChange={(e) => updateShopRoute(shop.id, 'serving_store_location_id', e.target.value)}
                                             >
-                                                <option value="">Chagua stoo au ghala</option>
+                                                <option value="">{copy('Choose store or warehouse', 'Chagua stoo au ghala')}</option>
                                                 {supplyLocations.map((loc) => (
                                                     <option key={loc.id} value={loc.id}>{loc.name} ({typeLabel(loc.type)})</option>
                                                 ))}
@@ -543,7 +546,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                 disabled={savingRoutes || !retailSettings}
                             >
                                 {savingRoutes ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                Hifadhi mpangilio
+                                {copy('Save routing', 'Hifadhi mpangilio')}
                             </Button>
                         </div>
                     </div>
@@ -551,14 +554,14 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
 
                 {personalLimitReached && (
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-900">
-                        Personal account inaruhusu eneo moja tu la stock/pickup. Hariri eneo lililopo, au tengeneza biashara nyingine ili kuongeza maeneo mengi.
+                        {copy('A personal account allows one stock/pickup location. Edit the existing location, or create a business to add more locations.', 'Personal account inaruhusu eneo moja tu la stock/pickup. Hariri eneo lililopo, au tengeneza biashara nyingine ili kuongeza maeneo mengi.')}
                     </div>
                 )}
 
                 {!personalLimitReached && !isFormOpen && locations.length > 0 && (
                     <Button type="button" variant="outline" onClick={startCreate} className="h-11 w-full rounded-xl border-dashed font-bold">
                         <Plus className="mr-2 h-4 w-4" />
-                        Ongeza eneo jingine
+                        {copy('Add another location', 'Ongeza eneo jingine')}
                     </Button>
                 )}
 
@@ -568,27 +571,27 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                             <div>
                                 <h4 className="text-xs font-black uppercase tracking-wide text-muted-foreground">
                                     {editingId
-                                        ? (personalMode ? 'Hariri eneo la stock/pickup' : 'Hariri eneo')
-                                        : (personalMode ? 'Ongeza eneo la stock/pickup' : 'Ongeza eneo jipya')}
+                                        ? (personalMode ? copy('Edit stock/pickup location', 'Hariri eneo la stock/pickup') : copy('Edit location', 'Hariri eneo'))
+                                        : (personalMode ? copy('Add stock/pickup location', 'Ongeza eneo la stock/pickup') : copy('Add new location', 'Ongeza eneo jipya'))}
                                 </h4>
                                 <p className="mt-1 text-[11px] font-semibold leading-5 text-muted-foreground">
-                                    Chagua aina ya eneo, tafuta anwani kwenye ramani, kisha weka pickup au eneo kuu kama inahitajika.
+                                    {copy('Choose the location type, find the address on the map, then set pickup or primary location options as needed.', 'Chagua aina ya eneo, tafuta anwani kwenye ramani, kisha weka pickup au eneo kuu kama inahitajika.')}
                                 </p>
                             </div>
                             <Button type="button" variant="ghost" onClick={resetForm} className="h-9 rounded-xl px-3 text-xs font-bold">
                                 <X className="mr-1.5 h-4 w-4" />
-                                Funga
+                                {copy('Close', 'Funga')}
                             </Button>
                         </div>
 
                         {!personalMode && (
                             <div className="space-y-2">
-                                <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">Unaongeza eneo la aina gani?</p>
+                                <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">{copy('What type of location are you adding?', 'Unaongeza eneo la aina gani?')}</p>
                                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                                     {[
-                                        { key: 'shop', label: 'Duka / Ofisi', hint: 'Mahali wateja wanaona au kuchukua bidhaa.' },
-                                        { key: 'store', label: 'Stoo', hint: 'Chanzo cha stock kwa duka moja au zaidi.' },
-                                        { key: 'warehouse', label: 'Ghala', hint: 'Eneo kubwa la kuhifadhi stock.' },
+                                        { key: 'shop', label: copy('Shop / office', 'Duka / Ofisi'), hint: copy('Where customers see or collect products.', 'Mahali wateja wanaona au kuchukua bidhaa.') },
+                                        { key: 'store', label: copy('Store', 'Stoo'), hint: copy('Stock source for one or more shops.', 'Chanzo cha stock kwa duka moja au zaidi.') },
+                                        { key: 'warehouse', label: copy('Warehouse', 'Ghala'), hint: copy('A larger place for storing stock.', 'Eneo kubwa la kuhifadhi stock.') },
                                     ].map((option) => (
                                         <button
                                             key={option.key}
@@ -607,10 +610,10 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase">
-                                    {personalMode ? 'Jina la Eneo (Mf. Stock ya Nyumbani)' : 'Jina la Duka (Mf. Duka la Sinza)'}
+                                    {personalMode ? copy('Location name (e.g. Home stock)', 'Jina la Eneo (Mf. Stock ya Nyumbani)') : copy('Shop name (e.g. Sinza shop)', 'Jina la Duka (Mf. Duka la Sinza)')}
                                 </label>
                                 <Input
-                                    placeholder="Jina la eneo hili"
+                                    placeholder={copy('Name this location', 'Jina la eneo hili')}
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                     required
@@ -618,23 +621,23 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Tafuta Eneo (Google Maps)</label>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase">{copy('Find location (Google Maps)', 'Tafuta Eneo (Google Maps)')}</label>
                                 {isLoaded ? (
                                     <Autocomplete onLoad={onLoad} onPlaceChanged={onPlaceChanged}>
                                         <Input
                                             type="text"
-                                            placeholder="Tafuta mtaa au jengo..."
+                                            placeholder={copy('Search a street or building...', 'Tafuta mtaa au jengo...')}
                                             className="bg-muted/30 rounded-xl"
                                         />
                                     </Autocomplete>
                                 ) : (
-                                    <Input disabled placeholder="Inapakia ramani..." className="bg-muted/30 rounded-xl" />
+                                    <Input disabled placeholder={copy('Loading map...', 'Inapakia ramani...')} className="bg-muted/30 rounded-xl" />
                                 )}
                             </div>
                             <div className="space-y-1 md:col-span-2">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Namba ya Simu ya Ofisi/Stoo hii</label>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase">{copy('Phone number for this shop/store', 'Namba ya Simu ya Ofisi/Stoo hii')}</label>
                                 <Input
-                                    placeholder="Mfano: 07........"
+                                    placeholder={copy('Example: 07........', 'Mfano: 07........')}
                                     value={formData.contact_phone}
                                     onChange={e => setFormData({ ...formData, contact_phone: e.target.value })}
                                     className="bg-muted/30 rounded-xl"
@@ -663,14 +666,14 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                             ) : (
                                 <div className="w-full h-[250px] bg-muted flex flex-col items-center justify-center text-muted-foreground text-center p-4">
                                     <Globe className="h-10 w-10 mb-2 opacity-20" />
-                                    <p className="text-xs">Ramani itaonekana hapa ukishaweka Google API Key.</p>
+                                    <p className="text-xs">{copy('The map will appear here after you add the Google API key.', 'Ramani itaonekana hapa ukishaweka Google API Key.')}</p>
                                 </div>
                             )}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-4 p-4 bg-brand-50/50 rounded-2xl border border-brand-100 mb-2">
                             <div className="flex-1">
-                                <p className="text-[10px] font-black uppercase text-brand-600 mb-1">Mipangilio ya eneo</p>
+                                <p className="text-[10px] font-black uppercase text-brand-600 mb-1">{copy('Location settings', 'Mipangilio ya eneo')}</p>
                                 <div className="flex flex-wrap items-center gap-6">
                                     <label className="flex items-center gap-3 cursor-pointer group">
                                         <input
@@ -681,10 +684,10 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                         />
                                         <div className="flex flex-col">
                                             <span className="text-xs font-black text-slate-800 group-hover:text-brand-700 transition-colors uppercase">
-                                                {personalMode ? 'Eneo kuu la stock' : 'Eneo kuu'}
+                                                {personalMode ? copy('Primary stock location', 'Eneo kuu la stock') : copy('Primary location', 'Eneo kuu')}
                                             </span>
                                             <span className="text-[10px] text-slate-500 font-medium font-inter">
-                                                {personalMode ? 'Eneo hili litakuwa chaguo la kwanza kwa pickup/delivery.' : 'Eneo hili litakuwa chaguo la kwanza la usafirishaji.'}
+                                                {personalMode ? copy('This will be the first choice for pickup/delivery.', 'Eneo hili litakuwa chaguo la kwanza kwa pickup/delivery.') : copy('This will be the first choice for shipping.', 'Eneo hili litakuwa chaguo la kwanza la usafirishaji.')}
                                             </span>
                                         </div>
                                     </label>
@@ -699,9 +702,9 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                             className="h-5 w-5 rounded-lg border-brand-200 text-brand-600 focus:ring-brand-500"
                                         />
                                         <div className="flex flex-col">
-                                            <span className="text-xs font-black text-brand-700 group-hover:text-brand-900 transition-colors uppercase">Ruhusu mteja kuchukua mwenyewe</span>
+                                            <span className="text-xs font-black text-brand-700 group-hover:text-brand-900 transition-colors uppercase">{copy('Allow customer pickup', 'Ruhusu mteja kuchukua mwenyewe')}</span>
                                             <span className="text-[10px] text-brand-600/60 font-medium font-inter">
-                                                {personalMode ? 'Mteja anaweza kulipia kisha mkakubaliana pickup kwenye order chat.' : 'Wateja wataweza kuchukua bidhaa wenyewe kwenye eneo hili.'}
+                                                {personalMode ? copy('The customer can pay, then agree pickup in the order chat.', 'Mteja anaweza kulipia kisha mkakubaliana pickup kwenye order chat.') : copy('Customers can collect products themselves at this location.', 'Wateja wataweza kuchukua bidhaa wenyewe kwenye eneo hili.')}
                                             </span>
                                         </div>
                                     </label>
@@ -711,14 +714,14 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                         {formData.allow_self_pickup && (
                             <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-4">
                                 <div className="mb-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Sera ya pickup</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">{copy('Pickup policy', 'Sera ya pickup')}</p>
                                     <p className="mt-1 text-[11px] font-semibold leading-5 text-slate-500">
-                                        Mteja atachagua siku na muda wa juu wa kuchukua kabla ya kulipa. Mabadiliko yoyote baada ya hapo yaandikwe kwenye order chat.
+                                        {copy('The customer chooses a pickup day and time window before paying. Record any later changes in the order chat.', 'Mteja atachagua siku na muda wa juu wa kuchukua kabla ya kulipa. Mabadiliko yoyote baada ya hapo yaandikwe kwenye order chat.')}
                                     </p>
                                 </div>
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                     <div className="space-y-1">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground">Siku za mbele za kuchagua muda wa pickup</label>
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground">{copy('Days ahead available for pickup selection', 'Siku za mbele za kuchagua muda wa pickup')}</label>
                                         <Input
                                             type="number"
                                             min="0"
@@ -728,32 +731,32 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                             className="rounded-xl bg-white"
                                         />
                                         <p className="text-[10px] font-semibold leading-4 text-slate-500">
-                                            Utaruhusu mteja achague kuja kuchukua hadi siku ngapi mbele toka muda wa kuweka oda? 0 = leo tu. 1 = leo na kesho.
+                                            {copy('How many days ahead can the customer choose? 0 = today only. 1 = today and tomorrow.', 'Utaruhusu mteja achague kuja kuchukua hadi siku ngapi mbele toka muda wa kuweka oda? 0 = leo tu. 1 = leo na kesho.')}
                                         </p>
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground">Penalty ya cancellation (%)</label>
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground">{copy('Cancellation penalty (%)', 'Penalty ya cancellation (%)')}</label>
                                         <Input
                                             type="number"
                                             min="0"
-                                            max="100"
+                                            max="99.99"
                                             step="0.01"
                                             value={formData.pickup_cancellation_penalty_percent}
                                             onChange={e => setFormData(prev => ({ ...prev, pickup_cancellation_penalty_percent: e.target.value }))}
                                             className="rounded-xl bg-white"
                                         />
                                         <p className="text-[10px] font-semibold leading-4 text-slate-500">
-                                            Ikitumika kama mteja hajachukua mpaka muda mlioafikiana upite na order kusitishwa kwa mteja kufeli kuchukua.
+                                            {copy('Applied if the customer does not collect before the agreed time and the order is cancelled for non-collection.', 'Ikitumika kama mteja hajachukua mpaka muda mlioafikiana upite na order kusitishwa kwa mteja kufeli kuchukua.')}
                                         </p>
                                     </div>
                                     <div className="space-y-2 md:col-span-2">
                                         <div className="flex items-center justify-between gap-3">
                                             <label className="inline-flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
                                                 <Clock className="h-3.5 w-3.5" />
-                                                Muda wa pickup
+                                                {copy('Pickup time', 'Muda wa pickup')}
                                             </label>
                                             <span className="text-[10px] font-semibold text-slate-500">
-                                                Wateja watachagua ndani ya muda huu kwa range za saa moja.
+                                                {copy('Customers choose within these one-hour time ranges.', 'Wateja watachagua ndani ya muda huu kwa range za saa moja.')}
                                             </span>
                                         </div>
                                         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -768,7 +771,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                                                 pickup_available_windows: normalizePickupWindows(prev.pickup_available_windows).map(item => item.day === window.day ? { ...item, enabled: e.target.checked } : item)
                                                             }))}
                                                         />
-                                                        {PICKUP_DAYS.find(day => day.day === window.day)?.label}
+                                                        {(() => { const label = PICKUP_DAYS.find(day => day.day === window.day)?.label || ''; return copy(label, PICKUP_DAY_TRANSLATIONS[label] || label); })()}
                                                     </label>
                                                     <Input
                                                         type="time"
@@ -781,7 +784,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                                         }))}
                                                         className="h-9 rounded-lg bg-white text-xs disabled:opacity-50"
                                                     />
-                                                    <span className="text-xs font-bold text-slate-400">hadi</span>
+                                                    <span className="text-xs font-bold text-slate-400">{copy('to', 'hadi')}</span>
                                                     <Input
                                                         type="time"
                                                         step="1800"
@@ -798,11 +801,11 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                         </div>
                                     </div>
                                     <div className="space-y-1 md:col-span-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground">Maelekezo ya pickup</label>
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground">{copy('Pickup instructions', 'Maelekezo ya pickup')}</label>
                                         <textarea
                                             value={formData.pickup_instructions}
                                             onChange={e => setFormData(prev => ({ ...prev, pickup_instructions: e.target.value }))}
-                                            placeholder="Mf. Njoo na Pickup PIN. Pickup Jumatatu-Jumamosi 8:30AM-4PM. Ukihitaji extension, tukubaliane kwenye order chat kabla order haijacanceliwa."
+                                            placeholder={copy('E.g. Bring the Pickup PIN. Pickup Monday-Saturday 8:30 AM-4 PM. Agree any extension in the order chat before cancellation.', 'Mf. Njoo na Pickup PIN. Pickup Jumatatu-Jumamosi 8:30AM-4PM. Ukihitaji extension, tukubaliane kwenye order chat kabla order haijacanceliwa.')}
                                             className="min-h-20 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-brand-200"
                                         />
                                     </div>
@@ -812,7 +815,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                         <div className="flex items-center justify-end gap-3">
                             <Button type="button" variant="ghost" onClick={resetForm} className="h-11 px-4 rounded-xl font-bold flex gap-2">
                                 <X className="h-4 w-4" />
-                                Ghairi
+                                {copy('Cancel', 'Ghairi')}
                             </Button>
 
                             <Button type="submit" disabled={isSaving || !formData.address} className="bg-brand-600 hover:bg-brand-700 h-11 px-6 rounded-xl font-bold flex gap-2">
@@ -823,7 +826,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                 ) : (
                                     <Plus className="h-4 w-4" />
                                 )}
-                                {editingId ? 'Hifadhi Mabadiliko' : 'Hifadhi Eneo'}
+                                {editingId ? copy('Save changes', 'Hifadhi Mabadiliko') : copy('Save location', 'Hifadhi Eneo')}
                             </Button>
                         </div>
                     </form>
@@ -834,6 +837,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
 }
 
 function LocationShippingManager({ location, profiles = [], locations = [], merchantId = null, onRefresh, countries = [] }) {
+    const { copy } = useLocale();
     const [activeProfileId, setActiveProfileId] = useState(null);
     const [isAddingTemplate, setIsAddingTemplate] = useState(false);
     const [newTemplateName, setNewTemplateName] = useState('');
@@ -857,12 +861,12 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
             const res = await window.axios.post('/api/merchant/shipping-profiles', { name: newTemplateName, merchant_id: merchantId });
             setNewTemplateName('');
             setIsAddingTemplate(false);
-            toast.success('Mpangilio mpya wa usafirishaji umeongezwa!');
+            toast.success(copy('New shipping setup added!', 'Mpangilio mpya wa usafirishaji umeongezwa!'));
             if (onRefresh) onRefresh();
             // Automatically switch to the new template
             if (res.data.data) setActiveProfileId(res.data.data.id);
         } catch (err) {
-            toast.error('Imeshindikana kuongeza mpangilio wa usafirishaji.');
+            toast.error(copy('Could not add shipping setup.', 'Imeshindikana kuongeza mpangilio wa usafirishaji.'));
         } finally {
             setIsSavingTemplate(false);
         }
@@ -870,31 +874,31 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
 
     const handleDeleteTemplate = async (id, name) => {
         if (profiles.length <= 1) {
-            toast.error('Huwezi kufuta mpangilio wako wa mwisho wa delivery.');
+            toast.error(copy('You cannot delete your last delivery setup.', 'Huwezi kufuta mpangilio wako wa mwisho wa delivery.'));
             return;
         }
-        if (!confirm(`Je, una uhakika unataka kufuta mpangilio "${name}"? Hii itafuta njia zote za usafirishaji ndani yake.`)) return;
+        if (!confirm(copy(`Are you sure you want to delete the "${name}" setup? This will delete all shipping routes inside it.`, `Je, una uhakika unataka kufuta mpangilio "${name}"? Hii itafuta njia zote za usafirishaji ndani yake.`))) return;
 
         try {
             await window.axios.delete(`/api/merchant/shipping-profiles/${id}`, { data: { merchant_id: merchantId } });
-            toast.success('Mpangilio wa usafirishaji umefutwa.');
+            toast.success(copy('Shipping setup deleted.', 'Mpangilio wa usafirishaji umefutwa.'));
             if (activeProfileId === id) {
                 const other = profiles.find(p => p.id !== id);
                 setActiveProfileId(other ? other.id : null);
             }
             if (onRefresh) onRefresh();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindikana kufuta mpangilio wa usafirishaji.');
+            toast.error(err.response?.data?.message || copy('Could not delete shipping setup.', 'Imeshindikana kufuta mpangilio wa usafirishaji.'));
         }
     };
 
     const handleSetDefault = async (id) => {
         try {
             await window.axios.post(`/api/merchant/shipping-profiles/${id}/set-default`, { merchant_id: merchantId });
-            toast.success('Mpangilio wa kawaida wa usafirishaji umesasishwa.');
+            toast.success(copy('Default shipping setup updated.', 'Mpangilio wa kawaida wa usafirishaji umesasishwa.'));
             if (onRefresh) onRefresh();
         } catch (err) {
-            toast.error('Imeshindikana kusasisha default.');
+            toast.error(copy('Could not update default.', 'Imeshindikana kusasisha default.'));
         }
     };
 
@@ -914,10 +918,10 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                 intercity_enabled: Boolean(activeProfile.intercity_enabled),
                 international_enabled: Boolean(activeProfile.international_enabled),
             });
-            toast.success('Kanuni ya maeneo imesasishwa.');
+            toast.success(copy('Area rule updated.', 'Kanuni ya maeneo imesasishwa.'));
             if (onRefresh) onRefresh();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindikana kusasisha kanuni ya maeneo.');
+            toast.error(err.response?.data?.message || copy('Could not update area rule.', 'Imeshindikana kusasisha kanuni ya maeneo.'));
         } finally {
             setIsSavingPolicy(false);
         }
@@ -937,10 +941,10 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                 intercity_enabled: key === 'intercity_enabled' ? !activeProfile.intercity_enabled : Boolean(activeProfile.intercity_enabled),
                 international_enabled: key === 'international_enabled' ? !activeProfile.international_enabled : Boolean(activeProfile.international_enabled),
             });
-            toast.success('Sehemu ya template imesasishwa.');
+            toast.success(copy('Template section updated.', 'Sehemu ya template imesasishwa.'));
             if (onRefresh) onRefresh();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindikana kusasisha sehemu ya template.');
+            toast.error(err.response?.data?.message || copy('Could not update template section.', 'Imeshindikana kusasisha sehemu ya template.'));
         } finally {
             setIsSavingPolicy(false);
         }
@@ -950,10 +954,10 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
         return (
             <div className="text-center py-6 bg-muted/20 rounded-xl border border-dashed border-input">
                 <Truck className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-20" />
-                <p className="text-md text-muted-foreground font-bold mb-3">Bado hujaweka mipangilio ya usafirishaji.</p>
-                <p className="text-xs text-muted-foreground font-bold mb-3">Mipangilio ya usafirishaji ni namna ya kujumuisha bidhaa zinazoweza safirishwa kwa bei ya usafirishaji sawa mfano bidhaa ndogo ndogo zinazotumia nauli moja zinaweza kua na mpangilio wake maalumu wa usafirishaji, na kama una bidhaa ambazo zinatumia nauli tofauti pengine sababu ya uzito au ukubwa, inashauriwa kuweka mpangilio mwingine wa usafirishaji nawe kwenye bidhaa husika unaweza kuchagua inatumia mpangilio upi wa usafirishaji. Unaweza pia katika bidhaa husika ukaweza mpangilio maalumu kwa hiyo bidhaa tu.</p>
+                <p className="text-md text-muted-foreground font-bold mb-3">{copy('No shipping templates yet.', 'Bado hujaweka mipangilio ya usafirishaji.')}</p>
+                <p className="text-xs text-muted-foreground font-bold mb-3">{copy('Shipping templates group products that share the same delivery pricing. Create another template when products differ by weight, size, or transport cost, then choose the template on each product.', 'Mipangilio ya usafirishaji ni namna ya kujumuisha bidhaa zinazoweza safirishwa kwa bei ya usafirishaji sawa mfano bidhaa ndogo ndogo zinazotumia nauli moja zinaweza kua na mpangilio wake maalumu wa usafirishaji, na kama una bidhaa ambazo zinatumia nauli tofauti pengine sababu ya uzito au ukubwa, inashauriwa kuweka mpangilio mwingine wa usafirishaji nawe kwenye bidhaa husika unaweza kuchagua inatumia mpangilio upi wa usafirishaji. Unaweza pia katika bidhaa husika ukaweza mpangilio maalumu kwa hiyo bidhaa tu.')}</p>
                 <Button size="sm" onClick={() => setIsAddingTemplate(true)} className="bg-brand-600 font-bold">
-                    <Plus className="h-4 w-4 mr-1" /> Tengeneza mpangilio wa kwanza
+                    <Plus className="h-4 w-4 mr-1" /> {copy('Create first template', 'Tengeneza mpangilio wa kwanza')}
                 </Button>
             </div>
         );
@@ -979,7 +983,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                                 <button
                                     onClick={() => handleSetDefault(p.id)}
                                     className="p-1 hover:bg-white/20 rounded-full text-white/70 hover:text-white"
-                                    title="Weka kama kawaida"
+                                    title={copy('Set as default', 'Weka kama kawaida')}
                                 >
                                     <Star className="h-2.5 w-2.5" />
                                 </button>
@@ -987,7 +991,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                             <button
                                 onClick={() => handleDeleteTemplate(p.id, p.name)}
                                 className={`p-1 rounded-full ${activeProfileId === p.id ? 'hover:bg-white/20 text-white/70 hover:text-white' : 'hover:bg-red-50 text-red-400 hover:text-red-600'}`}
-                                title="Futa mpangilio"
+                                title={copy('Delete template', 'Futa mpangilio')}
                             >
                                 <Trash2 className="h-2.5 w-2.5" />
                             </button>
@@ -1009,7 +1013,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                         <Input
                             value={newTemplateName}
                             onChange={e => setNewTemplateName(e.target.value)}
-                            placeholder="Jina la mpangilio..."
+                            placeholder={copy('Template name...', 'Jina la mpangilio...')}
                             className="h-8 text-[10px] font-bold w-32 rounded-full"
                             autoFocus
                         />
@@ -1024,7 +1028,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
             </div>
 
             <div className="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">
-                Weka jina lolote la mpangilio upendalo lenye maana kwako, halitaonekana kwa watumiaji.
+                {copy('Choose any template name that is meaningful to you; customers will not see it.', 'Weka jina lolote la mpangilio upendalo lenye maana kwako, halitaonekana kwa watumiaji.')}
             </div>
 
             <div className="bg-white/50 p-4 rounded-2xl border border-brand-100 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200 min-h-[100px]">
@@ -1033,16 +1037,16 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                         {activeProfile && (
                             <div className="space-y-3 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
                                 <div>
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-sky-800">Sehemu za delivery kwenye template hii</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-sky-800">{copy('Delivery sections in this template', 'Sehemu za delivery kwenye template hii')}</p>
                                     <p className="mt-1 text-xs font-semibold text-sky-900/70">
-                                        Washa sehemu ambazo bidhaa za template hii zinaweza kufikishwa. Kila njia utakayoongeza chini itaangukia kwenye sehemu moja.
+                                        {copy('Enable the areas where products in this template can be delivered. Each route you add below belongs to one area.', 'Washa sehemu ambazo bidhaa za template hii zinaweza kufikishwa. Kila njia utakayoongeza chini itaangukia kwenye sehemu moja.')}
                                     </p>
                                 </div>
                                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                                     {[
-                                        { key: 'in_city_enabled', title: 'Ndani ya mji', hint: 'Ruhusu rules za local/distance kwenye template hii.' },
-                                        { key: 'intercity_enabled', title: 'Mikoani', hint: 'Ruhusu miji, mikoa, au country-wide ndani ya nchi.' },
-                                        { key: 'international_enabled', title: 'Nje ya nchi', hint: 'Ruhusu nchi za kimataifa kwa template hii.' },
+                                        { key: 'in_city_enabled', title: copy('Within city', 'Ndani ya mji'), hint: copy('Allow local/distance rules in this template.', 'Ruhusu rules za local/distance kwenye template hii.') },
+                                        { key: 'intercity_enabled', title: copy('Intercity', 'Mikoani'), hint: copy('Allow cities, regions, or country-wide delivery within the country.', 'Ruhusu miji, mikoa, au country-wide ndani ya nchi.') },
+                                        { key: 'international_enabled', title: copy('International', 'Nje ya nchi'), hint: copy('Allow international countries in this template.', 'Ruhusu nchi za kimataifa kwa template hii.') },
                                     ].map((section) => (
                                         <button
                                             key={section.key}
@@ -1058,9 +1062,9 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                                 </div>
                                 <div className="flex flex-col gap-3 rounded-2xl border border-white bg-white/80 p-3 md:flex-row md:items-center md:justify-between">
                                     <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-700">Kama anwani ya Mteja ipo nje ya maeneo uliyoweka</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-700">{copy('If the customer address is outside your configured areas', 'Kama anwani ya Mteja ipo nje ya maeneo uliyoweka')}</p>
                                         <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                                            Hii hutumika baada ya kuangalia sehemu zote zilizo ON: ndani ya mji, mikoani, na nje ya nchi.
+                                            {copy('This applies after checking all enabled areas: within city, intercity, and international.', 'Hii hutumika baada ya kuangalia sehemu zote zilizo ON: ndani ya mji, mikoani, na nje ya nchi.')}
                                         </p>
                                     </div>
                                     <select
@@ -1069,8 +1073,8 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                                         onChange={(e) => handleOutsideAreaPolicyChange(e.target.value)}
                                         className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-400"
                                     >
-                                        <option value="inquiry">Pokea oda, thibitisha delivery kwenye chat</option>
-                                        <option value="block">Zuia checkout kama hakuna njia inayolingana</option>
+                                        <option value="inquiry">{copy('Accept order, confirm delivery in chat', 'Pokea oda, thibitisha delivery kwenye chat')}</option>
+                                        <option value="block">{copy('Block checkout if no route matches', 'Zuia checkout kama hakuna njia inayolingana')}</option>
                                     </select>
                                 </div>
                             </div>
@@ -1087,7 +1091,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                     </div>
                 ) : (
                     <div className="flex flex-col items-center justify-center py-8 text-muted-foreground italic">
-                        <p className="text-xs">Chagua au tengeneza template kwanza.</p>
+                        <p className="text-xs">{copy('Choose or create a template first.', 'Chagua au tengeneza template kwanza.')}</p>
                     </div>
                 )}
             </div>

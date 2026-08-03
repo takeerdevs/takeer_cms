@@ -6,10 +6,10 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Calculator, CalendarClock, Layers3, Percent, Save, ShieldCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const categories = [
     { value: 'sale', label: 'Transactions' },
-    { value: 'withdrawal', label: 'Withdrawals' },
     { value: 'subscription', label: 'Subscriptions' },
     { value: 'storage', label: 'Storage' },
 ];
@@ -44,6 +44,7 @@ const blankForm = {
 };
 
 export default function FeePolicies() {
+    const { copy } = useLocale();
     const { currencies = [], paymentChannels: initialPaymentChannels = [] } = usePage().props;
     const [policies, setPolicies] = useState([]);
     const [activeCategory, setActiveCategory] = useState('sale');
@@ -58,7 +59,7 @@ export default function FeePolicies() {
         () => policies.filter((policy) => policy.category === activeCategory),
         [policies, activeCategory]
     );
-    const preview = useMemo(() => calculatePreview(form, previewAmount), [form, previewAmount]);
+    const preview = useMemo(() => calculatePreview(form, previewAmount, copy), [form, previewAmount, copy]);
     const categoryMeta = categories.find((category) => category.value === form.category) || categories[0];
     const currencyOptions = useMemo(() => {
         const activeCurrencies = Array.isArray(currencies) ? currencies : [];
@@ -88,7 +89,7 @@ export default function FeePolicies() {
         fetch('/admin/api/fee-policies', { headers: { Accept: 'application/json' } })
             .then(async (response) => {
                 const payload = await response.json();
-                if (!response.ok) throw new Error(payload.message || 'Failed to load fee policies.');
+                if (!response.ok) throw new Error(payload.message || copy('Failed to load fee policies.', 'Imeshindikana kupakia sera za ada.'));
                 return payload;
             })
             .then((payload) => {
@@ -172,18 +173,18 @@ export default function FeePolicies() {
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.message || 'Could not save fee policy.');
-            toast.success(data.message || 'Fee policy saved.');
+            toast.success(data.message || copy('Fee policy saved.', 'Sera ya ada imehifadhiwa.'));
             resetForm(payload.category);
             loadPolicies();
         } catch (error) {
-            toast.error(error.message);
+            toast.error(error.message || copy('Failed to save fee policy.', 'Imeshindikana kuhifadhi sera ya ada.'));
         } finally {
             setSaving(false);
         }
     };
 
     const deactivatePolicy = async (policy) => {
-        if (!window.confirm(`Deactivate ${policy.name}?`)) return;
+        if (!window.confirm(`${copy('Deactivate', 'Zima')} ${policy.name}?`)) return;
 
         const response = await fetch(`/admin/api/fee-policies/${policy.id}`, {
             method: 'DELETE',
@@ -194,24 +195,24 @@ export default function FeePolicies() {
         });
         const data = await response.json();
         if (!response.ok) {
-            toast.error(data.message || 'Could not deactivate policy.');
+            toast.error(data.message || copy('Could not deactivate policy.', 'Imeshindikana kuzima sera.'));
             return;
         }
-        toast.success(data.message || 'Policy deactivated.');
+        toast.success(data.message || copy('Policy deactivated.', 'Sera imezimwa.'));
         loadPolicies();
     };
 
     return (
-        <AdminLayout title="Pricing & Fees">
-            <Head title="Pricing & Fees | Takeer Admin" />
+        <AdminLayout title={copy('Pricing & fees', 'Bei na ada')}>
+            <Head title={`${copy('Pricing & fees', 'Bei na ada')} | Takeer Admin`} />
 
             <div className="space-y-6">
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                        <Percent className="h-6 w-6 text-brand-700" /> Pricing & Fees
+                        <Percent className="h-6 w-6 text-brand-700" /> {copy('Pricing & fees', 'Bei na ada')}
                     </h1>
                     <p className="text-sm text-slate-600 mt-1">
-                        Manage merchant-facing Takeer fees with scopes, caps, and effective dates. Provider rail costs and hard limits live in Payment Providers.
+                        {copy('Manage merchant-facing Takeer fees with scopes, caps, and effective dates. Provider rail costs and hard limits live in Payment Providers.', 'Simamia ada za Takeer zinazoonekana kwa wafanyabiashara pamoja na maeneo, viwango vya juu na tarehe za kuanza. Gharama na viwango vya juu vya mtoa huduma viko kwenye Watoa huduma wa malipo.')}
                     </p>
                 </div>
 
@@ -230,7 +231,7 @@ export default function FeePolicies() {
                                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                             }`}
                         >
-                            <p className="text-sm font-black">{category.label}</p>
+                            <p className="text-sm font-black">{copy(category.label, category.value === 'sale' ? 'Miamala' : category.value === 'subscription' ? 'Usajili' : 'Hifadhi')}</p>
                             <p className="text-[11px] mt-1 uppercase tracking-widest font-bold">{category.value}</p>
                         </button>
                     ))}
@@ -240,19 +241,19 @@ export default function FeePolicies() {
                     <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
                         <CardContent className="p-0">
                             <div className="p-5 border-b border-slate-200">
-                                <h2 className="font-black text-slate-900">{categories.find((c) => c.value === activeCategory)?.label} Policies</h2>
+                                <h2 className="font-black text-slate-900">{copy(categories.find((c) => c.value === activeCategory)?.label || 'Policies', activeCategory === 'sale' ? 'Sera za miamala' : activeCategory === 'subscription' ? 'Sera za usajili' : 'Sera za hifadhi')}</h2>
                                 <p className="text-xs text-slate-500 mt-1">
-                                    Most specific active policy wins. Withdrawal policies are Takeer markup; provider payout cost is added from Payment Providers.
+                                    {copy('Most specific active policy wins. Marketplace fee policies are Takeer markup; provider payout cost is added from Payment Providers.', 'Sera hai iliyo maalum zaidi ndiyo hutumika. Sera za ada za soko ni ongezeko la Takeer; gharama ya malipo kwa mtoa huduma huongezwa kutoka kwa Watoa huduma wa malipo.')}
                                 </p>
                             </div>
 
                             {loading ? (
-                                <div className="p-10 text-center text-slate-500 font-bold">Loading policies...</div>
+                                <div className="p-10 text-center text-slate-500 font-bold">{copy('Loading policies...', 'Inapakia sera...')}</div>
                             ) : visiblePolicies.length === 0 ? (
                                 <div className="p-10 text-center text-slate-500">
                                     <ShieldCheck className="h-8 w-8 mx-auto mb-2 text-slate-300" />
-                                    <p className="font-bold">No custom policy yet.</p>
-                                    <p className="text-xs mt-1">The app will use safe defaults until you add one.</p>
+                                    <p className="font-bold">{copy('No custom policy yet.', 'Hakuna sera maalum bado.')}</p>
+                                    <p className="text-xs mt-1">{copy('The app will use safe defaults until you add one.', 'Programu itatumia mipangilio salama ya awali hadi uongeze sera.')}</p>
                                 </div>
                             ) : (
                                 <div className="divide-y divide-slate-100">
@@ -262,21 +263,21 @@ export default function FeePolicies() {
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <p className="font-black text-slate-900">{policy.name}</p>
                                                     <span className={`text-[10px] uppercase tracking-widest font-black px-2 py-1 rounded-full ${policy.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                                        {policy.is_active ? 'Active' : 'Inactive'}
+                                                        {policy.is_active ? copy('Active', 'Hai') : copy('Inactive', 'Si hai')}
                                                     </span>
                                                     <span className="text-[10px] uppercase tracking-widest font-black px-2 py-1 rounded-full bg-slate-100 text-slate-600">
-                                                        {policyScopeBadge(policy)}
+                                                        {policyScopeBadge(policy, copy)}
                                                     </span>
                                                 </div>
                                                 <p className="text-sm text-slate-600 mt-1">
-                                                    {describePolicy(policy)}
+                                                    {describePolicy(policy, copy)}
                                                 </p>
                                                 <p className="text-xs text-slate-400 mt-1">
-                                                    {policyScopeLabel(policy, paymentChannelByKey)} · Effective {formatDate(policy.effective_from) || 'now'}
+                                                    {policyScopeLabel(policy, paymentChannelByKey, copy)} · {copy('Effective', 'Inaanza')} {formatDate(policy.effective_from) || copy('now', 'sasa')}
                                                 </p>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <Button variant="outline" onClick={() => editPolicy(policy)}>Edit</Button>
+                                                    <Button variant="outline" onClick={() => editPolicy(policy)}>{copy('Edit', 'Hariri')}</Button>
                                                 <Button variant="outline" onClick={() => deactivatePolicy(policy)} disabled={!policy.is_active}>
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
@@ -293,28 +294,28 @@ export default function FeePolicies() {
                             <div className="bg-slate-900 text-white p-5">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
-                                        <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Policy Builder</p>
-                                        <h2 className="font-black text-xl mt-1">{editingId ? 'Edit Policy' : 'New Policy'}</h2>
-                                        <p className="text-xs text-slate-300 mt-1">{categoryMeta.label} · {feeTypeSummary(form)}</p>
+                                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">{copy('Policy Builder', 'Mjenzi wa sera')}</p>
+                                        <h2 className="font-black text-xl mt-1">{editingId ? copy('Edit Policy', 'Hariri sera') : copy('New Policy', 'Sera mpya')}</h2>
+                                        <p className="text-xs text-slate-300 mt-1">{copy(categoryMeta.label, categoryMeta.value === 'sale' ? 'Miamala' : categoryMeta.value === 'subscription' ? 'Usajili' : 'Hifadhi')} · {feeTypeSummary(form, copy)}</p>
                                     </div>
                                     <button
                                         type="button"
                                         onClick={() => set('is_active', !form.is_active)}
                                         className={`shrink-0 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${form.is_active ? 'bg-emerald-400 text-emerald-950' : 'bg-slate-700 text-slate-300'}`}
                                     >
-                                        {form.is_active ? 'Active' : 'Inactive'}
+                                        {form.is_active ? copy('Active', 'Hai') : copy('Inactive', 'Si hai')}
                                     </button>
                                 </div>
                             </div>
 
                             <form onSubmit={savePolicy} className="p-5 space-y-5">
-                                <BuilderSection icon={Layers3} title="Where This Applies">
-                                    <Field label="Policy Name">
-                                        <Input className="h-11 rounded-xl" value={form.name} onChange={(e) => set('name', e.target.value)} required placeholder="Example: Tanzania online sales fee" />
+                                <BuilderSection icon={Layers3} title={copy('Where this applies', 'Inapotumika')}>
+                                    <Field label={copy('Policy Name', 'Jina la sera')}>
+                                        <Input className="h-11 rounded-xl" value={form.name} onChange={(e) => set('name', e.target.value)} required placeholder={copy('Example: Tanzania online sales fee', 'Mfano: ada ya mauzo ya mtandaoni Tanzania')} />
                                     </Field>
 
                                     <div className="grid grid-cols-2 gap-3">
-                                        <Field label="Category">
+                                        <Field label={copy('Category', 'Kategoria')}>
                                             <Select value={form.category} onChange={(e) => {
                                                 const category = e.target.value;
                                                 setForm((current) => ({
@@ -325,39 +326,39 @@ export default function FeePolicies() {
                                                     sellable_type: category === 'sale' ? current.sellable_type : '',
                                                 }));
                                             }}>
-                                                {categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
+                                                {categories.map((category) => <option key={category.value} value={category.value}>{copy(category.label, category.value === 'sale' ? 'Miamala' : category.value === 'subscription' ? 'Usajili' : 'Hifadhi')}</option>)}
                                             </Select>
                                         </Field>
-                                        <Field label="Scope">
+                                        <Field label={copy('Scope', 'Wigo')}>
                                             <Select value={form.scope} onChange={(e) => setForm((current) => ({ ...current, scope: e.target.value, payment_channel: '', sellable_type: '' }))}>
-                                                <option value="global">Global</option>
-                                                {form.category === 'sale' && <option value="sellable_type">Sellable Type</option>}
-                                                <option value="country">Country</option>
-                                                <option value="currency">Currency</option>
-                                                <option value="merchant">Merchant</option>
-                                                <option value="payment_channel">Payment Channel</option>
+                                                <option value="global">{copy('Global', 'Jumla')}</option>
+                                                {form.category === 'sale' && <option value="sellable_type">{copy('Sellable Type', 'Aina ya bidhaa')}</option>}
+                                                <option value="country">{copy('Country', 'Nchi')}</option>
+                                                <option value="currency">{copy('Currency', 'Sarafu')}</option>
+                                                <option value="merchant">{copy('Merchant', 'Muuzaji')}</option>
+                                                <option value="payment_channel">{copy('Payment Channel', 'Njia ya malipo')}</option>
                                             </Select>
                                         </Field>
                                     </div>
 
-                                    {form.scope === 'country' && <Field label="Country Code"><Input className="h-11 rounded-xl uppercase" maxLength={2} value={form.country_code} onChange={(e) => set('country_code', e.target.value.toUpperCase())} placeholder="TZ" /></Field>}
+                                    {form.scope === 'country' && <Field label={copy('Country Code', 'Msimbo wa nchi')}><Input className="h-11 rounded-xl uppercase" maxLength={2} value={form.country_code} onChange={(e) => set('country_code', e.target.value.toUpperCase())} placeholder="TZ" /></Field>}
                                     {form.scope === 'sellable_type' && (
-                                        <Field label="Sellable Type">
+                                        <Field label={copy('Sellable Type', 'Aina ya bidhaa')}>
                                             <Select value={form.sellable_type} onChange={(e) => set('sellable_type', e.target.value)}>
-                                                <option value="">Choose sellable type</option>
+                                                <option value="">{copy('Choose sellable type', 'Chagua aina ya bidhaa')}</option>
                                                 {sellableTypes.map((type) => (
-                                                    <option key={type.value} value={type.value}>{type.label}</option>
+                                                    <option key={type.value} value={type.value}>{copy(type.label, type.value === 'physical' ? 'Bidhaa halisi' : type.value === 'digital' ? 'Upakuaji wa kidijitali' : 'Huduma')}</option>
                                                 ))}
                                             </Select>
                                             <p className="mt-2 text-xs font-semibold text-slate-500">
-                                                Use this to set different sale fees for digital downloads, physical products, and services.
+                                                {copy('Use this to set different sale fees for digital downloads, physical products, and services.', 'Tumia kuweka ada tofauti za mauzo kwa upakuaji wa kidijitali, bidhaa halisi na huduma.')}
                                             </p>
                                         </Field>
                                     )}
                                     {form.scope === 'currency' && (
-                                        <Field label="Currency">
+                                        <Field label={copy('Currency', 'Sarafu')}>
                                             <Select value={form.currency_code} onChange={(e) => set('currency_code', e.target.value)}>
-                                                <option value="">Choose currency</option>
+                                                <option value="">{copy('Choose currency', 'Chagua sarafu')}</option>
                                                 {currencyOptions.map((currency) => (
                                                     <option key={currency.code} value={currency.code}>
                                                         {currencyLabel(currency)}
@@ -366,11 +367,11 @@ export default function FeePolicies() {
                                             </Select>
                                         </Field>
                                     )}
-                                    {form.scope === 'merchant' && <Field label="Merchant ID"><Input className="h-11 rounded-xl" type="number" value={form.merchant_id} onChange={(e) => set('merchant_id', e.target.value)} placeholder="Merchant database ID" /></Field>}
+                                    {form.scope === 'merchant' && <Field label="Merchant ID"><Input className="h-11 rounded-xl" type="number" value={form.merchant_id} onChange={(e) => set('merchant_id', e.target.value)} placeholder={copy('Merchant database ID', 'Namba ya mfanyabiashara kwenye hifadhidata')} /></Field>}
                                     {form.scope === 'payment_channel' && (
-                                        <Field label="Payment Channel">
+                                        <Field label={copy('Payment Channel', 'Njia ya malipo')}>
                                             <Select value={form.payment_channel} onChange={(e) => set('payment_channel', e.target.value)}>
-                                                <option value="">Choose channel</option>
+                                                <option value="">{copy('Choose channel', 'Chagua njia')}</option>
                                                 {paymentChannelOptions.map((channel) => (
                                                     <option key={channel.key} value={channel.key}>
                                                         {paymentChannelLabel(channel)}
@@ -380,20 +381,20 @@ export default function FeePolicies() {
                                             {paymentChannelOptions.length === 0 && (
                                                 <p className="mt-2 text-xs font-semibold text-amber-700">
                                                     {paymentChannels.length === 0
-                                                        ? 'Provider channels are still loading. If this stays empty, check Payment Providers.'
-                                                        : 'No provider channels are configured for this category.'}
+                                                        ? copy('Provider channels are still loading. If this stays empty, check Payment Providers.', 'Njia za mtoa huduma bado zinapakiwa. Ikiendelea kuwa tupu, angalia Watoa Huduma za Malipo.')
+                                                        : copy('No provider channels are configured for this category.', 'Hakuna njia za mtoa huduma zilizowekwa kwa kategoria hii.')}
                                                 </p>
                                             )}
                                         </Field>
                                     )}
                                 </BuilderSection>
 
-                                <BuilderSection icon={Calculator} title="Fee Formula">
+                                <BuilderSection icon={Calculator} title={copy('Fee Formula', 'Mfumo wa ada')}>
                                     <div className="grid grid-cols-3 gap-2">
                                         {[
-                                            ['percentage', 'Percent', 'Amount × %'],
-                                            ['fixed', 'Fixed', 'Flat charge'],
-                                            ['hybrid', 'Hybrid', '% + fixed'],
+                                            ['percentage', copy('Percent', 'Asilimia'), copy('Amount × %', 'Kiasi × %')],
+                                            ['fixed', copy('Fixed', 'Iliyowekwa'), copy('Flat charge', 'Ada tambarare')],
+                                            ['hybrid', copy('Hybrid', 'Mchanganyiko'), copy('% + fixed', '% + ada iliyowekwa')],
                                         ].map(([value, label, help]) => (
                                             <button
                                                 key={value}
@@ -408,29 +409,20 @@ export default function FeePolicies() {
                                     </div>
 
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                                        {feeTypeExplanation(form.fee_type)}
+                                        {feeTypeExplanation(form.fee_type, copy)}
                                     </div>
 
-                                    {form.category === 'withdrawal' && (
-                                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
-                                            <p className="font-black uppercase tracking-widest text-[10px]">Withdrawal fee strategy</p>
-                                            <p className="mt-1">
-                                                Takeer charges merchants provider rail cost plus this policy as markup. Set this policy to zero to pass provider cost through without extra markup.
-                                            </p>
-                                        </div>
-                                    )}
-
                                     <div className="grid grid-cols-2 gap-3">
-                                        <Field label="Percent Rate">
+                                        <Field label={copy('Percent Rate', 'Kiwango cha asilimia')}>
                                             <Input className="h-11 rounded-xl" type="number" step="0.0001" min="0" value={form.percentage_rate} onChange={(e) => set('percentage_rate', e.target.value)} disabled={form.fee_type === 'fixed'} />
                                         </Field>
-                                        <Field label="Fixed Amount">
+                                        <Field label={copy('Fixed Amount', 'Kiasi kilichowekwa')}>
                                             <Input className="h-11 rounded-xl" type="number" step="0.01" min="0" value={form.fixed_amount} onChange={(e) => set('fixed_amount', e.target.value)} disabled={form.fee_type === 'percentage'} />
                                         </Field>
                                     </div>
 
                                     {form.fee_type !== 'percentage' && (
-                                        <Field label="Fixed Fee Currency">
+                                        <Field label={copy('Fixed Fee Currency', 'Sarafu ya ada iliyowekwa')}>
                                             <Select value={form.fixed_fee_currency_code} onChange={(e) => set('fixed_fee_currency_code', e.target.value)}>
                                                 {currencyOptions.map((currency) => (
                                                     <option key={currency.code} value={currency.code}>
@@ -443,25 +435,25 @@ export default function FeePolicies() {
 
                                     {form.fee_type !== 'percentage' && (
                                         <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
-                                            <p className="font-black uppercase tracking-widest text-[10px]">Fixed fee currency</p>
+                                            <p className="font-black uppercase tracking-widest text-[10px]">{copy('Fixed fee currency', 'Sarafu ya ada iliyowekwa')}</p>
                                             <p className="mt-1">
-                                                The fixed part is stored in this currency. When a transaction uses another currency, Takeer converts the fixed amount into the transaction currency using the latest FX rate before charging.
+                                                {copy('The fixed part is stored in this currency. When a transaction uses another currency, Takeer converts the fixed amount into the transaction currency using the latest FX rate before charging.', 'Sehemu iliyowekwa huhifadhiwa kwa sarafu hii. Muamala ukitumia sarafu nyingine, Takeer hubadilisha kiasi hicho kwenda sarafu ya muamala kwa kutumia kiwango cha karibuni cha FX kabla ya kutoza.')}
                                             </p>
                                         </div>
                                     )}
 
                                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                                        <p className="font-black uppercase tracking-widest text-[10px]">Min / Max Caps</p>
+                                        <p className="font-black uppercase tracking-widest text-[10px]">{copy('Min / Max Caps', 'Vikomo vya chini / juu')}</p>
                                         <p className="mt-1">
-                                            First calculate the normal fee, then apply these caps. Min fee raises very small fees to a floor; max fee limits very large fees to a ceiling. Leave blank for no cap.
+                                            {copy('First calculate the normal fee, then apply these caps. Min fee raises very small fees to a floor; max fee limits very large fees to a ceiling. Leave blank for no cap.', 'Kwanza hesabu ada ya kawaida, kisha tumia vikomo hivi. Ada ya chini huinua ada ndogo sana; ada ya juu hupunguza ada kubwa sana. Acha wazi bila kikomo.')}
                                         </p>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
-                                        <Field label="Min Fee">
+                                        <Field label={copy('Min Fee', 'Ada ya chini')}>
                                             <Input className="h-11 rounded-xl" type="number" step="0.01" min="0" value={form.min_fee} onChange={(e) => set('min_fee', e.target.value)} placeholder="Optional" />
                                         </Field>
-                                        <Field label="Max Fee">
+                                        <Field label={copy('Max Fee', 'Ada ya juu')}>
                                             <Input className="h-11 rounded-xl" type="number" step="0.01" min="0" value={form.max_fee} onChange={(e) => set('max_fee', e.target.value)} placeholder="Optional" />
                                         </Field>
                                     </div>
@@ -469,21 +461,21 @@ export default function FeePolicies() {
                                     {form.category === 'storage' && (
                                         <>
                                             <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
-                                                <p className="font-black uppercase tracking-widest text-[10px]">Storage plans</p>
+                                                <p className="font-black uppercase tracking-widest text-[10px]">{copy('Storage plans', 'Mipango ya hifadhi')}</p>
                                                 <p className="mt-1">
-                                                    For Storage policies, Unit GB is the total plan allowance shown to merchants. Create one policy per tier, such as 50GB, 200GB, or 1TB.
+                                                    {copy('For Storage policies, Unit GB is the total plan allowance shown to merchants. Create one policy per tier, such as 50GB, 200GB, or 1TB.', 'Kwa sera za hifadhi, Unit GB ni jumla ya nafasi ya mpango inayoonyeshwa kwa wafanyabiashara. Tengeneza sera moja kwa kila ngazi, kama 50GB, 200GB au 1TB.')}
                                                 </p>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <Field label="Plan Size GB">
+                                                <Field label={copy('Plan Size GB', 'Ukubwa wa mpango kwa GB')}>
                                                     <Input className="h-11 rounded-xl" type="number" step="0.01" min="0" value={form.unit_size_gb} onChange={(e) => set('unit_size_gb', e.target.value)} />
                                                 </Field>
-                                                <Field label="Interval">
+                                                <Field label={copy('Interval', 'Muda wa kurudia')}>
                                                     <Select value={form.billing_interval} onChange={(e) => set('billing_interval', e.target.value)}>
-                                                        <option value="">None</option>
-                                                        <option value="one_time">One-time</option>
-                                                        <option value="monthly">Monthly</option>
-                                                        <option value="yearly">Yearly</option>
+                                                        <option value="">{copy('None', 'Hakuna')}</option>
+                                                        <option value="one_time">{copy('One-time', 'Mara moja')}</option>
+                                                        <option value="monthly">{copy('Monthly', 'Kila mwezi')}</option>
+                                                        <option value="yearly">{copy('Yearly', 'Kila mwaka')}</option>
                                                     </Select>
                                                 </Field>
                                             </div>
@@ -491,32 +483,32 @@ export default function FeePolicies() {
                                     )}
                                 </BuilderSection>
 
-                                <BuilderSection icon={CalendarClock} title="Timing & Notes">
+                                <BuilderSection icon={CalendarClock} title={copy('Timing & Notes', 'Muda na maelezo')}>
                                     <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
-                                        <p className="font-black uppercase tracking-widest text-[10px]">Open-ended policies</p>
+                                        <p className="font-black uppercase tracking-widest text-[10px]">{copy('Open-ended policies', 'Sera zisizo na mwisho')}</p>
                                         <p className="mt-1">
-                                            If Effective Until is blank, the policy stays active indefinitely. If another overlapping policy is added, Takeer picks the most specific match first, then the newest effective policy. Set an end date when you want a clean handoff.
+                                            {copy('If Effective Until is blank, the policy stays active indefinitely. If another overlapping policy is added, Takeer picks the most specific match first, then the newest effective policy. Set an end date when you want a clean handoff.', 'Effective Until ikiwa wazi, sera itaendelea kuwa hai bila mwisho. Sera nyingine inayopishana ikiongezwa, Takeer huchagua inayolingana zaidi kwanza, kisha sera mpya zaidi. Weka tarehe ya mwisho unapotaka makabidhiano safi.')}
                                         </p>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
-                                        <Field label="Effective From">
+                                        <Field label={copy('Effective From', 'Inaanza kutumika')}>
                                             <Input className="h-11 rounded-xl text-sm" type="datetime-local" value={form.effective_from} onChange={(e) => set('effective_from', e.target.value)} />
                                         </Field>
-                                        <Field label="Effective Until">
+                                        <Field label={copy('Effective Until', 'Inaisha kutumika')}>
                                             <Input className="h-11 rounded-xl text-sm" type="datetime-local" value={form.effective_until} onChange={(e) => set('effective_until', e.target.value)} />
                                         </Field>
                                     </div>
 
-                                    <Field label="Notes">
-                                        <textarea className="min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100" value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Why this policy exists, investor/accounting context, or rollout notes." />
+                                    <Field label={copy('Notes', 'Maelezo')}>
+                                        <textarea className="min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100" value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder={copy('Why this policy exists, investor/accounting context, or rollout notes.', 'Kwa nini sera hii ipo, muktadha wa mwekezaji/uhasibu, au maelezo ya uzinduzi.')} />
                                     </Field>
                                 </BuilderSection>
 
                                 <div className="rounded-2xl border border-brand-100 bg-brand-50 p-4">
                                     <div className="flex items-center justify-between gap-3">
                                         <div>
-                                            <p className="text-[10px] uppercase tracking-widest font-black text-brand-700">Live Preview</p>
+                                            <p className="text-[10px] uppercase tracking-widest font-black text-brand-700">{copy('Live Preview', 'Mwonekano wa moja kwa moja')}</p>
                                             <p className="text-xs text-slate-600 mt-1">{preview.formula}</p>
                                         </div>
                                         <div className="w-32">
@@ -524,17 +516,17 @@ export default function FeePolicies() {
                                         </div>
                                     </div>
                                     <div className="mt-4 grid grid-cols-3 gap-3">
-                                        <PreviewMetric label={form.category === 'withdrawal' ? 'Principal' : 'Gross'} value={preview.gross} />
-                                        <PreviewMetric label={form.category === 'withdrawal' ? 'Markup' : 'Fee'} value={preview.fee} tone="text-red-600" />
-                                        <PreviewMetric label={form.category === 'withdrawal' ? 'Before Provider Cost' : 'Net'} value={preview.net} tone="text-emerald-700" />
+                                        <PreviewMetric label={copy('Gross', 'Jumla kabla ya ada')} value={preview.gross} />
+                                        <PreviewMetric label={copy('Fee', 'Ada')} value={preview.fee} tone="text-red-600" />
+                                        <PreviewMetric label={copy('Net', 'Jumla baada ya ada')} value={preview.net} tone="text-emerald-700" />
                                     </div>
                                 </div>
 
                                 <div className="flex items-center gap-2">
                                     <Button type="submit" disabled={saving}>
-                                        <Save className="h-4 w-4 mr-2" /> {saving ? 'Saving...' : 'Save Policy'}
+                                        <Save className="h-4 w-4 mr-2" /> {saving ? copy('Saving...', 'Inahifadhi...') : copy('Save Policy', 'Hifadhi sera')}
                                     </Button>
-                                    {editingId && <Button type="button" variant="outline" onClick={() => resetForm()}>Cancel</Button>}
+                                    {editingId && <Button type="button" variant="outline" onClick={() => resetForm()}>{copy('Cancel', 'Ghairi')}</Button>}
                                 </div>
                             </form>
                         </CardContent>
@@ -588,30 +580,30 @@ function PreviewMetric({ label, value, tone = 'text-slate-900' }) {
     );
 }
 
-function describePolicy(policy) {
+function describePolicy(policy, copy = (english) => english) {
     const percent = Number(policy.percentage_rate || 0);
     const fixed = Number(policy.fixed_amount || 0);
     const fixedCurrency = policy.fixed_fee_currency_code || 'USD';
-    if (policy.fee_type === 'fixed') return `${fixedCurrency} ${formatPlain(fixed)} fixed fee`;
-    if (policy.fee_type === 'hybrid') return `${percent}% + ${fixedCurrency} ${formatPlain(fixed)} fixed`;
-    return `${percent}% fee`;
+    if (policy.fee_type === 'fixed') return `${fixedCurrency} ${formatPlain(fixed)} ${copy('fixed fee', 'ada iliyowekwa')}`;
+    if (policy.fee_type === 'hybrid') return `${percent}% + ${fixedCurrency} ${formatPlain(fixed)} ${copy('fixed', 'iliyowekwa')}`;
+    return `${percent}% ${copy('fee', 'ada')}`;
 }
 
-function feeTypeSummary(form) {
+function feeTypeSummary(form, copy = (english) => english) {
     const fixedCurrency = form.fixed_fee_currency_code || 'USD';
-    if (form.fee_type === 'fixed') return `${fixedCurrency} ${formatPlain(form.fixed_amount)} fixed`;
+    if (form.fee_type === 'fixed') return `${fixedCurrency} ${formatPlain(form.fixed_amount)} ${copy('fixed', 'iliyowekwa')}`;
     if (form.fee_type === 'hybrid') return `${Number(form.percentage_rate || 0)}% + ${fixedCurrency} ${formatPlain(form.fixed_amount)}`;
     return `${Number(form.percentage_rate || 0)}%`;
 }
 
-function feeTypeExplanation(type) {
+function feeTypeExplanation(type, copy = (english) => english) {
     if (type === 'hybrid') {
-        return 'Hybrid charges a percentage of the transaction plus a fixed amount. If fixed currency differs from the transaction currency, the fixed part is converted first.';
+        return copy('Hybrid charges a percentage of the transaction plus a fixed amount. If fixed currency differs from the transaction currency, the fixed part is converted first.', 'Mchanganyiko hutoza asilimia ya muamala pamoja na kiasi kilichowekwa. Sarafu ya ada ikitofautiana na sarafu ya muamala, sehemu iliyowekwa hubadilishwa kwanza.');
     }
     if (type === 'fixed') {
-        return 'Fixed charges the same amount regardless of transaction size. Useful for payout rails or storage bundles.';
+        return copy('Fixed charges the same amount regardless of transaction size. Useful for payout rails or storage bundles.', 'Ada iliyowekwa hutoza kiasi kilekile bila kujali ukubwa wa muamala. Inafaa kwa njia za malipo au vifurushi vya hifadhi.');
     }
-    return 'Percent charges a share of the transaction amount. This is the current default for Takeer sales fees.';
+    return copy('Percent charges a share of the transaction amount. This is the current default for Takeer sales fees.', 'Asilimia hutoza sehemu ya kiasi cha muamala. Hii ndiyo chaguo-msingi la sasa kwa ada za mauzo za Takeer.');
 }
 
 function currencyLabel(currency) {
@@ -621,7 +613,6 @@ function currencyLabel(currency) {
 }
 
 function categoryDirection(category) {
-    if (category === 'withdrawal') return 'payout';
     if (category === 'sale') return 'payin';
     return '';
 }
@@ -639,9 +630,10 @@ function paymentChannelLabel(channel) {
     return `${channel.name || channel.key} · ${provider} · ${country} · ${direction}${currencySuffix}${status}`;
 }
 
-function policyScopeLabel(policy, paymentChannelByKey) {
+function policyScopeLabel(policy, paymentChannelByKey, copy = (english) => english) {
     if (policy.sellable_type) {
-        return sellableTypes.find((type) => type.value === policy.sellable_type)?.label || policy.sellable_type;
+        const type = sellableTypes.find((item) => item.value === policy.sellable_type);
+        return type ? copy(type.label, type.value === 'physical' ? 'Bidhaa halisi' : type.value === 'digital' ? 'Upakuaji wa kidijitali' : 'Huduma') : policy.sellable_type;
     }
 
     if (policy.payment_channel) {
@@ -649,18 +641,28 @@ function policyScopeLabel(policy, paymentChannelByKey) {
         return channel ? paymentChannelLabel(channel) : policy.payment_channel;
     }
 
-    return policy.country_code || policy.currency_code || policy.merchant?.display_name || 'Global';
+    return policy.country_code || policy.currency_code || policy.merchant?.display_name || copy('Global', 'Jumla');
 }
 
-function policyScopeBadge(policy) {
+function policyScopeBadge(policy, copy = (english) => english) {
     if (policy.sellable_type) {
-        return sellableTypes.find((type) => type.value === policy.sellable_type)?.label || policy.sellable_type;
+        const type = sellableTypes.find((item) => item.value === policy.sellable_type);
+        return type ? copy(type.label, type.value === 'physical' ? 'Bidhaa halisi' : type.value === 'digital' ? 'Upakuaji wa kidijitali' : 'Huduma') : policy.sellable_type;
     }
 
-    return String(policy.scope || 'global').replace(/_/g, ' ');
+    const labels = {
+        global: ['Global', 'Jumla'],
+        country: ['Country', 'Nchi'],
+        currency: ['Currency', 'Sarafu'],
+        merchant: ['Merchant', 'Muuzaji'],
+        payment_channel: ['Payment Channel', 'Njia ya malipo'],
+        sellable_type: ['Sellable Type', 'Aina ya bidhaa'],
+    };
+    const pair = labels[policy.scope];
+    return pair ? copy(pair[0], pair[1]) : String(policy.scope || 'global').replace(/_/g, ' ');
 }
 
-function calculatePreview(form, rawAmount) {
+function calculatePreview(form, rawAmount, copy = (english) => english) {
     const gross = Math.max(0, Number(rawAmount || 0));
     const percent = Math.max(0, Number(form.percentage_rate || 0));
     const fixed = Math.max(0, Number(form.fixed_amount || 0));
@@ -672,23 +674,23 @@ function calculatePreview(form, rawAmount) {
 
     if (form.fee_type === 'fixed') {
         fee = fixed;
-        formula = `${form.fixed_fee_currency_code || 'USD'} ${formatPlain(fixed)} fixed fee`;
+        formula = `${form.fixed_fee_currency_code || 'USD'} ${formatPlain(fixed)} ${copy('fixed fee', 'ada iliyowekwa')}`;
     } else if (form.fee_type === 'hybrid') {
         const percentFee = gross * (percent / 100);
         fee = percentFee + fixed;
-        formula = `${percent}% of ${formatPlain(gross)} (${formatPlain(percentFee)}) + ${form.fixed_fee_currency_code || 'USD'} ${formatPlain(fixed)}`;
+        formula = `${percent}% ${copy('of', 'ya')} ${formatPlain(gross)} (${formatPlain(percentFee)}) + ${form.fixed_fee_currency_code || 'USD'} ${formatPlain(fixed)}`;
     } else {
         fee = gross * (percent / 100);
-        formula = `${percent}% of ${formatPlain(gross)}`;
+        formula = `${percent}% ${copy('of', 'ya')} ${formatPlain(gross)}`;
     }
 
     if (minFee !== null) {
         fee = Math.max(fee, minFee);
-        formula += ` · min ${formatPlain(minFee)}`;
+        formula += ` · ${copy('min', 'chini')} ${formatPlain(minFee)}`;
     }
     if (maxFee !== null) {
         fee = Math.min(fee, maxFee);
-        formula += ` · max ${formatPlain(maxFee)}`;
+        formula += ` · ${copy('max', 'juu')} ${formatPlain(maxFee)}`;
     }
 
     fee = Math.round(Math.min(fee, gross) * 100) / 100;

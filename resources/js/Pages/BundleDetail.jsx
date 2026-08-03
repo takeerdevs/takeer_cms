@@ -5,9 +5,11 @@ import { Button } from '@/Components/ui/Button';
 import AppLayout from '@/Layouts/AppLayout';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 import CourseBundleTemplate from '@/Components/public-templates/CourseBundleTemplate';
 
 export default function BundleDetail({ bundle }) {
+    const { t, copy } = useLocale();
     const merchant = bundle?.merchant || {};
     const isMenuMode = Boolean(bundle?.is_individual_sale && !bundle?.is_course);
     const selectableItems = useMemo(() => (
@@ -15,10 +17,10 @@ export default function BundleDetail({ bundle }) {
     ), [bundle?.items]);
     const [selectedItemQty, setSelectedItemQty] = useState({});
     const courseFormatLabel = {
-        self_paced: 'Learn anytime',
-        cohort: 'Class group',
-        live: 'Live classes',
-    }[bundle?.course_format || 'self_paced'] || 'Course';
+        self_paced: copy('Learn anytime', 'Jifunze wakati wowote'),
+        cohort: copy('Class group', 'Kundi la darasa'),
+        live: copy('Live classes', 'Madarasa ya moja kwa moja'),
+    }[bundle?.course_format || 'self_paced'] || copy('Course', 'Kozi');
 
     useEffect(() => {
         setSelectedItemQty({});
@@ -57,7 +59,7 @@ export default function BundleDetail({ bundle }) {
 
         const grouped = [];
         (bundle?.items || []).forEach((item, index) => {
-            const title = item.section_title || 'General';
+            const title = item.section_title || copy('General', 'Jumla');
             let module = grouped.find((entry) => entry.title === title);
             if (!module) {
                 module = { title, lessons: [] };
@@ -65,7 +67,7 @@ export default function BundleDetail({ bundle }) {
             }
             module.lessons.push({
                 id: `${item.item_type}-${item.item_id}-${index}`,
-                title: item.lesson_title || `Lesson ${index + 1}`,
+                title: item.lesson_title || `${copy('Lesson', 'Somo')} ${index + 1}`,
                 summary: item.lesson_summary,
                 duration_minutes: item.lesson_duration_minutes,
                 unlock_after_days: item.unlock_after_days,
@@ -77,7 +79,7 @@ export default function BundleDetail({ bundle }) {
         });
 
         return grouped;
-    }, [bundle?.course_modules, bundle?.items]);
+    }, [bundle?.course_modules, bundle?.items, copy]);
     const checkoutItem = isMenuMode
         ? {
             ...bundle,
@@ -112,7 +114,7 @@ export default function BundleDetail({ bundle }) {
             ? snapshot.attributes.filter(Boolean).map((attr) => `${attr?.key}: ${attr?.value}`)
             : [];
         if (attrs.length > 0) {
-            return `${snapshot.name || 'Variant'} (${attrs.join(', ')})`;
+            return `${snapshot.name || copy('Variant', 'Tofauti')} (${attrs.join(', ')})`;
         }
         return snapshot.name || null;
     };
@@ -137,7 +139,7 @@ export default function BundleDetail({ bundle }) {
                 window.open(res.data.url, '_blank', 'noopener,noreferrer');
             }
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kufungua material.');
+            toast.error(error.response?.data?.message || t('publicCommerce.contentOpenFailed'));
         }
     };
 
@@ -152,7 +154,7 @@ export default function BundleDetail({ bundle }) {
             <div className="max-w-4xl mx-auto px-4 md:px-8 py-8">
                 <Link href={merchant?.slug ? `/m/${merchant.slug}` : '/'} className="inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground">
                     <ArrowLeft className="h-4 w-4" />
-                    Back to store
+                    {t('publicCommerce.backToStore')}
                 </Link>
 
                 <div className="mt-6 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
@@ -164,10 +166,10 @@ export default function BundleDetail({ bundle }) {
                         )}
                         <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-xs font-black uppercase tracking-widest text-sky-700">
                             <Boxes className="h-3.5 w-3.5" />
-                            {bundle.is_course ? 'Course Bundle' : 'Bundle Offer'}
+                            {bundle.is_course ? t('publicCommerce.courseBundle') : t('publicCommerce.bundleOffer')}
                         </div>
                         <h1 className="mt-4 text-3xl md:text-4xl font-black tracking-tight">{bundle.title}</h1>
-                        <p className="mt-4 text-base leading-8 text-muted-foreground">{bundle.description || 'A grouped offer containing multiple premium items.'}</p>
+                        <p className="mt-4 text-base leading-8 text-muted-foreground">{bundle.description || t('publicCommerce.groupedDescription')}</p>
                         {bundle.is_course && (
                             <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-indigo-700">
                                 <BookOpenText className="h-3.5 w-3.5" />
@@ -177,7 +179,7 @@ export default function BundleDetail({ bundle }) {
 
                         {bundle.is_course && Array.isArray(bundle.course_outcomes) && bundle.course_outcomes.length > 0 && (
                             <div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
-                                <p className="text-xs font-black uppercase tracking-widest text-indigo-700">What you will learn</p>
+                                <p className="text-xs font-black uppercase tracking-widest text-indigo-700">{t('publicCommerce.whatLearn')}</p>
                                 <div className="mt-3 space-y-2">
                                     {bundle.course_outcomes.map((outcome, idx) => (
                                         <div key={`outcome-${idx}`} className="flex items-start gap-2">
@@ -191,7 +193,7 @@ export default function BundleDetail({ bundle }) {
 
                         {bundle.is_course && Array.isArray(bundle.course_requirements) && bundle.course_requirements.length > 0 && (
                             <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
-                                <p className="text-xs font-black uppercase tracking-widest text-amber-700">Requirements</p>
+                                <p className="text-xs font-black uppercase tracking-widest text-amber-700">{t('publicCommerce.requirements')}</p>
                                 <ul className="mt-2 space-y-1">
                                     {bundle.course_requirements.map((req, idx) => (
                                         <li key={`req-${idx}`} className="text-sm text-amber-900">• {req}</li>
@@ -203,7 +205,7 @@ export default function BundleDetail({ bundle }) {
                         <div className="mt-8 space-y-3">
                             {(bundle.is_course ? courseModules.length === 0 : (bundle.items || []).length === 0) ? (
                                 <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-muted-foreground">
-                                    Bundle items will appear here.
+                                    {t('publicCommerce.bundleItems')}
                                 </div>
                             ) : !bundle.is_course ? (
                                 bundle.items.map((item, index) => (
@@ -224,11 +226,11 @@ export default function BundleDetail({ bundle }) {
                                                 <div className="min-w-0">
                                                     <p className="font-black text-sm truncate">{item.title || item.item_type.replace('_', ' ')}</p>
                                                     <p className="text-xs text-muted-foreground">
-                                                        {item.item_type.replace('_', ' ')} {isMenuMode ? `· TZS ${Number(item.price || 0).toLocaleString()}` : '· Included in this bundle'}
+                                                        {item.item_type.replace('_', ' ')} {isMenuMode ? `· TZS ${Number(item.price || 0).toLocaleString()}` : `· ${copy('Included in this bundle', 'Imejumuishwa kwenye kifurushi hiki')}`}
                                                     </p>
                                                     {getVariantLabel(item) && (
                                                         <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                                                            Variant: {getVariantLabel(item)}
+                                                            {copy('Variant', 'Tofauti')}: {getVariantLabel(item)}
                                                         </p>
                                                     )}
                                                 </div>
@@ -238,7 +240,7 @@ export default function BundleDetail({ bundle }) {
                                                     type="button"
                                                     onClick={() => toggleItemSelection(item)}
                                                     className={`h-6 w-6 rounded border ${getItemQty(item) > 0 ? 'bg-sky-600 border-sky-600 text-white' : 'border-border bg-background'}`}
-                                                    aria-label="Select bundle item"
+                                                    aria-label={t('publicCommerce.selectBundleItem')}
                                                 >
                                                     {getItemQty(item) > 0 ? '✓' : ''}
                                                 </button>
@@ -246,7 +248,7 @@ export default function BundleDetail({ bundle }) {
                                         </div>
                                         {isMenuMode && getItemQty(item) > 0 ? (
                                             <div className="mt-3 flex items-center justify-between rounded-xl border bg-white/90 px-3 py-2">
-                                                <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">Quantity</span>
+                                                        <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">{t('publicCommerce.quantity')}</span>
                                                 <div className="flex items-center gap-2">
                                                     <button type="button" onClick={() => changeItemQty(item, -1)} className="h-7 w-7 rounded-md border flex items-center justify-center">
                                                         <Minus className="h-3.5 w-3.5" />
@@ -263,16 +265,16 @@ export default function BundleDetail({ bundle }) {
                             ) : (
                                 courseModules.map((module, moduleIndex) => (
                                     <div key={module.id || module.title || moduleIndex} className="rounded-2xl border p-4">
-                                        <p className="text-xs font-black uppercase tracking-widest text-indigo-700">{module.title || `Module ${moduleIndex + 1}`}</p>
+                                        <p className="text-xs font-black uppercase tracking-widest text-indigo-700">{module.title || `${copy('Module', 'Sehemu')} ${moduleIndex + 1}`}</p>
                                         <div className="mt-3 space-y-2">
                                             {(module.lessons || []).map((lesson, lessonIndex) => {
                                                 const supportingAssets = (lesson.assets || []).filter((asset) => asset.role !== 'primary');
                                                 return (
                                                 <div key={lesson.id || `${moduleIndex}-${lessonIndex}`} className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-3">
                                                     <div className="flex items-center justify-between gap-3">
-                                                        <p className="font-black text-sm text-indigo-900">{lesson.title || `Lesson ${lessonIndex + 1}`}</p>
+                                                        <p className="font-black text-sm text-indigo-900">{lesson.title || `${copy('Lesson', 'Somo')} ${lessonIndex + 1}`}</p>
                                                         {lesson.is_preview && (
-                                                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">Preview</span>
+                                                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">{t('publicCommerce.preview')}</span>
                                                         )}
                                                     </div>
                                                     {lesson.summary && (
@@ -283,17 +285,17 @@ export default function BundleDetail({ bundle }) {
                                                             <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{lesson.duration_minutes} min</span>
                                                         ) : null}
                                                         {Number(lesson.unlock_after_days || 0) > 0 ? (
-                                                            <span className="inline-flex items-center gap-1"><BookOpenText className="h-3.5 w-3.5" />Unlock after {Number(lesson.unlock_after_days)} day(s)</span>
+                                                            <span className="inline-flex items-center gap-1"><BookOpenText className="h-3.5 w-3.5" />{t('publicCommerce.unlockAfter', { days: Number(lesson.unlock_after_days) })}</span>
                                                         ) : null}
                                                     </div>
                                                     {lesson.live_session?.starts_at && (
                                                         <div className="mt-2 text-[11px] text-amber-800">
-                                                            Live: {new Date(lesson.live_session.starts_at).toLocaleString()}
+                                                            {copy('Live:', 'Moja kwa moja:')} {new Date(lesson.live_session.starts_at).toLocaleString()}
                                                         </div>
                                                     )}
                                                     {supportingAssets.length > 0 && (
                                                         <div className="mt-3 rounded-xl border border-indigo-100 bg-white/80 px-3 py-2">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Supporting Materials</p>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700">{t('publicCommerce.supportingMaterials')}</p>
                                                             <div className="mt-2 flex flex-wrap gap-2">
                                                                 {supportingAssets.map((material, materialIndex) => (
                                                                     <button
@@ -302,7 +304,7 @@ export default function BundleDetail({ bundle }) {
                                                                         onClick={() => material.url && window.open(material.url, '_blank', 'noopener,noreferrer')}
                                                                         className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-bold text-indigo-800 hover:bg-indigo-100"
                                                                     >
-                                                                        {material.name || 'Material'}
+                                                                        {material.name || t('publicCommerce.material')}
                                                                     </button>
                                                                 ))}
                                                             </div>
@@ -331,15 +333,15 @@ export default function BundleDetail({ bundle }) {
                             </div>
 
                             <div className="mt-6 rounded-2xl bg-accent/40 px-4 py-4">
-                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{isMenuMode ? 'Selected Total' : (bundle.is_course ? 'Course Price' : 'Bundle Price')}</p>
+                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{isMenuMode ? t('publicCommerce.selectedTotal') : (bundle.is_course ? t('publicCommerce.coursePrice') : t('publicCommerce.bundlePrice'))}</p>
                                 <p className="mt-2 text-3xl font-black text-brand-600">
                                     TZS {Number(isMenuMode ? selectedTotal : (bundle.price || 0)).toLocaleString()}
                                 </p>
                                 {isMenuMode && (
                                     <p className="mt-2 text-xs text-muted-foreground">
                                         {selectedLines.length > 0
-                                            ? `${selectedLines.length} item(s) selected`
-                                            : 'Select at least one item to continue.'}
+                                            ? t('publicCommerce.selectedCount', { count: selectedLines.length })
+                                            : t('publicCommerce.selectOne')}
                                     </p>
                                 )}
                             </div>
@@ -350,7 +352,7 @@ export default function BundleDetail({ bundle }) {
                                 disabled={isMenuMode && selectedLines.length === 0}
                             >
                                 <Zap className="mr-2 h-4 w-4" />
-                                {isMenuMode ? 'Checkout Selected Items' : (bundle.is_course ? 'Buy Course' : 'Buy Bundle')}
+                                {isMenuMode ? t('publicCommerce.checkoutSelected') : (bundle.is_course ? t('publicCommerce.buyCourse') : t('publicCommerce.buyBundle'))}
                             </Button>
                         </div>
                     </div>

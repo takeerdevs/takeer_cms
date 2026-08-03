@@ -17,7 +17,6 @@ use App\Models\PostReaction;
 use App\Models\PostLike;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
-use App\Models\Wallet;
 use App\Services\EntitlementService;
 use App\Services\LinkPreviewService;
 use App\Services\PhoneService;
@@ -608,10 +607,6 @@ class PostController extends Controller
                 $updates['name'] = $name;
             }
             $user->forceFill($updates)->save();
-        }
-
-        if (!$user->wallet) {
-            Wallet::create(['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]);
         }
 
         if (!$this->canAccessPostComments($user, $post)) {

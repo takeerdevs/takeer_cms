@@ -9,7 +9,7 @@ class SupportEnquiry extends Model
 {
     public const CATEGORIES = [
         'order' => 'Order issue',
-        'payment' => 'Payment or SafePay',
+        'payment' => 'Payment or PSP settlement',
         'delivery' => 'Delivery',
         'digital_access' => 'Digital access',
         'merchant_account' => 'Merchant account',

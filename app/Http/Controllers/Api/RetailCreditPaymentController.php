@@ -7,8 +7,9 @@ use App\Models\Dispute;
 use App\Models\Order;
 use App\Models\RetailAuditLog;
 use App\Models\User;
-use App\Models\Wallet;
+use App\Models\PaymentProvider;
 use App\Payments\PaymentCallbackProcessor;
+use App\Payments\GatewayRegistry;
 use App\Support\SeoMeta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -45,6 +46,10 @@ class RetailCreditPaymentController extends Controller
 
     public function pay(Request $request, string $publicId): JsonResponse
     {
+        if (app()->environment('production') && ! (bool) config('services.payments.allow_simulation', false)) {
+            return response()->json(['message' => 'A licensed PSP payment route is required for this payment link.'], 503);
+        }
+
         $order = $this->findCreditOrder($publicId);
         $outstanding = $this->outstandingBalance($order);
 
@@ -85,10 +90,6 @@ class RetailCreditPaymentController extends Controller
                 $buyer->update(['name' => $buyerName]);
             }
 
-            if (!$buyer->wallet) {
-                Wallet::create(['user_id' => $buyer->id, 'balance' => 0, 'frozen_balance' => 0]);
-            }
-
             $firstItem = $order->posItems()->first();
             $transactionRef = 'CRD-' . Str::upper(Str::random(10));
 
@@ -106,7 +107,7 @@ class RetailCreditPaymentController extends Controller
                 'grand_total' => $amount,
                 'payment_status' => 'pending',
                 'source' => 'pos',
-                'payment_mode' => 'online_escrow',
+                'payment_mode' => 'online_psp',
                 'customer_name' => $order->customer_name,
                 'customer_phone' => $order->customer_phone,
                 'idempotency_key' => (string) Str::uuid(),
@@ -124,10 +125,21 @@ class RetailCreditPaymentController extends Controller
             ]);
         });
 
+        $gateway = app(GatewayRegistry::class)->resolve($request, $validated['payment_number']);
+        $providerId = PaymentProvider::query()->where('key', $gateway->getName())->value('id');
+        if (! $providerId) {
+            return response()->json(['message' => 'No licensed PSP is configured for this payment.'], 503);
+        }
+        $paymentOrder->update([
+            'payment_gateway' => $gateway->getName(),
+            'payment_provider_id' => $providerId,
+            'country_code' => $gateway->getSupportedCountries()[0] ?? 'TZ',
+        ]);
+
         $this->paymentCallbackProcessor->handleSuccess(
             order: $paymentOrder,
             gatewayRef: 'SIM-' . $paymentOrder->transaction_ref,
-            gateway: 'simulated',
+            gateway: $gateway->getName(),
         );
 
         return response()->json([
@@ -212,7 +224,7 @@ class RetailCreditPaymentController extends Controller
                 $q->whereNull('approval_status')
                     ->orWhere('approval_status', 'approved');
             })
-            ->whereNotIn('payment_status', ['failed', 'resolved_buyer_refunded'])
+            ->whereNotIn('payment_status', ['failed', 'refunded'])
             ->with(['merchant.currency', 'merchant.storefrontSetting', 'posStaff.user', 'posItems.product', 'posItems.variant'])
             ->firstOrFail();
     }

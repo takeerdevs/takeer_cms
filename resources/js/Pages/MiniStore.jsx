@@ -7,15 +7,17 @@ import { Loader2, Store, Share2, GripVertical, Star, BookOpenText, Boxes, Crown,
 import { trackAttributionEvent } from '@/lib/attribution';
 import { productPriceLabel } from '@/lib/productUnits';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const fetcher = (url) => fetch(url).then(res => res.json());
 
 export default function MiniStore({ merchantSlug, initialData }) {
+    const { copy } = useLocale();
     const buildCheckoutItem = (sectionKey, item, merchantInfo) => {
         if (sectionKey === 'content') {
             return {
                 id: item.id,
-                title: item.title || 'Locked content',
+                title: item.title || copy('Locked content', 'Maudhui yaliyofungwa'),
                 price: item.price || 0,
                 checkoutType: 'content_item',
                 merchant: merchantInfo || null,
@@ -24,7 +26,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
         if (sectionKey === 'bundles' || sectionKey === 'courses') {
             return {
                 ...item,
-                title: item.title || (sectionKey === 'courses' ? 'Course' : 'Bundle'),
+                title: item.title || (sectionKey === 'courses' ? copy('Course', 'Kozi') : copy('Bundle', 'Kifurushi')),
                 checkoutType: 'bundle',
                 merchant: merchantInfo || null,
             };
@@ -32,7 +34,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
         if (sectionKey === 'memberships') {
             return {
                 ...item,
-                title: item.name || item.title || 'Membership',
+                title: item.name || item.title || copy('Membership', 'Uanachama'),
                 checkoutType: 'subscription_plan',
                 merchant: merchantInfo || null,
             };
@@ -218,18 +220,18 @@ export default function MiniStore({ merchantSlug, initialData }) {
         };
 
         return [
-            { key: 'featured', title: 'Featured', items: [], href: null },
-            { key: 'memberships', title: 'Creator Club', items: sectionItemList('memberships', subscriptionPlans), href: `/m/${merchantSlug}/memberships` },
-            { key: 'events', title: 'Live Events', items: sectionItemList('events', events), href: `/m/${merchantSlug}/downloads` },
-            { key: 'premium_media', title: 'Premium Media', items: sectionItemList('premium_media', premiumMedia), href: `/m/${merchantSlug}/downloads` },
-            { key: 'commissions', title: 'Custom Work', items: sectionItemList('commissions', commissions), href: `/m/${merchantSlug}/downloads` },
-            { key: 'products', title: 'Bidhaa', items: sectionItemList('products', products), href: `/m/${merchantSlug}/products` },
-            { key: 'downloads', title: 'Downloads', items: sectionItemList('downloads', downloads), href: `/m/${merchantSlug}/downloads` },
-            { key: 'services', title: 'Huduma', items: sectionItemList('services', services), href: `/m/${merchantSlug}/services` },
-            { key: 'content', title: 'Knowledge', items: sectionItemList('content', contentItems), href: `/m/${merchantSlug}/content` },
-            { key: 'courses', title: 'Courses', items: sectionItemList('courses', courseBundles), href: `/m/${merchantSlug}/courses` },
-            { key: 'bundles', title: 'Bundles', items: sectionItemList('bundles', regularBundles), href: `/m/${merchantSlug}/bundles` },
-            { key: 'links', title: 'Links', items: regularLinks, href: null, emptyText: 'Ongeza link zako.' },
+            { key: 'featured', title: copy('Featured', 'Zinazoangaziwa'), items: [], href: null },
+            { key: 'memberships', title: copy('Creator Club', 'Klabu ya mbunifu'), items: sectionItemList('memberships', subscriptionPlans), href: `/m/${merchantSlug}/memberships` },
+            { key: 'events', title: copy('Live Events', 'Matukio mubashara'), items: sectionItemList('events', events), href: `/m/${merchantSlug}/downloads` },
+            { key: 'premium_media', title: copy('Premium Media', 'Media ya malipo'), items: sectionItemList('premium_media', premiumMedia), href: `/m/${merchantSlug}/downloads` },
+            { key: 'commissions', title: copy('Custom Work', 'Kazi maalum'), items: sectionItemList('commissions', commissions), href: `/m/${merchantSlug}/downloads` },
+            { key: 'products', title: copy('Products', 'Bidhaa'), items: sectionItemList('products', products), href: `/m/${merchantSlug}/products` },
+            { key: 'downloads', title: copy('Downloads', 'Vipakuliwa'), items: sectionItemList('downloads', downloads), href: `/m/${merchantSlug}/downloads` },
+            { key: 'services', title: copy('Services', 'Huduma'), items: sectionItemList('services', services), href: `/m/${merchantSlug}/services` },
+            { key: 'content', title: copy('Knowledge', 'Maarifa'), items: sectionItemList('content', contentItems), href: `/m/${merchantSlug}/content` },
+            { key: 'courses', title: copy('Courses', 'Kozi'), items: sectionItemList('courses', courseBundles), href: `/m/${merchantSlug}/courses` },
+            { key: 'bundles', title: copy('Bundles', 'Vifurushi'), items: sectionItemList('bundles', regularBundles), href: `/m/${merchantSlug}/bundles` },
+            { key: 'links', title: copy('Links', 'Viungo'), items: regularLinks, href: null, emptyText: copy('Add your links.', 'Ongeza viungo vyako.') },
             ...customSections.map((section) => ({
                 key: section.key,
                 title: section.title,
@@ -241,10 +243,10 @@ export default function MiniStore({ merchantSlug, initialData }) {
                 })),
                 href: null,
                 custom: true,
-                emptyText: 'Ongeza item kwa section hili.',
+                emptyText: copy('Add an item to this section.', 'Ongeza item kwenye sehemu hii.'),
             })),
         ];
-    }, [allProducts, merchantSlug, regularLinks, customSections, contentItems, bundles, subscriptionPlans, productDiscovery, sectionItems, hiddenItemKeys]);
+    }, [allProducts, merchantSlug, regularLinks, customSections, contentItems, bundles, subscriptionPlans, productDiscovery, sectionItems, hiddenItemKeys, copy]);
 
     const orderedSections = useMemo(() => {
         const map = new Map(sections.map(s => [s.key, s]));
@@ -389,11 +391,11 @@ export default function MiniStore({ merchantSlug, initialData }) {
             contentItems,
             bundles,
             subscriptionPlans,
-        }).filter((item) => itemPicker.filter === 'all' || item.filter === itemPicker.filter);
+        }, copy).filter((item) => itemPicker.filter === 'all' || item.filter === itemPicker.filter);
 
         if (!query) return pool;
         return pool.filter((item) => `${item.title} ${item.subtitle}`.toLowerCase().includes(query));
-    }, [allProducts, contentItems, bundles, subscriptionPlans, itemPicker.filter, itemPicker.query]);
+    }, [allProducts, contentItems, bundles, subscriptionPlans, itemPicker.filter, itemPicker.query, copy]);
 
     const handlePickerAdd = (item) => {
         addCustomSectionItem(itemPicker.sectionKey, item);
@@ -414,7 +416,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
         return (
             <AppLayout hideTabBar>
                 <div className="h-full flex items-center justify-center p-6 text-center">
-                    <p className="text-destructive mt-10">Biashara haipatikani au mtandao unasumbua.</p>
+                    <p className="text-destructive mt-10">{copy('Business not found or the network is unavailable.', 'Biashara haipatikani au mtandao unasumbua.')}</p>
                 </div>
             </AppLayout>
         );
@@ -444,16 +446,16 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                     <button
                                         className={`h-10 px-3 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 transition-colors ${editMode ? 'bg-accent border-border text-foreground' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'}`}
                                         onClick={() => setEditMode(v => !v)}
-                                        title={editMode ? 'Finish editing sections' : 'Edit sections'}
+                                        title={editMode ? copy('Finish editing sections', 'Maliza kuhariri sehemu') : copy('Edit sections', 'Hariri sehemu')}
                                     >
                                         <Pencil className="h-3.5 w-3.5" />
-                                        {editMode ? 'Done' : 'Edit'}
+                                        {editMode ? copy('Done', 'Imekamilika') : copy('Edit', 'Hariri')}
                                     </button>
                                 )}
                                 <button
                                     className="h-10 w-10 rounded-xl bg-brand-600 text-white flex items-center justify-center hover:bg-brand-700 transition-colors"
                                     onClick={() => navigator.share?.({ title: merchant?.name, url: window.location.href })}
-                                    title="Share"
+                                    title={copy('Share', 'Gawana')}
                                 >
                                     <Share2 className="h-4 w-4" />
                                 </button>
@@ -482,19 +484,19 @@ export default function MiniStore({ merchantSlug, initialData }) {
                     </div>
                     {editMode && isOwner && (
                         <div className="mt-4 bg-card border border-border rounded-2xl p-3 text-left">
-                            <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-2">Add Section</p>
+                            <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-2">{copy('Add Section', 'Ongeza sehemu')}</p>
                             <div className="flex gap-2">
                                 <input
                                     value={newSectionTitle}
                                     onChange={(e) => setNewSectionTitle(e.target.value)}
                                     className="flex-1 h-9 rounded-xl border border-border px-3 text-sm"
-                                    placeholder="Section title"
+                                    placeholder={copy('Section title', 'Kichwa cha sehemu')}
                                 />
                                 <button
                                     onClick={addCustomSection}
                                     className="h-9 px-4 rounded-xl bg-brand-600 text-white text-sm font-bold"
                                 >
-                                    Add
+                                    {copy('Add', 'Ongeza')}
                                 </button>
                             </div>
                         </div>
@@ -506,7 +508,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
             <div className="max-w-3xl mx-auto px-4 py-5 space-y-6">
                 {!hasStoreItems ? (
                     <div className="text-center text-muted-foreground py-16">
-                        Muuzaji bado hajaweka bidhaa zozote.
+                        {copy('The merchant has not added any products yet.', 'Muuzaji bado hajaweka bidhaa zozote.')}
                     </div>
                 ) : (
                     orderedSections
@@ -533,7 +535,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                 <p className="text-xs font-black uppercase tracking-widest text-muted-foreground truncate">{section.title}</p>
                                                 {hiddenSections.includes(section.key) && (
                                                     <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-                                                        Hidden
+                                                        {copy('Hidden', 'Imefichwa')}
                                                     </span>
                                                 )}
                                             </div>
@@ -545,7 +547,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                         className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-3 text-xs font-black text-brand-700 hover:bg-brand-100"
                                                     >
                                                         <Plus className="h-3.5 w-3.5" />
-                                                        Add
+                                                        {copy('Add', 'Ongeza')}
                                                     </button>
                                                 )}
                                                 <button
@@ -557,14 +559,14 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                     }}
                                                     className="text-xs font-bold text-muted-foreground hover:text-foreground"
                                                 >
-                                                    {hiddenSections.includes(section.key) ? 'Show' : 'Hide'}
+                                                    {hiddenSections.includes(section.key) ? copy('Show', 'Onyesha') : copy('Hide', 'Ficha')}
                                                 </button>
                                             </div>
                                         </div>
                                     )}
                                     {editMode && section.key === 'services' && (serviceAreaType || serviceOpenDaysCount > 0 || serviceLocations.length > 0) && (
                                         <p className="text-xs text-muted-foreground">
-                                            {serviceAreaType ? `${serviceAreaType} service` : 'Service'}{serviceOpenDaysCount > 0 ? ` • Open ${serviceOpenDaysCount} days/week` : ''}{serviceLocations.length > 0 ? ` • ${serviceLocations.slice(0, 2).join(', ')}` : ''}
+                                            {serviceAreaType ? `${serviceAreaType} ${copy('service', 'huduma')}` : copy('Service', 'Huduma')}{serviceOpenDaysCount > 0 ? ` • ${copy('Open', 'Imefunguliwa')} ${serviceOpenDaysCount} ${copy('days/week', 'siku/wiki')}` : ''}{serviceLocations.length > 0 ? ` • ${serviceLocations.slice(0, 2).join(', ')}` : ''}
                                         </p>
                                     )}
 
@@ -586,12 +588,12 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                                                         <Star className="h-4 w-4 text-amber-500" />
-                                                        {featuredId ? 'Featured' : 'Best offer'}
+                                                        {featuredId ? copy('Featured', 'Zinazoangaziwa') : copy('Best offer', 'Ofa bora')}
                                                     </div>
                                                     <DiscoveryBadges badges={discoveryBadges(featuredProduct, productDiscovery)} />
                                                     <p className="text-base font-black text-foreground leading-tight whitespace-normal break-words">{featuredProduct.title}</p>
                                                     <p className="text-sm text-muted-foreground mt-0.5">
-                                                        {productLabel(featuredProduct)}
+                                                        {productLabel(featuredProduct, copy)}
                                                     </p>
                                                 </div>
                                                 <div className="text-sm font-black text-brand-600">
@@ -600,7 +602,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                             </Link>
                                         ) : (
                                             <div className="bg-card border border-border rounded-2xl p-4 text-sm text-muted-foreground">
-                                                Hakuna bidhaa ya kuonyesha.
+                                                {copy('No featured product to show.', 'Hakuna bidhaa ya kuonyesha.')}
                                             </div>
                                         )
                                     ) : section.key === 'links' ? (
@@ -613,7 +615,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                             type="button"
                                                             onClick={() => removeSectionItem(section.key, item, idx)}
                                                             className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white text-muted-foreground shadow-sm hover:text-destructive"
-                                                            title="Remove"
+                                                            title={copy('Remove', 'Ondoa')}
                                                         >
                                                             <X className="h-3.5 w-3.5" />
                                                         </button>
@@ -626,7 +628,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                         value={newLinkTitle}
                                                         onChange={(e) => setNewLinkTitle(e.target.value)}
                                                         className="w-full h-9 rounded-xl border border-border px-3 text-sm"
-                                                        placeholder="Title"
+                                                        placeholder={copy('Title', 'Kichwa')}
                                                     />
                                                     <div className="flex gap-2">
                                                         <input
@@ -639,7 +641,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                             onClick={addLink}
                                                             className="h-9 px-4 rounded-xl bg-brand-600 text-white text-sm font-bold"
                                                         >
-                                                            Add
+                                                            {copy('Add', 'Ongeza')}
                                                         </button>
                                                     </div>
                                                 </div>
@@ -650,7 +652,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                     {section.href && (
                                                         <div className="mt-2">
                                                             <Link href={section.href} className="text-xs font-bold text-brand-600">
-                                                                Open
+                                                                {copy('Open', 'Fungua')}
                                                             </Link>
                                                         </div>
                                                     )}
@@ -674,7 +676,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                             type="button"
                                                             onClick={() => removeSectionItem(section.key, item, idx)}
                                                             className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-white text-muted-foreground shadow-sm hover:text-destructive"
-                                                            title="Remove"
+                                                            title={copy('Remove', 'Ondoa')}
                                                         >
                                                             <X className="h-3.5 w-3.5" />
                                                         </button>
@@ -688,7 +690,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                     className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-brand-300 bg-brand-50 text-sm font-black text-brand-700 hover:bg-brand-100"
                                                 >
                                                     <Plus className="h-4 w-4" />
-                                                    Add item
+                                                    {copy('Add item', 'Ongeza item')}
                                                 </button>
                                             )}
                                             {!editMode && (section.items || []).length === 0 && (
@@ -697,7 +699,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                     {section.href && (
                                                         <div className="mt-2">
                                                             <Link href={section.href} className="text-xs font-bold text-brand-600">
-                                                                Open
+                                                                {copy('Open', 'Fungua')}
                                                             </Link>
                                                         </div>
                                                     )}
@@ -710,7 +712,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                             {section.href && (
                                                 <div className="mt-2">
                                                     <Link href={section.href} className="text-xs font-bold text-brand-600">
-                                                        Open
+                                                                {copy('Open', 'Fungua')}
                                                     </Link>
                                                 </div>
                                             )}
@@ -738,10 +740,10 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                             <div className="flex-1 min-w-0">
                                                                 <p className="text-sm font-bold text-foreground truncate">{item.title || item.name}</p>
                                                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                                                    {section.key === 'content' && (item.price === null ? 'Free article' : item.price == 0 ? 'Unlock TZS 0' : `TZS ${Number(item.price).toLocaleString()} article`)}
-                                                                    {section.key === 'bundles' && `${item.items?.length || 0} items inside`}
-                                                                    {section.key === 'courses' && `${item.items?.length || 0} lessons/resources`}
-                                                                    {section.key === 'memberships' && `${item.billing_interval} access`}
+                                                                    {section.key === 'content' && (item.price === null ? copy('Free article', 'Makala ya bure') : item.price == 0 ? copy('Unlock TZS 0', 'Fungua TZS 0') : `TZS ${Number(item.price).toLocaleString()} ${copy('article', 'makala')}`)}
+                                                                    {section.key === 'bundles' && `${item.items?.length || 0} ${copy('items inside', 'item ndani')}`}
+                                                                    {section.key === 'courses' && `${item.items?.length || 0} ${copy('lessons/resources', 'masomo/rasilimali')}`}
+                                                                    {section.key === 'memberships' && `${item.billing_interval} ${copy('access', 'ufikiaji')}`}
                                                                 </p>
                                                             </div>
                                                             <div className="flex items-center gap-2">
@@ -759,7 +761,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                                         className="h-8 px-3 rounded-lg bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 transition-colors inline-flex items-center gap-1.5"
                                                                     >
                                                                         <Lock className="h-3.5 w-3.5" />
-                                                                        {section.key === 'memberships' ? 'Subscribe' : 'Unlock'}
+                                                                        {section.key === 'memberships' ? copy('Subscribe', 'Jiunge') : copy('Unlock', 'Fungua')}
                                                                     </button>
                                                                 )}
                                                             </div>
@@ -769,7 +771,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                                 type="button"
                                                                 onClick={() => removeSectionItem(section.key, item, idx)}
                                                                 className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-white text-muted-foreground shadow-sm hover:text-destructive"
-                                                                title="Remove"
+                                                                title={copy('Remove', 'Ondoa')}
                                                             >
                                                                 <X className="h-3.5 w-3.5" />
                                                             </button>
@@ -813,7 +815,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                             className="h-11 px-6 rounded-full border border-border text-sm font-bold hover:bg-accent transition-colors"
                             disabled={isLoadingNext}
                         >
-                            {isLoadingNext ? 'Inapakia...' : 'Ongeza Zaidi'}
+                            {isLoadingNext ? copy('Loading...', 'Inapakia...') : copy('Load more', 'Ongeza zaidi')}
                         </button>
                     </div>
                 )}
@@ -850,6 +852,7 @@ function StorefrontStat({ label, value }) {
 }
 
 function StorefrontMixedItem({ item, merchant, layout = 'horizontal', editMode = false, isOwner = false, onLayoutChange }) {
+    const { copy } = useLocale();
     if (!item) return null;
     if (item.kind === 'link') return <BioLinkButton item={item} />;
     if (item.kind === 'product') {
@@ -885,7 +888,7 @@ function StorefrontMixedItem({ item, merchant, layout = 'horizontal', editMode =
             </div>
             <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-foreground leading-tight whitespace-normal break-words">{item.title || item.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{storefrontItemLabel(item)}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{storefrontItemLabel(item, copy)}</p>
             </div>
             <div className="text-sm font-black text-brand-600">TZS {Number(item.price || 0).toLocaleString()}</div>
             {isPaid && ['content', 'bundle', 'course', 'membership'].includes(item.kind) && (
@@ -904,7 +907,7 @@ function StorefrontMixedItem({ item, merchant, layout = 'horizontal', editMode =
                     className="h-8 px-3 rounded-lg bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 transition-colors inline-flex items-center gap-1.5"
                 >
                     <Lock className="h-3.5 w-3.5" />
-                    {item.kind === 'membership' ? 'Subscribe' : 'Unlock'}
+                    {item.kind === 'membership' ? copy('Subscribe', 'Jiunge') : copy('Unlock', 'Fungua')}
                 </button>
             )}
         </Link>
@@ -922,6 +925,7 @@ function ProductOfferCard({
     onFeature,
     onRemove,
 }) {
+    const { copy } = useLocale();
     const isVertical = layout === 'vertical';
     const description = product?.description || product?.attributes?.suggested_description || product?.service_client_requirements || null;
 
@@ -948,14 +952,14 @@ function ProductOfferCard({
                         <div className="mt-3">
                             <p className="text-lg font-black leading-tight text-foreground">{product.title}</p>
                             <DiscoveryBadges badges={discoveryBadges(product, productDiscovery)} compact />
-                            <p className="mt-1 text-sm font-semibold text-muted-foreground">{productLabel(product)}</p>
+                            <p className="mt-1 text-sm font-semibold text-muted-foreground">{productLabel(product, copy)}</p>
                             {description && (
                                 <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">{description}</p>
                             )}
                             <div className="mt-3 flex items-center justify-between gap-3">
                                 <div className="text-base font-black text-brand-600">{productPriceLabel(product)}</div>
                                 <span className="inline-flex h-9 items-center justify-center rounded-xl bg-brand-600 px-4 text-xs font-black text-white">
-                                    Open
+                                                        {copy('Open', 'Fungua')}
                                 </span>
                             </div>
                         </div>
@@ -974,7 +978,7 @@ function ProductOfferCard({
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-foreground leading-tight whitespace-normal break-words">{product.title}</p>
                             <DiscoveryBadges badges={discoveryBadges(product, productDiscovery)} compact />
-                            <p className="text-xs text-muted-foreground mt-0.5">{productLabel(product)}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{productLabel(product, copy)}</p>
                             {serviceLocations.length > 0 && (
                                 <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
                                     {serviceLocations.slice(0, 2).join(' • ')}
@@ -995,7 +999,7 @@ function ProductOfferCard({
                             onLayoutChange?.('horizontal');
                         }}
                         className={`h-7 w-8 rounded-full border ${!isVertical ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-transparent text-muted-foreground hover:bg-accent'}`}
-                        title="Horizontal card"
+                        title={copy('Horizontal card', 'Kadi mlalo')}
                     >
                         <span className="mx-auto block h-2 w-4 rounded-sm border-2 border-current" />
                     </button>
@@ -1007,7 +1011,7 @@ function ProductOfferCard({
                             onLayoutChange?.('vertical');
                         }}
                         className={`h-7 w-8 rounded-full border ${isVertical ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-transparent text-muted-foreground hover:bg-accent'}`}
-                        title="Large card"
+                        title={copy('Large card', 'Kadi kubwa')}
                     >
                         <span className="mx-auto block h-4 w-3 rounded-sm border-2 border-current" />
                     </button>
@@ -1020,7 +1024,7 @@ function ProductOfferCard({
                                 onFeature();
                             }}
                             className="ml-1 flex h-7 w-7 items-center justify-center rounded-full border border-border text-amber-500 hover:bg-accent"
-                            title="Feature"
+                            title={copy('Feature', 'Angazia')}
                         >
                             <Star className="h-4 w-4" />
                         </button>
@@ -1034,7 +1038,7 @@ function ProductOfferCard({
                                 onRemove();
                             }}
                             className="ml-1 flex h-7 w-7 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-accent hover:text-destructive"
-                            title="Remove"
+                            title={copy('Remove', 'Ondoa')}
                         >
                             <X className="h-4 w-4" />
                         </button>
@@ -1059,15 +1063,16 @@ function StorefrontItemPicker({
     onAddLink,
     onClose,
 }) {
+    const { copy } = useLocale();
     const filters = [
-        { key: 'all', label: 'All' },
-        { key: 'physical', label: 'Products' },
-        { key: 'digital', label: 'Downloads' },
-        { key: 'service', label: 'Services' },
-        { key: 'content', label: 'Content' },
-        { key: 'bundle', label: 'Bundles' },
-        { key: 'membership', label: 'Memberships' },
-        { key: 'link', label: 'Link' },
+        { key: 'all', label: copy('All', 'Zote') },
+        { key: 'physical', label: copy('Products', 'Bidhaa') },
+        { key: 'digital', label: copy('Downloads', 'Vipakuliwa') },
+        { key: 'service', label: copy('Services', 'Huduma') },
+        { key: 'content', label: copy('Content', 'Maudhui') },
+        { key: 'bundle', label: copy('Bundles', 'Vifurushi') },
+        { key: 'membership', label: copy('Memberships', 'Uanachama') },
+        { key: 'link', label: copy('Link', 'Kiungo') },
     ];
 
     return (
@@ -1075,8 +1080,8 @@ function StorefrontItemPicker({
             <div className="w-full max-w-xl max-h-[86vh] overflow-hidden rounded-2xl bg-card shadow-2xl border border-border">
                 <div className="flex items-center justify-between border-b border-border p-4">
                     <div>
-                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Add item</p>
-                        <h3 className="text-lg font-black text-foreground">Choose what appears here</h3>
+                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Add item', 'Ongeza item')}</p>
+                        <h3 className="text-lg font-black text-foreground">{copy('Choose what appears here', 'Chagua kitakachoonekana hapa')}</h3>
                     </div>
                     <button onClick={onClose} className="h-9 w-9 rounded-xl hover:bg-accent flex items-center justify-center">
                         <X className="h-5 w-5" />
@@ -1090,7 +1095,7 @@ function StorefrontItemPicker({
                             value={query}
                             onChange={(e) => onQueryChange(e.target.value)}
                             className="h-10 w-full rounded-xl border border-border pl-9 pr-3 text-sm"
-                            placeholder="Search products, downloads, services..."
+                            placeholder={copy('Search products, downloads, services...', 'Tafuta bidhaa, vipakuliwa, huduma...')}
                             disabled={filter === 'link'}
                         />
                     </div>
@@ -1113,7 +1118,7 @@ function StorefrontItemPicker({
                             value={linkTitle}
                             onChange={(e) => onLinkTitleChange(e.target.value)}
                             className="h-10 w-full rounded-xl border border-border px-3 text-sm"
-                            placeholder="Title"
+                            placeholder={copy('Title', 'Kichwa')}
                         />
                         <input
                             value={linkUrl}
@@ -1125,13 +1130,13 @@ function StorefrontItemPicker({
                             onClick={onAddLink}
                             className="h-10 w-full rounded-xl bg-brand-600 text-sm font-black text-white hover:bg-brand-700"
                         >
-                            Add link
+                            {copy('Add link', 'Ongeza kiungo')}
                         </button>
                     </div>
                 ) : (
                     <div className="max-h-[48vh] overflow-y-auto p-3 space-y-2">
                         {items.length === 0 ? (
-                            <div className="py-10 text-center text-sm text-muted-foreground">No matching items.</div>
+                            <div className="py-10 text-center text-sm text-muted-foreground">{copy('No matching items.', 'Hakuna item zinazolingana.')}</div>
                         ) : items.map((item) => (
                             <div key={`${item.kind}-${item.id}`} className="flex items-center gap-3 rounded-xl border border-border p-3">
                                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-muted">
@@ -1151,7 +1156,7 @@ function StorefrontItemPicker({
                                     onClick={() => onAdd(item)}
                                     className="h-9 rounded-xl bg-brand-600 px-3 text-xs font-black text-white hover:bg-brand-700"
                                 >
-                                    Add
+                                    {copy('Add', 'Ongeza')}
                                 </button>
                             </div>
                         ))}
@@ -1163,11 +1168,12 @@ function StorefrontItemPicker({
 }
 
 function BioLinkButton({ item }) {
+    const { copy } = useLocale();
     const href = normalizeLinkUrl(item?.url || '');
     const outboundHref = item?.tracked_url || href;
     const preview = item?.preview || {};
     const imageUrl = preview.image_url || null;
-    const title = item?.title || preview.title || linkDomain(href) || 'Open link';
+    const title = item?.title || preview.title || linkDomain(href) || copy('Open link', 'Fungua kiungo');
     const [reporting, setReporting] = useState(false);
     const unavailable = Boolean(item?.link_unavailable || item?.tracked_link_status === 'disabled');
 
@@ -1198,9 +1204,9 @@ function BioLinkButton({ item }) {
                 }),
             });
             if (!response.ok) throw new Error('Report failed');
-            toast.success('Thanks. Takeer safety will review this link.');
+            toast.success(copy('Thanks. Takeer safety will review this link.', 'Asante. Usalama wa Takeer utapitia link hii.'));
         } catch {
-            toast.error('Could not report this link.');
+            toast.error(copy('Could not report this link.', 'Imeshindwa kuripoti link hii.'));
         } finally {
             setReporting(false);
         }
@@ -1224,7 +1230,7 @@ function BioLinkButton({ item }) {
             <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-black text-foreground">{title}</p>
                 {unavailable && (
-                    <p className="mt-1 text-xs font-bold text-amber-700">Link unavailable while Takeer reviews a safety issue.</p>
+                    <p className="mt-1 text-xs font-bold text-amber-700">{copy('Link unavailable while Takeer reviews a safety issue.', 'Link haipatikani wakati Takeer inapitia suala la usalama.')}</p>
                 )}
             </div>
             {unavailable ? (
@@ -1235,8 +1241,8 @@ function BioLinkButton({ item }) {
                     onClick={reportLink}
                     disabled={reporting}
                     className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
-                    aria-label="Report link"
-                    title="Report link"
+                    aria-label={copy('Report link', 'Ripoti link')}
+                    title={copy('Report link', 'Ripoti link')}
                 >
                     <Flag className="h-4 w-4" />
                 </button>
@@ -1246,6 +1252,7 @@ function BioLinkButton({ item }) {
 }
 
 function SocialIconBar({ links, merchantSlug }) {
+    const { copy } = useLocale();
     const hasProfileLink = Boolean(merchantSlug);
     if (!hasProfileLink && (!Array.isArray(links) || links.length === 0)) return null;
 
@@ -1254,8 +1261,8 @@ function SocialIconBar({ links, merchantSlug }) {
             {hasProfileLink && (
                 <Link
                     href={`/u/${merchantSlug}`}
-                    aria-label="Takeer profile"
-                    title="Takeer profile"
+                    aria-label={copy('Takeer profile', 'Profile ya Takeer')}
+                    title={copy('Takeer profile', 'Profile ya Takeer')}
                     className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-950 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:text-brand-700"
                 >
                     <UserRound className="h-5 w-5" />
@@ -1272,8 +1279,8 @@ function SocialIconBar({ links, merchantSlug }) {
                         href={href}
                         target="_blank"
                         rel="noreferrer"
-                        aria-label={meta?.label || link.title || 'Social link'}
-                        title={meta?.label || link.title || 'Social link'}
+                        aria-label={meta?.label || link.title || copy('Social link', 'Link ya mtandao wa kijamii')}
+                        title={meta?.label || link.title || copy('Social link', 'Link ya mtandao wa kijamii')}
                         className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-950 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:text-brand-700"
                     >
                         {meta?.text ? <span className="text-sm font-black">{meta.text}</span> : <Icon className="h-5 w-5" />}
@@ -1340,7 +1347,7 @@ function stripLinkMetadata(link = {}) {
     return clean;
 }
 
-function storefrontPickerItems({ products = [], contentItems = [], bundles = [], subscriptionPlans = [] }) {
+function storefrontPickerItems({ products = [], contentItems = [], bundles = [], subscriptionPlans = [] }, translate = (english) => english) {
     const productItems = products.map((product) => ({
         kind: 'product',
         filter: product.type === 'service' ? 'service' : product.type === 'digital' ? 'digital' : 'physical',
@@ -1354,7 +1361,7 @@ function storefrontPickerItems({ products = [], contentItems = [], bundles = [],
         checkout_price: product.checkout_price,
         discounted_price: product.discounted_price,
         image_url: product.image_url,
-        subtitle: productLabel(product),
+        subtitle: productLabel(product, translate),
     }));
 
     const content = contentItems.map((item) => ({
@@ -1365,7 +1372,7 @@ function storefrontPickerItems({ products = [], contentItems = [], bundles = [],
         slug: item.slug,
         price: item.price,
         image_url: item.image_url || null,
-        subtitle: item.price === null ? 'Free article' : item.price == 0 ? 'Unlock TZS 0' : `TZS ${Number(item.price).toLocaleString()} article`,
+        subtitle: item.price === null ? translate('Free article', 'Makala ya bure') : item.price == 0 ? translate('Unlock TZS 0', 'Fungua TZS 0') : `TZS ${Number(item.price).toLocaleString()} ${translate('article', 'makala')}`,
     }));
 
     const bundleItems = bundles.map((item) => ({
@@ -1378,7 +1385,7 @@ function storefrontPickerItems({ products = [], contentItems = [], bundles = [],
         is_course: item.is_course,
         image_url: item.image_url || null,
         items_count: item.items?.length || 0,
-        subtitle: item.is_course ? `${item.items?.length || 0} lessons/resources` : `${item.items?.length || 0} items inside`,
+        subtitle: item.is_course ? `${item.items?.length || 0} ${translate('lessons/resources', 'masomo/rasilimali')}` : `${item.items?.length || 0} ${translate('items inside', 'item ndani')}`,
     }));
 
     const memberships = subscriptionPlans.map((item) => ({
@@ -1390,7 +1397,7 @@ function storefrontPickerItems({ products = [], contentItems = [], bundles = [],
         price: item.price,
         billing_interval: item.billing_interval,
         image_url: item.image_url || null,
-        subtitle: `${item.billing_interval} access`,
+        subtitle: `${item.billing_interval} ${translate('access', 'ufikiaji')}`,
     }));
 
     return [...productItems, ...content, ...bundleItems, ...memberships];
@@ -1426,13 +1433,13 @@ function storefrontItemHref(item = {}) {
     return '#';
 }
 
-function storefrontItemLabel(item = {}) {
-    if (item.kind === 'product') return productLabel(item);
-    if (item.kind === 'content') return item.price === null ? 'Free article' : item.price == 0 ? 'Unlock TZS 0' : `TZS ${Number(item.price).toLocaleString()} article`;
-    if (item.kind === 'course') return `${item.items?.length || item.items_count || 0} lessons/resources`;
-    if (item.kind === 'bundle') return `${item.items?.length || item.items_count || 0} items inside`;
-    if (item.kind === 'membership') return `${item.billing_interval || 'monthly'} access`;
-    return 'Link';
+function storefrontItemLabel(item = {}, translate = (english) => english) {
+    if (item.kind === 'product') return productLabel(item, translate);
+    if (item.kind === 'content') return item.price === null ? translate('Free article', 'Makala ya bure') : item.price == 0 ? translate('Unlock TZS 0', 'Fungua TZS 0') : `TZS ${Number(item.price).toLocaleString()} ${translate('article', 'makala')}`;
+    if (item.kind === 'course') return `${item.items?.length || item.items_count || 0} ${translate('lessons/resources', 'masomo/rasilimali')}`;
+    if (item.kind === 'bundle') return `${item.items?.length || item.items_count || 0} ${translate('items inside', 'item ndani')}`;
+    if (item.kind === 'membership') return `${item.billing_interval || translate('monthly', 'kila mwezi')} ${translate('access', 'ufikiaji')}`;
+    return translate('Link', 'Kiungo');
 }
 
 function normalizeLinkUrl(url = '') {
@@ -1508,25 +1515,25 @@ function discoveryBadges(product, productDiscovery = {}) {
     return productDiscovery?.[product?.id]?.badges || [];
 }
 
-function productLabel(product) {
-    if (product?.type === 'service') return 'Service';
-    if (product?.type !== 'digital') return 'Product';
+function productLabel(product, translate = (english) => english) {
+    if (product?.type === 'service') return translate('Service', 'Huduma');
+    if (product?.type !== 'digital') return translate('Product', 'Bidhaa');
 
     const map = {
-        video_stream: 'Premium video',
-        audio_stream: 'Premium audio',
-        gallery_pack: 'Gallery pack',
-        live_event: 'Live event',
-        custom_delivery: 'Custom work',
-        external_link: 'External digital access',
+        video_stream: translate('Premium video', 'Video ya malipo'),
+        audio_stream: translate('Premium audio', 'Audio ya malipo'),
+        gallery_pack: translate('Gallery pack', 'Kifurushi cha gallery'),
+        live_event: translate('Live event', 'Tukio mubashara'),
+        custom_delivery: translate('Custom work', 'Kazi maalum'),
+        external_link: translate('External digital access', 'Ufikiaji wa kidijitali wa nje'),
         file: product.digital_content_type === 'software'
-            ? 'Software'
+            ? translate('Software', 'Software')
             : product.digital_content_type === 'document'
-                ? 'Document'
+                ? translate('Document', 'Hati')
                 : product.digital_content_type === 'ebook'
-                    ? 'E-book'
-                    : 'Digital download',
+                    ? translate('E-book', 'E-book')
+                    : translate('Digital download', 'Upakuaji wa kidijitali'),
     };
 
-    return map[product.digital_delivery_type] || 'Digital download';
+    return map[product.digital_delivery_type] || translate('Digital download', 'Upakuaji wa kidijitali');
 }

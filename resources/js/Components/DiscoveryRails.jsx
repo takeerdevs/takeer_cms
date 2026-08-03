@@ -4,6 +4,7 @@ import { CalendarClock, ChevronRight, Crown, DownloadCloud, Image, Music, PenLin
 import axios from 'axios';
 import { trackPlatformEvent } from '@/lib/attribution';
 import { productRailPriceLabel, productUnitLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 export function useDiscoveryRails() {
     const [rails, setRails] = useState([]);
@@ -47,6 +48,7 @@ export default function DiscoveryRails() {
 }
 
 export function DiscoveryRailSection({ rail, compact = false, featured = false }) {
+    const { copy } = useLocale();
     if (!rail || (rail.items || []).length === 0) return null;
 
     return (
@@ -54,10 +56,10 @@ export function DiscoveryRailSection({ rail, compact = false, featured = false }
             <div className="flex items-end justify-between gap-3">
                 <div className="min-w-0">
                     {/*<h2 className={'text-sm font-bold text-foreground truncate'}>{localizedRailTitle(rail)}</h2>*/}
-                    <p className="text-xs font-semibold text-muted-foreground line-clamp-1">{localizedRailSubtitle(rail)}</p>
+                    <p className="text-xs font-semibold text-muted-foreground line-clamp-1">{localizedRailSubtitle(rail, copy)}</p>
                 </div>
                 <Link href={railSearchHref(rail)} className="text-[11px] font-bold text-brand-600 shrink-0">
-                    Ona zaidi
+                    {copy('See more', 'Ona zaidi')}
                 </Link>
             </div>
             <div className={`${featured ? 'gap-3.5' : 'gap-3'} flex overflow-x-auto pb-1 -mx-3`}>
@@ -72,8 +74,9 @@ export function DiscoveryRailSection({ rail, compact = false, featured = false }
 }
 
 function ProductRailCard({ product, compact = false, featured = false }) {
+    const { copy } = useLocale();
     const Icon = productIcon(product);
-    const label = productLabel(product);
+    const label = productLabel(product, copy);
     const isPhysicalProduct = product.type === 'physical';
     const unitLabel = isPhysicalProduct ? productUnitLabel(product) : '';
     const price = Number(product.checkout_price ?? product.discounted_price ?? product.price ?? 0);
@@ -179,6 +182,7 @@ function ProductRailCard({ product, compact = false, featured = false }) {
 }
 
 function SubscriptionRailCard({ plan, compact = false, featured = false }) {
+    const { copy } = useLocale();
     return (
         <Link
             href={`/plan/${plan.slug || plan.id}`}
@@ -188,7 +192,7 @@ function SubscriptionRailCard({ plan, compact = false, featured = false }) {
                 <Crown className="h-5 w-5" />
             </div>
             <p className="mt-3 text-sm font-black leading-tight text-foreground line-clamp-2 min-h-[34px]">{plan.name}</p>
-            <p className="mt-1 text-xs text-muted-foreground line-clamp-2 min-h-[32px]">{plan.description || plan.merchant?.name || 'Uanachama wa creator'}</p>
+            <p className="mt-1 text-xs text-muted-foreground line-clamp-2 min-h-[32px]">{plan.description || plan.merchant?.name || copy('Creator membership', 'Uanachama wa creator')}</p>
             <p className="mt-3 text-sm font-black text-brand-600">TZS {Number(plan.price || 0).toLocaleString()}</p>
         </Link>
     );
@@ -207,51 +211,51 @@ function railSearchHref(rail) {
     return map[rail.key] || '/search';
 }
 
-function localizedRailTitle(rail = {}) {
+function localizedRailTitle(rail = {}, copy = (english) => english) {
     const map = {
-        nearby: 'Vilivyo karibu',
-        premium_media: 'Maudhui premium',
-        downloads: 'Downloads',
-        events: 'Matukio',
-        services: 'Huduma',
-        memberships: 'Uanachama',
+        nearby: copy('Nearby', 'Vilivyo karibu'),
+        premium_media: copy('Premium content', 'Maudhui premium'),
+        downloads: copy('Downloads', 'Downloads'),
+        events: copy('Events', 'Matukio'),
+        services: copy('Services', 'Huduma'),
+        memberships: copy('Memberships', 'Uanachama'),
     };
 
     return map[rail.key] || rail.title || 'Gundua';
 }
 
-function localizedRailSubtitle(rail = {}) {
+function localizedRailSubtitle(rail = {}, copy = (english) => english) {
     const map = {
-        nearby: 'Bidhaa halisi kutoka kwa wauzaji walio karibu nawe',
-        premium_media: 'Video, picha na maudhui ya kulipia',
-        downloads: 'Faili na bidhaa za kidigitali unazoweza kupakua',
-        events: 'Matukio na nafasi za kuhudhuria',
-        services: 'Huduma unazoweza kuomba au kubook',
-        memberships: 'Mipango ya kujiunga na creators',
+        nearby: copy('Physical products from sellers near you', 'Bidhaa halisi kutoka kwa wauzaji walio karibu nawe'),
+        premium_media: copy('Videos, photos, and paid content', 'Video, picha na maudhui ya kulipia'),
+        downloads: copy('Files and digital products you can download', 'Faili na bidhaa za kidijitali unazoweza kupakua'),
+        events: copy('Events and places to attend', 'Matukio na nafasi za kuhudhuria'),
+        services: copy('Services you can request or book', 'Huduma unazoweza kuomba au kubook'),
+        memberships: copy('Plans to join creators', 'Mipango ya kujiunga na creators'),
     };
 
     return map[rail.key] || rail.subtitle || '';
 }
 
-function productLabel(product) {
-    if (product.type === 'service') return 'Huduma';
-    if (product.type !== 'digital') return 'Bidhaa';
+function productLabel(product, copy = (english) => english) {
+    if (product.type === 'service') return copy('Service', 'Huduma');
+    if (product.type !== 'digital') return copy('Product', 'Bidhaa');
 
     return {
-        video_stream: 'Video',
-        audio_stream: 'Audio',
-        gallery_pack: 'Picha',
-        live_event: 'Tukio',
-        custom_delivery: 'Maalum',
-        external_link: 'Ufikiaji',
+        video_stream: copy('Video', 'Video'),
+        audio_stream: copy('Audio', 'Audio'),
+        gallery_pack: copy('Photos', 'Picha'),
+        live_event: copy('Event', 'Tukio'),
+        custom_delivery: copy('Custom', 'Maalum'),
+        external_link: copy('Access', 'Ufikiaji'),
         file: product.digital_content_type === 'software'
-            ? 'Software'
+            ? copy('Software', 'Software')
             : product.digital_content_type === 'document'
-                ? 'Documenti'
+                ? copy('Document', 'Documenti')
                 : product.digital_content_type === 'ebook'
-                    ? 'E-book'
-                    : 'Download',
-    }[product.digital_delivery_type] || 'Download';
+                    ? copy('E-book', 'E-book')
+                    : copy('Download', 'Download'),
+    }[product.digital_delivery_type] || copy('Download', 'Download');
 }
 
 function productIcon(product) {

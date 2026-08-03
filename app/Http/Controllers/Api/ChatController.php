@@ -7,7 +7,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Message;
 use App\Models\Order;
+use App\Models\PaymentAttempt;
+use App\Models\PaymentProvider;
 use App\Models\Product;
+use App\Payments\PaymentEvent;
 use App\Services\OrderExtraItemFulfillmentService;
 use App\Services\PickupAgreementService;
 use App\Services\SmsService;
@@ -123,7 +126,7 @@ class ChatController extends Controller
                 if ($order->dispute) {
                     $order->dispute->update(['status' => 'resolved']);
                 }
-                $order->payment_status = 'escrow_locked';
+                $order->payment_status = 'disputed';
                 $order->save();
             } elseif ($actionType === 'complaint_appealed') {
                 if ($order->dispute) {
@@ -429,6 +432,10 @@ class ChatController extends Controller
 
     private function triggerPaymentPush(Request $request, Order $order, string $paymentPhone): Order
     {
+        if (app()->environment('production')) {
+            throw new \Exception('Chat checkout must use an authenticated provider payment callback in production.');
+        }
+
         if ($order->payment_status !== 'pending') {
             throw new \Exception('Malipo yamekamilishwa.');
         }
@@ -463,10 +470,9 @@ class ChatController extends Controller
             $isPhysical = $order->requiresPhysicalFulfillment();
             $isCustomDelivery = $order->product?->isDigital()
                 && ($order->product?->digital_delivery_type ?? null) === 'custom_delivery';
-            $targetStatus = $isPhysical ? 'awaiting_merchant_confirmation' : ($isCustomDelivery ? 'escrow_locked' : 'resolved_merchant_paid');
             $childOrders = collect();
 
-            \Illuminate\Support\Facades\DB::transaction(function () use ($order, $targetStatus, $isPhysical, $isCustomDelivery, &$childOrders) {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($order, $isPhysical, $isCustomDelivery, &$childOrders, $paymentPhone) {
                 if ($isPhysical) {
                     $this->reservePhysicalOrderInventory($order);
                 }
@@ -481,8 +487,42 @@ class ChatController extends Controller
                     ]);
                 }
 
+                $provider = PaymentProvider::query()
+                    ->where('key', strtolower((string) $order->payment_gateway))
+                    ->where('status', 'enabled')
+                    ->firstOrFail();
+                $attempt = PaymentAttempt::query()->create([
+                    'order_id' => $order->id,
+                    'payment_provider_id' => $provider->id,
+                    'payment_provider_channel_id' => null,
+                    'provider_merchant_id' => null,
+                    'takeer_reference' => $order->transaction_ref,
+                    'expected_amount_minor' => (int) round((float) ($order->customer_total_amount ?? $order->total_paid) * 100),
+                    'expected_currency' => strtoupper((string) ($order->customer_currency_code ?: 'TZS')),
+                    'expected_country_code' => strtoupper((string) ($order->country_code ?: 'TZ')),
+                    'payment_phone_encrypted' => $paymentPhone,
+                    'payment_phone_hash' => hash('sha256', $paymentPhone),
+                    'state' => 'created',
+                    'idempotency_key' => 'chat-' . $order->id . '-' . $order->transaction_ref,
+                    'request_snapshot' => ['source' => 'chat', 'simulated' => true],
+                    'initiated_at' => now(),
+                ]);
+                $settlement = app(\App\Services\MarketplaceSettlementService::class)->createForAttempt($order, $attempt);
+                app(\App\Services\MarketplaceSettlementService::class)->confirmPayment(
+                    $order,
+                    $attempt,
+                    new PaymentEvent(
+                        provider: $provider->key,
+                        direction: 'payin',
+                        status: 'successful',
+                        providerReference: 'SIM-CHAT-' . $order->transaction_ref,
+                        takeerReference: $order->transaction_ref,
+                        amount: (float) $order->total_paid,
+                        currency: $attempt->expected_currency,
+                        rawPayload: ['simulated' => true, 'source' => 'chat'],
+                    ),
+                );
                 $order->update([
-                    'payment_status' => $targetStatus,
                     'custom_delivery_due_at' => $isCustomDelivery ? $order->customDeliveryDueAtFrom() : $order->custom_delivery_due_at,
                     'merchant_confirmed_at' => $order->merchant_confirmed_at,
                 ]);
@@ -513,26 +553,7 @@ class ChatController extends Controller
                     'reference' => 'SIM-CHAT-' . strtoupper(\Illuminate\Support\Str::random(10)),
                 ]);
 
-                // Freeze funds for physical/custom-held work, release immediately for instant digital/access orders.
-                $merchant = $processedOrder->merchant ?? $processedOrder->product?->merchant ?? null;
-                if ($merchant?->user) {
-                    $wallet = $merchant->wallet()->firstOrCreate(
-                        ['merchant_id' => $merchant->id],
-                        ['user_id' => $merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
-                    );
-
-                    if ($processedOrder->requiresPhysicalFulfillment() || $processedOrder->payment_status === 'escrow_locked') {
-                        $wallet->increment('frozen_balance', $processedOrder->total_paid);
-                    } else {
-                        $wallet->increment('balance', $fee['net_amount']);
-                        $withdrawalPolicy = app(\App\Services\WithdrawalPolicyService::class)->resolveForOrder($processedOrder);
-                        app(\App\Services\AutomaticWithdrawalService::class)->createForOrder(
-                            $processedOrder->fresh(['merchant.country', 'merchant.currency']),
-                            (float) $fee['net_amount'],
-                            $withdrawalPolicy
-                        );
-                    }
-                }
+                // Seller funds remain represented only by the provider-backed order settlement.
             }
 
             if ($isPhysical) {

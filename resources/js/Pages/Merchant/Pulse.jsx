@@ -27,8 +27,10 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 export default function MerchantPulse({ merchant }) {
+    const { copy } = useLocale();
     const [events, setEvents] = useState([]);
     const [meta, setMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [perPage, setPerPage] = useState(12);
@@ -48,7 +50,7 @@ export default function MerchantPulse({ merchant }) {
             setEvents(res.data?.events || []);
             setMeta(res.data?.meta || { current_page: 1, last_page: 1, total: 0 });
         } catch (error) {
-            toast.error('Imeshindwa kupakia merchant Pulse.');
+            toast.error(copy('Failed to load merchant Pulse.', 'Imeshindikana kupakia Pulse ya mfanyabiashara.'));
         } finally {
             setLoading(false);
         }
@@ -63,13 +65,13 @@ export default function MerchantPulse({ merchant }) {
                         <div>
                             <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase tracking-widest text-blue-700">
                                 <Clock className="h-4 w-4" />
-                                Merchant Pulse
+                                {copy('Merchant Pulse', 'Pulse ya mfanyabiashara')}
                             </div>
                             <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 md:text-4xl">
-                                Everything happening across {merchant.display_name || merchant.username}.
+                                {copy('Everything happening across', 'Kila kinachoendelea kwenye')} {merchant.display_name || merchant.username}.
                             </h1>
                             <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-slate-600">
-                                Order starts, quote changes, payment updates, delivery movement, customer reviews, and other status changes appear here as a business activity stream.
+                                {copy('Order starts, quote changes, payment updates, delivery movement, customer reviews, and other status changes appear here as a business activity stream.', 'Mwanzo wa oda, mabadiliko ya nukuu, masasisho ya malipo, uhamishaji wa delivery, maoni ya wateja na mabadiliko mengine ya hali yanaonekana hapa kama mtiririko wa shughuli za biashara.')}
                             </p>
                         </div>
                         <select
@@ -80,9 +82,9 @@ export default function MerchantPulse({ merchant }) {
                             }}
                             className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"
                         >
-                            <option value={8}>8 / page</option>
-                            <option value={12}>12 / page</option>
-                            <option value={24}>24 / page</option>
+                            <option value={8}>8 / {copy('page', 'ukurasa')}</option>
+                            <option value={12}>12 / {copy('page', 'ukurasa')}</option>
+                            <option value={24}>24 / {copy('page', 'ukurasa')}</option>
                         </select>
                     </div>
                 </section>
@@ -91,13 +93,13 @@ export default function MerchantPulse({ merchant }) {
                     {loading ? (
                         <div className="flex items-center justify-center gap-3 p-10 text-sm font-bold text-slate-500">
                             <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                            Loading Pulse...
+                            {copy('Loading Pulse...', 'Inapakia Pulse...')}
                         </div>
                     ) : events.length === 0 ? (
                         <div className="p-10 text-center">
                             <Library className="mx-auto h-8 w-8 text-slate-300" />
-                            <p className="mt-3 text-lg font-black text-slate-900">No business pulse yet</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-500">Important merchant activity will appear here.</p>
+                            <p className="mt-3 text-lg font-black text-slate-900">{copy('No business pulse yet', 'Hakuna Pulse ya biashara bado')}</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-500">{copy('Important merchant activity will appear here.', 'Shughuli muhimu za mfanyabiashara zitaonekana hapa.')}</p>
                         </div>
                     ) : (
                         <div className="divide-y divide-slate-100">
@@ -111,12 +113,12 @@ export default function MerchantPulse({ merchant }) {
                 {(meta.total || 0) > 0 && (
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm font-semibold text-slate-500">
-                            Showing {events.length} of {meta.total || 0} updates · Page {meta.current_page || 1} / {meta.last_page || 1}
+                            {copy('Showing', 'Inaonyesha')} {events.length} {copy('of', 'kati ya')} {meta.total || 0} {copy('updates', 'masasisho')} · {copy('Page', 'Ukurasa')} {meta.current_page || 1} / {meta.last_page || 1}
                         </p>
                         {(meta.last_page || 1) > 1 && (
                             <div className="flex gap-2">
-                                <Button variant="outline" className="rounded-xl" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</Button>
-                                <Button variant="outline" className="rounded-xl" disabled={page >= (meta.last_page || 1) || loading} onClick={() => setPage((p) => Math.min(meta.last_page || 1, p + 1))}>Next</Button>
+                                <Button variant="outline" className="rounded-xl" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>{copy('Previous', 'Iliyotangulia')}</Button>
+                                <Button variant="outline" className="rounded-xl" disabled={page >= (meta.last_page || 1) || loading} onClick={() => setPage((p) => Math.min(meta.last_page || 1, p + 1))}>{copy('Next', 'Inayofuata')}</Button>
                             </div>
                         )}
                     </div>
@@ -194,7 +196,7 @@ function PulseRow({ event }) {
             </div>
             {earned && (
                 <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-left md:text-right">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">Earned</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">{copy('Earned', 'Imepatikana')}</p>
                     <p className="mt-1 whitespace-nowrap text-lg font-black text-slate-950">{earned}</p>
                 </div>
             )}

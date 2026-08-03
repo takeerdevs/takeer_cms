@@ -150,10 +150,9 @@ class Product extends Model
         'wholesale_deposit_mode',
         'wholesale_deposit_percent',
         'wholesale_balance_due',
-        'safepay_mobile_money_enabled',
-        'safepay_bank_transfer_enabled',
-        'safepay_wallet_enabled',
-        'safepay_card_enabled',
+        'provider_mobile_money_enabled',
+        'provider_bank_transfer_enabled',
+        'provider_card_enabled',
         'inventory_quantity',
         'views_count',
     ];
@@ -184,10 +183,9 @@ class Product extends Model
             'order_increment' => 'decimal:3',
             'supply_capacity_quantity' => 'decimal:3',
             'wholesale_deposit_percent' => 'decimal:2',
-            'safepay_mobile_money_enabled' => 'boolean',
-            'safepay_bank_transfer_enabled' => 'boolean',
-            'safepay_wallet_enabled' => 'boolean',
-            'safepay_card_enabled' => 'boolean',
+            'provider_mobile_money_enabled' => 'boolean',
+            'provider_bank_transfer_enabled' => 'boolean',
+            'provider_card_enabled' => 'boolean',
             'inventory_quantity' => 'decimal:3',
             'buffer_stock' => 'integer',
             'paid_video_size' => 'integer',
@@ -476,7 +474,7 @@ class Product extends Model
 
         return (int) Order::query()
             ->where('product_id', $this->id)
-            ->whereIn('payment_status', ['payment_initiated', 'escrow_locked', 'resolved_merchant_paid'])
+            ->whereIn('payment_status', ['payment_initiated', 'payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'])
             ->where(function ($query): void {
                 $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
             })

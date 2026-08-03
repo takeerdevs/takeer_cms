@@ -15,10 +15,9 @@ return new class extends Migration
             $table->string('wholesale_deposit_mode', 40)->default('quote_based')->after('supply_capacity_period');
             $table->decimal('wholesale_deposit_percent', 5, 2)->nullable()->after('wholesale_deposit_mode');
             $table->string('wholesale_balance_due', 60)->default('before_delivery')->after('wholesale_deposit_percent');
-            $table->boolean('safepay_mobile_money_enabled')->default(true)->after('wholesale_balance_due');
-            $table->boolean('safepay_bank_transfer_enabled')->default(true)->after('safepay_mobile_money_enabled');
-            $table->boolean('safepay_wallet_enabled')->default(true)->after('safepay_bank_transfer_enabled');
-            $table->boolean('safepay_card_enabled')->default(false)->after('safepay_wallet_enabled');
+            $table->boolean('provider_mobile_money_enabled')->default(true)->after('wholesale_balance_due');
+            $table->boolean('provider_bank_transfer_enabled')->default(true)->after('provider_mobile_money_enabled');
+            $table->boolean('provider_card_enabled')->default(false)->after('provider_bank_transfer_enabled');
 
             $table->index(['type', 'selling_style']);
             $table->index(['selling_style', 'min_order_quantity']);
@@ -142,10 +141,9 @@ return new class extends Migration
                 'wholesale_deposit_mode',
                 'wholesale_deposit_percent',
                 'wholesale_balance_due',
-                'safepay_mobile_money_enabled',
-                'safepay_bank_transfer_enabled',
-                'safepay_wallet_enabled',
-                'safepay_card_enabled',
+                'provider_mobile_money_enabled',
+                'provider_bank_transfer_enabled',
+                'provider_card_enabled',
             ]);
         });
     }

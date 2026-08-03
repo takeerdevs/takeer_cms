@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 export const canPlayNativeHls = () => {
     if (typeof document === 'undefined') return false;
@@ -35,6 +36,7 @@ export default function VideoPlayer({
     onPlay,
     ...props
 }) {
+    const { copy } = useLocale();
     const internalRef = useRef(null);
     const ref = videoRef || internalRef;
     const mutedRef = useRef(muted);
@@ -189,7 +191,7 @@ export default function VideoPlayer({
                 {videoElement}
                 <button
                     type="button"
-                    aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+                    aria-label={isMuted ? copy('Unmute video', 'Washa sauti ya video') : copy('Mute video', 'Nyamazisha video')}
                     onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();

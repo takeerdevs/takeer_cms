@@ -14,7 +14,7 @@ class RetailBookkeepingSyncService
             return null;
         }
 
-        if (!in_array($order->payment_status, ['escrow_locked', 'resolved_merchant_paid'], true)) {
+        if (!in_array($order->payment_status, ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'], true)) {
             return null;
         }
 
@@ -56,7 +56,7 @@ class RetailBookkeepingSyncService
             'counterparty' => null,
             'amount' => $amount,
             'currency_code' => $order->merchant?->currency?->code ?? 'TZS',
-            'payment_method' => 'takeer_wallet',
+            'payment_method' => 'external_psp',
             'reference_type' => 'bank_transaction',
             'reference_number' => $order->gateway_ref ?: ($order->transaction_ref ?: ($order->public_id ? "ORDER-{$order->public_id}" : null)),
             'transaction_date' => $order->created_at?->toDateString() ?? now()->toDateString(),
@@ -158,7 +158,7 @@ class RetailBookkeepingSyncService
             return null;
         }
 
-        if (in_array($order->payment_status, ['failed', 'resolved_buyer_refunded'], true)) {
+        if (in_array($order->payment_status, ['failed', 'refunded'], true)) {
             return null;
         }
 
@@ -212,7 +212,7 @@ class RetailBookkeepingSyncService
             'review_status' => 'approved',
             'reviewed_by_user_id' => $userId,
             'reviewed_at' => now(),
-            'reconciliation_status' => in_array($order->payment_mode, ['online_escrow'], true) ? 'matched' : 'unmatched',
+            'reconciliation_status' => in_array($order->payment_mode, ['online_psp'], true) ? 'matched' : 'unmatched',
             'statement_reference' => $order->gateway_ref ?: $order->transaction_ref,
             'status' => 'active',
             'metadata' => $metadata,
@@ -304,7 +304,7 @@ class RetailBookkeepingSyncService
         return match ($paymentMode) {
             'cash' => 'cash',
             'merchant_mm' => 'mobile_money',
-            'online_escrow' => 'takeer_wallet',
+            'online_psp' => 'external_psp',
             'store_credit' => 'other',
             default => 'other',
         };
@@ -314,7 +314,7 @@ class RetailBookkeepingSyncService
     {
         return match ($paymentMode) {
             'merchant_mm' => 'mobile_money',
-            'online_escrow' => 'bank_transaction',
+            'online_psp' => 'provider_transaction',
             default => 'other',
         };
     }

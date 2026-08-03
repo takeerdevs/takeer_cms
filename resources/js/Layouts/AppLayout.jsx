@@ -14,10 +14,13 @@ import SeoHead from '@/Components/SeoHead';
 import axios from 'axios';
 import { trackPlatformEvent } from '@/lib/attribution';
 import { hasMerchantPermission } from '@/lib/merchantPermissions';
+import { useLocale } from '@/lib/i18n';
+import LanguageSwitcher from '@/Components/LanguageSwitcher';
 
 export default function AppLayout({ children, hideTabBar = false }) {
     const page = usePage();
     const { flash, auth } = page.props;
+    const { t } = useLocale();
     const currentUrl = page.url;
     const [composerOpen, setComposerOpen] = useState(false);
     const [composerInitialMode, setComposerInitialMode] = useState('short');
@@ -104,7 +107,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
 
         if (hasMerchantProfile) {
             if (!hasPostableMerchantProfile) {
-                toast.error('You do not have permission to create posts for any business account.');
+                toast.error(t('common.postPermission', {}, 'You do not have permission to create posts for any business account.'));
                 return;
             }
             setComposerInitialMode(nextOptions.mode === 'long' ? 'long' : 'short');
@@ -125,7 +128,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
                 },
             });
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Tafadhali thibitisha nambari ya simu kwanza.');
+            toast.error(error.response?.data?.message || t('common.verifyPhone', {}, 'Tafadhali thibitisha nambari ya simu kwanza.'));
             router.visit('/merchant/register');
         } finally {
             setCreatingProfile(false);
@@ -138,20 +141,23 @@ export default function AppLayout({ children, hideTabBar = false }) {
         return () => {
             delete window.__openComposerForCurrentUser;
         };
-    }, [auth?.user, hasMerchantProfile, hasPostableMerchantProfile]);
+    }, [auth?.user, hasMerchantProfile, hasPostableMerchantProfile, t]);
 
     const navItems = [
-        { name: 'Feed', href: '/', icon: Home },
-        { name: 'Tafuta', href: '#', icon: Search, isSearch: true },
+        { name: t('nav.feed'), href: '/', icon: Home },
+        { name: t('nav.search'), href: '#', icon: Search, isSearch: true },
         ...(canOpenComposer ? [{ name: null, href: null, icon: Plus, isCreate: true }] : []),
-        { name: 'Oda', href: '/orders', icon: ShoppingBag },
-        { name: 'Mimi', href: '/profile', icon: User },
+        { name: t('nav.orders'), href: '/orders', icon: ShoppingBag },
+        { name: t('nav.me'), href: '/profile', icon: User },
     ];
 
     return (
         <div className="relative isolate min-h-screen overflow-x-clip bg-background text-foreground font-sans antialiased">
             <AmbientWaveBackground />
             <Toaster position="top-center" richColors />
+            <div className="fixed right-3 top-3 z-[60]">
+                <LanguageSwitcher />
+            </div>
 
             {/* ── Full-width content, no sidebar ── */}
             <main className={cn('relative z-10 min-h-screen', hideTabBar ? 'pb-0' : 'pb-20')}>

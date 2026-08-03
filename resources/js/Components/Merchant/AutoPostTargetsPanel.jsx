@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocale } from '@/lib/i18n';
 
 const AUTO_POST_CHANNELS = [
     {
@@ -40,6 +41,7 @@ export default function AutoPostTargetsPanel({
     title = 'Auto post',
     description = 'Choose where this item is posted after publishing. These choices only affect this item.',
 }) {
+    const { copy } = useLocale();
     const targets = { ...defaultAutoPostTargets, ...(value || {}) };
 
     const toggleTarget = (key) => {
@@ -55,8 +57,8 @@ export default function AutoPostTargetsPanel({
     return (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
             <div>
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">{title}</h3>
-                {description && <p className="mt-1 text-xs text-muted-foreground">{description}</p>}
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">{title === 'Auto post' ? copy('Auto post', 'Chapisha kiotomatiki') : title}</h3>
+                {description && <p className="mt-1 text-xs text-muted-foreground">{description === 'Choose where this item is posted after publishing. These choices only affect this item.' ? copy('Choose where this item is posted after publishing. These choices only affect this item.', 'Chagua itachapishwa wapi baada ya kuchapisha. Chaguo hizi zinaathiri bidhaa hii tu.') : description}</p>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                 {AUTO_POST_CHANNELS.map((channel) => {
@@ -83,7 +85,7 @@ export default function AutoPostTargetsPanel({
                                 </span>
                             </span>
                             <span className="mt-2 block text-[10px] font-semibold leading-snug opacity-80">
-                                {channel.connected ? channel.hint : 'Not connected yet.'}
+                                {channel.connected ? copy(channel.hint, { takeer: 'Chapisha kwenye feed yako ya Takeer baada ya kuchapisha.', instagram: 'Unganisha Instagram ili kuwezesha auto-posting.', facebook: 'Unganisha Facebook ili kuwezesha auto-posting.', x: 'Unganisha X ili kuwezesha auto-posting.' }[channel.key]) : copy('Not connected yet.', 'Bado haijaunganishwa.')}
                             </span>
                         </button>
                     );

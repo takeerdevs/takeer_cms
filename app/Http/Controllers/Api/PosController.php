@@ -68,7 +68,7 @@ class PosController extends Controller
                 if ($locationId) $q->where('merchant_location_id', $locationId);
             }])
             ->withCount(['orders' => function($q) {
-                $q->where('payment_status', 'resolved_merchant_paid');
+                $q->where('payment_status', 'payment_confirmed');
             }]);
 
         if (filled($query)) {
@@ -111,7 +111,7 @@ class PosController extends Controller
         $validated = $request->validate([
             'location_id' => 'required|exists:merchant_locations,id',
             'staff_id' => 'required|exists:merchant_staffs,id',
-            'payment_mode' => 'required|in:cash,merchant_mm,online_escrow,store_credit',
+            'payment_mode' => 'required|in:cash,merchant_mm,online_psp,store_credit',
             'customer_name' => 'nullable|string|max:255',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
@@ -121,7 +121,7 @@ class PosController extends Controller
             'items.*.source_location_id' => 'nullable|exists:merchant_locations,id',
             'total_amount' => 'required|numeric',
             'amount_paid' => 'required|numeric',
-            'payment_mode' => 'required|string|in:cash,merchant_mm,online_escrow,store_credit',
+            'payment_mode' => 'required|string|in:cash,merchant_mm,online_psp,store_credit',
             'discount_amount' => 'nullable|numeric',
             'manager_pin' => 'nullable|string',
             'customer_name' => 'nullable|string',
@@ -138,7 +138,7 @@ class PosController extends Controller
                 ->where('merchant_id', $merchant->id)
                 ->first();
             
-            if ($existingOrder && $existingOrder->payment_status === 'resolved_merchant_paid') {
+            if ($existingOrder && $existingOrder->payment_status === 'payment_confirmed') {
                 return response()->json(['message' => 'Oda hii tayari imekamilika.'], 400);
             }
         }
@@ -204,7 +204,7 @@ class PosController extends Controller
                 ->where('merchant_id', $merchant->id)
                 ->first();
             
-            if ($existingOrder && $existingOrder->payment_status === 'resolved_merchant_paid') {
+            if ($existingOrder && $existingOrder->payment_status === 'payment_confirmed') {
                 return response()->json(['message' => 'Oda hii tayari imekamilika.'], 400);
             }
         }
@@ -226,9 +226,11 @@ class PosController extends Controller
             }
 
             // 2. Create or Update the master Order record
+            $externalPaymentConfirmed = in_array($validated['payment_mode'], ['cash', 'merchant_mm'], true)
+                && (float) $validated['amount_paid'] >= (float) $validated['total_amount'];
             $orderData = [
                 'payment_mode' => $validated['payment_mode'],
-                'payment_status' => ($requiresTransferFlow || $isPendingApproval || $validated['amount_paid'] < $validated['total_amount']) ? 'pending' : 'resolved_merchant_paid',
+                'payment_status' => ($requiresTransferFlow || $isPendingApproval || ! $externalPaymentConfirmed) ? 'pending' : 'payment_confirmed',
                 'pos_staff_id' => $validated['staff_id'],
                 'customer_name' => $validated['customer_name'] ?? ($existingOrder->customer_name ?? null),
                 'customer_phone' => $validated['customer_phone'] ?? ($existingOrder->customer_phone ?? null),
@@ -256,7 +258,7 @@ class PosController extends Controller
             }
 
             // If it has a delivery (online order), mark as delivered if fully paid
-            if ($order->delivery && $order->payment_status === 'resolved_merchant_paid') {
+            if ($order->delivery && $order->payment_status === 'payment_confirmed') {
                 $order->delivery->update(['delivery_status' => 'delivered']);
             }
 
@@ -480,7 +482,7 @@ class PosController extends Controller
         if ($order->merchant_id !== $merchant->id) abort(403);
 
         $validated = $request->validate([
-            'payment_mode' => 'nullable|string|in:cash,merchant_mm,online_escrow,store_credit',
+            'payment_mode' => 'nullable|string|in:cash,merchant_mm,online_psp,store_credit',
             'counter_total' => 'nullable|numeric|min:0',
             'manager_notes' => 'nullable|string|max:1000',
         ]);
@@ -489,13 +491,15 @@ class PosController extends Controller
         $paidAmount = (float) ($order->total_paid ?? 0);
 
         DB::transaction(function () use ($request, $merchant, $order, $validated, $paidAmount, $payableTotal) {
+            $externalPaymentConfirmed = in_array($validated['payment_mode'] ?? $order->payment_mode, ['cash', 'merchant_mm'], true)
+                && $paidAmount >= $payableTotal;
             $order->update([
                 'approval_status' => 'approved',
                 'approved_by_staff_id' => $request->user()->staffProfile($merchant->id)?->id,
                 'payment_mode' => $validated['payment_mode'] ?? $order->payment_mode,
                 'counter_total' => $validated['counter_total'] ?? $order->counter_total,
                 'manager_notes' => $validated['manager_notes'] ?? $order->manager_notes,
-                'payment_status' => $paidAmount >= $payableTotal ? 'resolved_merchant_paid' : 'pending',
+                'payment_status' => $externalPaymentConfirmed ? 'payment_confirmed' : 'pending',
             ]);
 
             app(RetailBookkeepingSyncService::class)->syncPosSale(

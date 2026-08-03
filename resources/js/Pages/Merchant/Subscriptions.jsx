@@ -10,6 +10,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
 import AutoPostTargetsPanel, { defaultAutoPostTargets } from '@/Components/Merchant/AutoPostTargetsPanel';
+import { useLocale } from '@/lib/i18n';
 
 const initialPlanForm = {
     id: null,
@@ -28,22 +29,22 @@ const initialPlanForm = {
 };
 
 const weekDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-function planCadenceLabel(plan) {
+function planCadenceLabel(plan, copy) {
     const interval = plan.billing_interval || 'monthly';
     const count = Number(plan.interval_count || 1);
     const intervalLabels = {
-        hourly: ['Hour', 'Hours'],
-        daily: ['Day', 'Days'],
-        weekly: ['Week', 'Weeks'],
-        monthly: ['Month', 'Months'],
+        hourly: ['Hour', 'Saa', 'Masaa'],
+        daily: ['Day', 'Siku', 'Siku'],
+        weekly: ['Week', 'Wiki', 'Wiki'],
+        monthly: ['Month', 'Mwezi', 'Miezi'],
     };
-    const [single, plural] = intervalLabels[interval] || [interval, `${interval}s`];
+    const [single, singleSw, pluralSw] = intervalLabels[interval] || [interval, interval, `${interval}s`];
 
     if (count <= 1) {
-        return single;
+        return copy(single, singleSw);
     }
 
-    return `Every ${count} ${plural}`;
+    return copy(`Every ${count} ${single}s`, `Kila ${count} ${pluralSw}`);
 }
 
 function planStatusClasses(status) {
@@ -52,7 +53,18 @@ function planStatusClasses(status) {
     return 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
+function statusLabel(status, copy) {
+    const labels = {
+        draft: ['Draft', 'Rasimu'],
+        active: ['Active', 'Hai'],
+        archived: ['Archived', 'Imehifadhiwa'],
+    };
+    const pair = labels[status];
+    return pair ? copy(pair[0], pair[1]) : (status || copy('Unknown', 'Haijulikani'));
+}
+
 export default function MerchantSubscriptions({ merchantUsername = '', itemPickerDefaultLimit = 5 }) {
+    const { copy } = useLocale();
     const { can } = useMerchantPermissions(merchantUsername);
     const canCreate = can('subscriptions.create');
     const canUpdate = can('subscriptions.update');
@@ -171,7 +183,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
             setPlans(planRes.data?.plans || planRes.data?.data || []);
             setCommerceSummary(summaryRes.data || null);
         } catch (error) {
-            toast.error('Imeshindwa kupakia subscriptions page.');
+            toast.error(copy('Failed to load subscriptions page.', 'Imeshindikana kupakia ukurasa wa usajili.'));
         } finally {
             setLoading(false);
         }
@@ -226,16 +238,16 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
 
             if (planForm.id) {
                 await axios.put(`/merchant/${merchantUsername}/subscription-plans/${planForm.id}/api`, payload);
-                toast.success('Subscription plan imesasishwa.');
+                toast.success(copy('Subscription plan updated.', 'Subscription plan imesasishwa.'));
             } else {
                 await axios.post(`/merchant/${merchantUsername}/subscription-plans/api`, payload);
-                toast.success('Subscription plan imeundwa.');
+                toast.success(copy('Subscription plan created.', 'Subscription plan imeundwa.'));
             }
 
             resetForm();
             await loadPage();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kuhifadhi subscription plan.');
+            toast.error(error.response?.data?.message || copy('Could not save the subscription plan.', 'Imeshindwa kuhifadhi subscription plan.'));
         } finally {
             setSaving(false);
         }
@@ -243,15 +255,15 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
 
     async function destroyPlan(id) {
         if (!canDelete) return;
-        if (!window.confirm('Una uhakika unataka kufuta tier hii?')) return;
+        if (!window.confirm(copy('Are you sure you want to delete this tier?', 'Una uhakika unataka kufuta tier hii?'))) return;
 
         try {
             await axios.delete(`/merchant/${merchantUsername}/subscription-plans/${id}/api`);
-            toast.success('Tier imefutwa.');
+            toast.success(copy('Tier deleted.', 'Tier imefutwa.'));
             if (planForm.id === id) resetForm();
             await loadPage();
         } catch (error) {
-            toast.error('Imeshindwa kufuta tier.');
+            toast.error(copy('Could not delete tier.', 'Imeshindwa kufuta tier.'));
         }
     }
 
@@ -283,10 +295,10 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
     if (loading) {
         return (
             <AppLayout>
-                <Head title="Subscriptions | Takeer" />
+                <Head title={`${copy('Subscriptions', 'Usajili')} | Takeer`} />
                 <div className="max-w-5xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
-                    <p className="text-sm text-muted-foreground">Inapakia subscriptions...</p>
+                    <p className="text-sm text-muted-foreground">{copy('Loading subscriptions...', 'Inapakia usajili...')}</p>
                 </div>
             </AppLayout>
         );
@@ -294,12 +306,12 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
 
     return (
         <AppLayout>
-            <Head title="Subscriptions | Takeer" />
+            <Head title={`${copy('Subscriptions', 'Usajili')} | Takeer`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24 space-y-6">
                 <Card className="rounded-[24px] border-brand-200/70">
                     <CardHeader>
-                        <CardTitle className="text-lg font-black">Creator Club Summary</CardTitle>
-                        <CardDescription>{commerceSummary?.date ? `Daily metrics for ${commerceSummary.date}` : 'Recurring membership access for creator clubs, paid communities, and subscriber-only drops.'}</CardDescription>
+                        <CardTitle className="text-lg font-black">{copy('Creator Club summary', 'Muhtasari wa Creator Club')}</CardTitle>
+                        <CardDescription>{commerceSummary?.date ? `${copy('Daily metrics for', 'Vipimo vya kila siku vya')} ${commerceSummary.date}` : copy('Recurring membership access for creator clubs, paid communities, and subscriber-only drops.', 'Ufikiaji wa uanachama wa mara kwa mara kwa vilabu vya watayarishi, jumuiya zinazolipia na matoleo ya wanachama pekee.')}</CardDescription>
                     </CardHeader>
                     <CardContent className="grid grid-cols-2 gap-3 md:grid-cols-4">
                         {summaryCards.map((item) => (
@@ -317,50 +329,50 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-xl font-black">
                                     <Crown className="h-5 w-5 text-emerald-600" />
-                                    {planForm.id ? 'Edit Creator Club Tier' : 'Create Creator Club Tier'}
+                                    {planForm.id ? copy('Edit Creator Club tier', 'Hariri daraja la Creator Club') : copy('Create Creator Club tier', 'Unda daraja la Creator Club')}
                                 </CardTitle>
-                                <CardDescription>Build recurring access plans for member-only posts, digital products, live events, downloads, and course bundles.</CardDescription>
+                                <CardDescription>{copy('Build recurring access plans for member-only posts, digital products, live events, downloads, and course bundles.', 'Unda mipango ya ufikiaji wa mara kwa mara kwa machapisho ya wanachama, bidhaa za kidijitali, matukio ya moja kwa moja, upakuaji na vifurushi vya kozi.')}</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="grid md:grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Tier Name</label>
-                                        <Input value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} placeholder="Mf. Gold Business Circle" />
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Tier name', 'Jina la daraja')}</label>
+                                        <Input value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} placeholder={copy('E.g. Gold Business Circle', 'Mf. Gold Business Circle')} />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Price (TZS)</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Price (TZS)', 'Bei (TZS)')}</label>
                                         <Input type="number" min="0" value={planForm.price} onChange={(e) => setPlanForm({ ...planForm, price: e.target.value })} placeholder="10000" />
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Description</label>
-                                    <Textarea rows={4} value={planForm.description} onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })} placeholder="Describe this tier..." />
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Description', 'Maelezo')}</label>
+                                    <Textarea rows={4} value={planForm.description} onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })} placeholder={copy('Describe this tier...', 'Eleza daraja hili...')} />
                                 </div>
 
                                 <div className="grid md:grid-cols-3 gap-4">
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Billing Interval</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Billing interval', 'Kipindi cha malipo')}</label>
                                         <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={planForm.billing_interval} onChange={(e) => setPlanForm({ ...planForm, billing_interval: e.target.value })}>
-                                            <option value="hourly">Hourly</option>
-                                            <option value="daily">Daily</option>
-                                            <option value="weekly">Weekly</option>
-                                            <option value="monthly">Monthly</option>
+                                            <option value="hourly">{copy('Hourly', 'Kila saa')}</option>
+                                            <option value="daily">{copy('Daily', 'Kila siku')}</option>
+                                            <option value="weekly">{copy('Weekly', 'Kila wiki')}</option>
+                                            <option value="monthly">{copy('Monthly', 'Kila mwezi')}</option>
                                         </select>
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Every</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Every', 'Kila')}</label>
                                         <Input type="number" min="1" value={planForm.interval_count} onChange={(e) => setPlanForm({ ...planForm, interval_count: e.target.value })} placeholder="1" />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Tier Rank</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Tier rank', 'Nafasi ya daraja')}</label>
                                         <Input type="number" min="1" value={planForm.tier} onChange={(e) => setPlanForm({ ...planForm, tier: e.target.value })} placeholder="1" />
                                     </div>
                                 </div>
 
                                 {planForm.billing_interval === 'weekly' && (
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Weekly Days</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Weekly days', 'Siku za wiki')}</label>
                                         <div className="flex flex-wrap gap-2">
                                             {weekDays.map((day) => {
                                                 const selected = planForm.weekly_days.includes(day);
@@ -378,7 +390,12 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                                                         }}
                                                         className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider border ${selected ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-border text-muted-foreground'}`}
                                                     >
-                                                        {day.slice(0, 3)}
+                                                        {(() => {
+                                                            const shortDay = day.slice(0, 3);
+                                                            const englishShortDay = shortDay.charAt(0).toUpperCase() + shortDay.slice(1);
+                                                            const swahiliShortDays = { mon: 'Jtt', tue: 'Jnn', wed: 'Jtt', thu: 'Alh', fri: 'Ijm', sat: 'Jmos', sun: 'Jpl' };
+                                                            return copy(englishShortDay, swahiliShortDays[shortDay] || englishShortDay);
+                                                        })()}
                                                     </button>
                                                 );
                                             })}
@@ -389,11 +406,11 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                                 {planForm.billing_interval === 'monthly' && (
                                     <div className="grid md:grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Billing Day</label>
+                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Billing day', 'Siku ya malipo')}</label>
                                             <Input type="number" min="1" max="28" value={planForm.monthly_day} onChange={(e) => setPlanForm({ ...planForm, monthly_day: e.target.value })} placeholder="1" />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Trial Days</label>
+                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Trial days', 'Siku za majaribio')}</label>
                                             <Input type="number" min="0" max="60" value={planForm.trial_days} onChange={(e) => setPlanForm({ ...planForm, trial_days: e.target.value })} placeholder="0" />
                                         </div>
                                     </div>
@@ -401,15 +418,15 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
 
                                 <div className="space-y-3">
                                     <div>
-                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Included Access</p>
-                                        <p className="text-xs text-muted-foreground mt-1">Creator Club tiers unlock posts/articles, digital products, live events, and digital/course bundles. Physical products stay outside memberships.</p>
+                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Included access', 'Ufikiaji uliojumuishwa')}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">{copy('Creator Club tiers unlock posts/articles, digital products, live events, and digital/course bundles. Physical products stay outside memberships.', 'Madara ya Creator Club hufungua machapisho/makala, bidhaa za kidijitali, matukio ya moja kwa moja na vifurushi vya kidijitali/kozi. Bidhaa za kawaida hazijumuishwi kwenye uanachama.')}</p>
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Search Items</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Search items', 'Tafuta vipengele')}</label>
                                         <Input
                                             value={planItemSearch}
                                             onChange={(e) => setPlanItemSearch(e.target.value)}
-                                            placeholder="Search content, digital products, or course bundles..."
+                                            placeholder={copy('Search content, digital products, or course bundles...', 'Tafuta maudhui, bidhaa za kidijitali au vifurushi vya kozi...')}
                                         />
                                     </div>
                                     <div className="grid gap-2">
@@ -424,13 +441,13 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                                                             <p className="text-xs text-muted-foreground">{option.item_type} · {option.meta}</p>
                                                         </button>
                                                         <span className={`text-xs font-black uppercase tracking-wider ${selected ? 'text-emerald-700' : 'text-muted-foreground'}`}>
-                                                            {selected ? 'Included' : 'Add'}
+                                                            {selected ? copy('Included', 'Imejumuishwa') : copy('Add', 'Ongeza')}
                                                         </span>
                                                     </div>
                                                     {selected && (
                                                         <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/80 px-3 py-2 border border-emerald-100">
                                                             <Clock3 className="h-4 w-4 text-emerald-600" />
-                                                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Unlock after days</span>
+                                                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{copy('Unlock after days', 'Fungua baada ya siku')}</span>
                                                             <Input
                                                                 type="number"
                                                                 min="0"
@@ -445,7 +462,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                                         })}
                                         {planVisibleItems.length === 0 && (
                                             <p className="text-xs text-muted-foreground rounded-xl border border-dashed border-border px-3 py-2">
-                                                No items found for your search.
+                                                {copy('No items found for your search.', 'Hakuna vipengele vilivyopatikana kwa utafutaji wako.')}
                                             </p>
                                         )}
                                     </div>
@@ -456,24 +473,24 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                                         <AutoPostTargetsPanel
                                             value={planForm.publish_targets}
                                             onChange={(targets) => setPlanForm((current) => ({ ...current, publish_targets: targets }))}
-                                            description="Choose where this subscription tier is posted when it is active."
+                                            description={copy('Choose where this subscription tier is posted when it is active.', 'Chagua mahali daraja hili la uanachama litachapishwa linapokuwa hai.')}
                                         />
                                     </div>
                                     <div className="w-full sm:w-[220px] space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Status</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Status', 'Hali')}</label>
                                         <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={planForm.status} onChange={(e) => setPlanForm({ ...planForm, status: e.target.value })}>
-                                            <option value="draft">Draft</option>
-                                            <option value="active">Active</option>
-                                            <option value="archived">Archived</option>
+                                            <option value="draft">{copy('Draft', 'Rasimu')}</option>
+                                            <option value="active">{copy('Active', 'Hai')}</option>
+                                            <option value="archived">{copy('Archived', 'Imehifadhiwa')}</option>
                                         </select>
                                     </div>
                                     <Button className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl" onClick={savePlan} disabled={saving}>
                                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                        {planForm.id ? 'Update Tier' : 'Save Tier'}
+                                        {planForm.id ? copy('Update tier', 'Sasisha daraja') : copy('Save tier', 'Hifadhi daraja')}
                                     </Button>
                                     <Button variant="outline" className="rounded-xl" onClick={resetForm}>
                                         <Plus className="mr-2 h-4 w-4" />
-                                        New Tier
+                                        {copy('New tier', 'Daraja jipya')}
                                     </Button>
                                 </div>
                             </CardContent>
@@ -482,12 +499,12 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
 
                     <Card className="rounded-[24px]">
                         <CardHeader>
-                            <CardTitle className="text-lg font-black">Creator Club Ladder</CardTitle>
-                            <CardDescription>Your membership and recurring access offers.</CardDescription>
+                            <CardTitle className="text-lg font-black">{copy('Creator Club ladder', 'Madara ya Creator Club')}</CardTitle>
+                            <CardDescription>{copy('Your membership and recurring access offers.', 'Ofa zako za uanachama na ufikiaji wa mara kwa mara.')}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {plans.length === 0 ? (
-                                <EmptyState icon={Crown} title="Hakuna tiers bado" body="Create your first subscription level for recurring revenue." />
+                                <EmptyState icon={Crown} title={copy('No tiers yet', 'Hakuna madaraja bado')} body={copy('Create your first subscription level for recurring revenue.', 'Unda kiwango chako cha kwanza cha uanachama kwa mapato ya mara kwa mara.')} />
                             ) : plans.map((item) => (
                                 <div key={item.id} className="rounded-2xl border border-border/70 bg-background p-4 shadow-sm transition hover:border-brand-200 hover:shadow-md">
                                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -499,17 +516,17 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <p className="max-w-[220px] truncate text-sm font-black text-foreground sm:max-w-[280px]">{item.name}</p>
                                                     <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-black capitalize leading-none ${planStatusClasses(item.status)}`}>
-                                                        {item.status}
+                                                        {statusLabel(item.status, copy)}
                                                     </span>
                                                 </div>
                                                 <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-muted-foreground">
                                                     <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 px-2.5 py-1">
                                                         <Clock3 className="mr-1.5 h-3.5 w-3.5" />
-                                                        {planCadenceLabel(item)}
+                                                        {planCadenceLabel(item, copy)}
                                                     </span>
                                                     <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 px-2.5 py-1">
                                                         <Users className="mr-1.5 h-3.5 w-3.5" />
-                                                        {Number(item.active_members_count || 0).toLocaleString()} active
+                                                        {Number(item.active_members_count || 0).toLocaleString()} {copy('active', 'hai')}
                                                     </span>
                                                 </div>
                                             </div>
@@ -517,22 +534,22 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
 
                                         <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
                                             <div className="text-left sm:text-right">
-                                                <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Price</p>
+                                                <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">{copy('Price', 'Bei')}</p>
                                                 <p className="mt-1 whitespace-nowrap text-base font-black text-brand-700">TZS {Number(item.price || 0).toLocaleString()}</p>
                                             </div>
                                             <div className="flex items-center gap-1 rounded-xl border border-border/70 bg-muted/30 p-1">
                                                 {canManageMembers && (
-                                                    <Button title="Members" aria-label="Members" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => router.visit(`/merchant/${merchantUsername}/subscription-plans/${item.id}/members`)}>
+                                                    <Button title={copy('Members', 'Wanachama')} aria-label={copy('Members', 'Wanachama')} variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => router.visit(`/merchant/${merchantUsername}/subscription-plans/${item.id}/members`)}>
                                                         <Users className="h-4 w-4" />
                                                     </Button>
                                                 )}
                                                 {canUpdate && (
-                                                    <Button title="Edit tier" aria-label="Edit tier" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => startEditPlan(item)}>
+                                                    <Button title={copy('Edit tier', 'Hariri daraja')} aria-label={copy('Edit tier', 'Hariri daraja')} variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => startEditPlan(item)}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
                                                 )}
                                                 {canDelete && (
-                                                    <Button title="Delete tier" aria-label="Delete tier" variant="ghost" size="icon" className="h-9 w-9 rounded-lg text-red-600 hover:text-red-700" onClick={() => destroyPlan(item.id)}>
+                                                    <Button title={copy('Delete tier', 'Futa daraja')} aria-label={copy('Delete tier', 'Futa daraja')} variant="ghost" size="icon" className="h-9 w-9 rounded-lg text-red-600 hover:text-red-700" onClick={() => destroyPlan(item.id)}>
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 )}

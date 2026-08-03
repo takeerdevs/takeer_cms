@@ -4,6 +4,7 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Textarea } from '@/Components/ui/Textarea';
 import { RepeatableTextList } from '@/Components/Merchant/ServiceModuleCreateFields';
+import { useLocale } from '@/lib/i18n';
 
 export default function ServiceIntakeFormEditor({
     serviceClientRequirements,
@@ -15,19 +16,20 @@ export default function ServiceIntakeFormEditor({
     updateServiceIntakeField,
     removeServiceIntakeField,
 }) {
+    const { copy } = useLocale();
     return (
         <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div>
-                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Taarifa unazohitaji kutoka kwa mteja</label>
-                    <p className="text-xs text-muted-foreground mt-1">Build a simple form that customers fill before sending a request.</p>
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Information you need from the customer', 'Taarifa unazohitaji kutoka kwa mteja')}</label>
+                    <p className="text-xs text-muted-foreground mt-1">{copy('Build a simple form that customers fill before sending a request.', 'Tengeneza form rahisi ambayo wateja watajaza kabla ya kutuma ombi.')}</p>
                 </div>
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={addServiceIntakeField}>
-                    <Plus className="h-4 w-4 mr-1" /> Add field
+                    <Plus className="h-4 w-4 mr-1" /> {copy('Add field', 'Ongeza field')}
                 </Button>
             </div>
             <Textarea
-                placeholder="Fallback instructions, e.g. picha za tatizo, address, preferred date..."
+                placeholder={copy('Fallback instructions, e.g. photos of the issue, address, preferred date...', 'Maelekezo ya ziada, mf. picha za tatizo, anuani, tarehe unayopendelea...')}
                 value={serviceClientRequirements}
                 onChange={(e) => setServiceClientRequirements(e.target.value)}
                 className="min-h-[86px] text-sm"
@@ -36,7 +38,7 @@ export default function ServiceIntakeFormEditor({
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
                         <div className="md:col-span-3 h-11 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-900 flex items-center justify-between">
-                            <span>Map location</span>
+                            <span>{copy('Map location', 'Eneo kwenye ramani')}</span>
                             <MapPin className="h-4 w-4 text-emerald-700" />
                         </div>
                         <Input
@@ -58,13 +60,13 @@ export default function ServiceIntakeFormEditor({
                     <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-emerald-800">
                         <label className="flex items-center gap-2">
                             <input type="checkbox" checked={Boolean(automaticCustomerLocationField.required)} readOnly disabled />
-                            Required
+                            {copy('Required', 'Lazima')}
                         </label>
                         <span className="rounded-full bg-white/80 border border-emerald-200 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">
-                            Locked system field
+                            {copy('Locked system field', 'Field ya mfumo iliyofungwa')}
                         </span>
                         <span className="text-emerald-700">
-                            Added from service location type
+                            {copy('Added from service location type', 'Imeongezwa kutoka aina ya eneo la huduma')}
                         </span>
                     </div>
                 </div>
@@ -85,7 +87,7 @@ export default function ServiceIntakeFormEditor({
                                 </select>
                                 <Input
                                     className="md:col-span-5 h-11"
-                                    placeholder="Question label"
+                                    placeholder={copy('Question label', 'Label ya swali')}
                                     value={field.label || ''}
                                     onChange={(e) => updateServiceIntakeField(index, {
                                         label: e.target.value,
@@ -96,7 +98,7 @@ export default function ServiceIntakeFormEditor({
                                 />
                                 <Input
                                     className="md:col-span-3 h-11"
-                                    placeholder="Placeholder"
+                                    placeholder={copy('Placeholder', 'Placeholder')}
                                     value={field.placeholder || ''}
                                     onChange={(e) => updateServiceIntakeField(index, { placeholder: e.target.value })}
                                 />
@@ -110,11 +112,11 @@ export default function ServiceIntakeFormEditor({
                             </div>
                             {field.type === 'select' && (
                                 <RepeatableTextList
-                                    label="Options"
+                                    label={copy('Options', 'Chaguo')}
                                     value={field.options}
                                     onChange={(value) => updateServiceIntakeField(index, { options: value })}
-                                    addLabel="Add option"
-                                    placeholder="Write one selectable option..."
+                                    addLabel={copy('Add option', 'Ongeza chaguo')}
+                                    placeholder={copy('Write one selectable option...', 'Andika chaguo moja...')}
                                 />
                             )}
                             <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
@@ -123,7 +125,7 @@ export default function ServiceIntakeFormEditor({
                                     checked={Boolean(field.required)}
                                     onChange={(e) => updateServiceIntakeField(index, { required: e.target.checked })}
                                 />
-                                Required
+                                {copy('Required', 'Lazima')}
                             </label>
                         </div>
                     ))}

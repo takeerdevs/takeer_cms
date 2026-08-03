@@ -9,8 +9,10 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import VideoPlayer from '@/Components/VideoPlayer';
 import { productPriceLabel, productStockLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 export default function ProductDetails({ merchantUsername, productId }) {
+    const { copy } = useLocale();
     const [loading, setLoading] = useState(true);
     const [product, setProduct] = useState(null);
     const [deleting, setDeleting] = useState(false);
@@ -40,7 +42,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
             const payload = res.data?.data || res.data;
             setProduct(payload || null);
         } catch (error) {
-            toast.error('Imeshindwa kupakia taarifa za bidhaa.');
+            toast.error(copy('Failed to load product details.', 'Imeshindikana kupakia taarifa za bidhaa.'));
         } finally {
             setLoading(false);
         }
@@ -142,7 +144,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
             setLiveEventDashboard(res.data);
             fillLiveEventForm(res.data?.event);
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kupakia event dashboard.');
+            toast.error(error?.response?.data?.message || copy('Could not load the event dashboard.', 'Imeshindwa kupakia event dashboard.'));
         } finally {
             setLiveEventLoading(false);
         }
@@ -168,10 +170,10 @@ export default function ProductDetails({ merchantUsername, productId }) {
             const res = await axios.put(`/merchant/${merchantUsername}/products/${productId}/live-event`, payload);
             setLiveEventDashboard(res.data);
             fillLiveEventForm(res.data?.event);
-            toast.success('Live event details updated.');
+            toast.success(copy('Live event details updated.', 'Taarifa za tukio la moja kwa moja zimesasishwa.'));
             loadProduct();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kuhifadhi live event.');
+            toast.error(error?.response?.data?.message || copy('Failed to save live event.', 'Imeshindikana kuhifadhi tukio la moja kwa moja.'));
         } finally {
             setLiveEventSaving(false);
         }
@@ -181,10 +183,10 @@ export default function ProductDetails({ merchantUsername, productId }) {
         setLiveEventBusyOrder(`${orderId}:${status}`);
         try {
             await axios.post(`/merchant/${merchantUsername}/products/${productId}/live-event/orders/${orderId}/attendance`, { status });
-            toast.success('Attendance updated.');
+            toast.success(copy('Attendance updated.', 'Mahudhurio yamesasishwa.'));
             loadLiveEventDashboard();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kuhifadhi attendance.');
+            toast.error(error?.response?.data?.message || copy('Failed to save attendance.', 'Imeshindikana kuhifadhi mahudhurio.'));
         } finally {
             setLiveEventBusyOrder(null);
         }
@@ -194,10 +196,10 @@ export default function ProductDetails({ merchantUsername, productId }) {
         setLiveEventBusyOrder(`${orderId}:send`);
         try {
             await axios.post(`/merchant/${merchantUsername}/products/${productId}/live-event/orders/${orderId}/resend-access`);
-            toast.success('Access details prepared.');
+            toast.success(copy('Access details prepared.', 'Taarifa za ufikiaji zimeandaliwa.'));
             loadLiveEventDashboard();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kutuma access details.');
+            toast.error(error?.response?.data?.message || copy('Failed to send access details.', 'Imeshindikana kutuma taarifa za ufikiaji.'));
         } finally {
             setLiveEventBusyOrder(null);
         }
@@ -235,7 +237,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
         setDeleting(true);
         try {
             await axios.delete(`/merchant/${merchantUsername}/products/${product.id}`);
-            toast.success('Bidhaa imeondolewa.');
+            toast.success(copy('Product removed.', 'Bidhaa imeondolewa.'));
             router.visit(`/merchant/${merchantUsername}/products`);
         } catch (error) {
             const message = error?.response?.data?.message || 'Imeshindwa kufuta bidhaa.';
@@ -247,12 +249,12 @@ export default function ProductDetails({ merchantUsername, productId }) {
 
     return (
         <AppLayout>
-            <Head title={`${product?.title || 'Product'} | Takeer`} />
+            <Head title={`${product?.title || copy('Product', 'Bidhaa')} | Takeer`} />
             <div className="max-w-3xl mx-auto p-4 md:p-8 pb-24 space-y-4">
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                         <Button variant="outline" className="rounded-xl" onClick={() => router.visit(`/merchant/${merchantUsername}/products`)}>
-                            <ArrowLeft className="h-4 w-4 mr-1" /> Rudi Bidhaa
+                            <ArrowLeft className="h-4 w-4 mr-1" /> {copy('Back to products', 'Rudi kwenye bidhaa')}
                         </Button>
                         {!!product && (
                             <Button
@@ -260,18 +262,18 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                 className="rounded-xl"
                                 onClick={() => router.visit(route('product.show', product.slug || product.id))}
                             >
-                                <Eye className="h-4 w-4 mr-1" /> Ione
+                            <Eye className="h-4 w-4 mr-1" /> {copy('View', 'Tazama')}
                             </Button>
                         )}
                     </div>
                     <div className="flex items-center gap-2">
                         <Button className="rounded-xl bg-brand-600 hover:bg-brand-700 text-white" onClick={() => router.visit(`/merchant/${merchantUsername}/upload?edit=${productId}`)}>
-                            <Pencil className="h-4 w-4 mr-1" /> Hariri
+                            <Pencil className="h-4 w-4 mr-1" /> {copy('Edit', 'Hariri')}
                         </Button>
                         {(Number(product?.purchases_count || 0) === 0) && (
                             <Button variant="outline" className="rounded-xl text-red-600 hover:text-red-700" onClick={handleDelete} disabled={deleting}>
                                 {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
-                                Futa
+                                {copy('Delete', 'Futa')}
                             </Button>
                         )}
                     </div>
@@ -280,10 +282,10 @@ export default function ProductDetails({ merchantUsername, productId }) {
                 {loading ? (
                     <div className="py-20 flex flex-col items-center justify-center text-muted-foreground space-y-3">
                         <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
-                        <p className="text-sm font-medium">Inapakia bidhaa...</p>
+                        <p className="text-sm font-medium">{copy('Loading product...', 'Inapakia bidhaa...')}</p>
                     </div>
                 ) : !product ? (
-                    <Card><CardContent className="p-6">Bidhaa haijapatikana.</CardContent></Card>
+                    <Card><CardContent className="p-6">{copy('Product not found.', 'Bidhaa haijapatikana.')}</CardContent></Card>
                 ) : (
                     <>
                         <Card className="overflow-hidden">
@@ -317,12 +319,12 @@ export default function ProductDetails({ merchantUsername, productId }) {
 
                                 {Number(product.available_stock || 0) <= 0 && (
                                     <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                                        Bidhaa imeisha stok. Wateja hawawezi checkout hadi uweke quantity zaidi ya 0.
+                                        {copy('This product is out of stock. Customers cannot check out until you add a quantity greater than 0.', 'Bidhaa imeisha stok. Wateja hawawezi checkout hadi uweke quantity zaidi ya 0.')}
                                     </div>
                                 )}
 
                                 <div className="rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
-                                    Bidhaa yenye oda haiwezi kufutwa. Tumia <span className="font-semibold">Hariri</span> kuweka quantity kuwa 0 kama unataka kuisimamisha kuuza.
+                                    {copy('A product with orders cannot be deleted. Use Edit to set quantity to 0 if you want to stop selling it.', 'Bidhaa yenye oda haiwezi kufutwa. Tumia Hariri kuweka quantity kuwa 0 kama unataka kuisimamisha kuuza.')}
                                 </div>
                             </CardContent>
                         </Card>
@@ -334,35 +336,35 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                         <div>
                                             <p className="text-sm font-black flex items-center gap-2">
                                                 <CalendarClock className="h-4 w-4 text-brand-600" />
-                                                Live Event Control
+                                                {copy('Live event control', 'Udhibiti wa tukio la moja kwa moja')}
                                             </p>
                                             <p className="text-xs text-muted-foreground mt-1">
-                                                Manage access, replay, attendees, and check-ins from one place.
+                                                {copy('Manage access, replay, attendees, and check-ins from one place.', 'Simamia ufikiaji, replay, waliohudhuria na kuingia kutoka sehemu moja.')}
                                             </p>
                                         </div>
                                         <div className="rounded-xl border border-brand-100 bg-brand-50 px-3 py-2 text-right">
-                                            <p className="text-[10px] uppercase tracking-wider font-black text-brand-700">Starts in</p>
+                                            <p className="text-[10px] uppercase tracking-wider font-black text-brand-700">{copy('Starts in', 'Inaanza')}</p>
                                             <p className="text-lg font-black text-brand-700">{countdown || 'TBA'}</p>
                                         </div>
                                     </div>
 
                                     {liveEventLoading ? (
                                         <div className="py-8 flex items-center justify-center text-sm text-muted-foreground gap-2">
-                                            <Loader2 className="h-4 w-4 animate-spin" /> Loading event details...
+                                            <Loader2 className="h-4 w-4 animate-spin" /> {copy('Loading event details...', 'Inapakia taarifa za tukio...')}
                                         </div>
                                     ) : (
                                         <>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                                 <StatCard icon={Users} label="Registered" value={Number(liveEventDashboard?.stats?.registered_seats || 0).toLocaleString()} />
                                                 <StatCard icon={CheckCircle2} label="Checked In" value={Number(liveEventDashboard?.stats?.checked_in || 0).toLocaleString()} />
-                                                <StatCard icon={Boxes} label="Remaining" value={liveEventDashboard?.stats?.seats_remaining === null || liveEventDashboard?.stats?.seats_remaining === undefined ? 'Unlimited' : Number(liveEventDashboard.stats.seats_remaining).toLocaleString()} />
+                                                <StatCard icon={Boxes} label="Remaining" value={liveEventDashboard?.stats?.seats_remaining === null || liveEventDashboard?.stats?.seats_remaining === undefined ? copy('Unlimited', 'Bila kikomo') : Number(liveEventDashboard.stats.seats_remaining).toLocaleString()} />
                                                 <StatCard icon={ShoppingCart} label="Revenue" value={`TZS ${Number(liveEventDashboard?.stats?.revenue || 0).toLocaleString()}`} />
                                             </div>
 
                                             <div className="rounded-xl border border-slate-200 p-3 space-y-3">
                                                 <div className="grid md:grid-cols-2 gap-3">
                                                     <div className="space-y-1">
-                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Start Time</label>
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">{copy('Start time', 'Muda wa kuanza')}</label>
                                                         <input
                                                             type="datetime-local"
                                                             value={liveEventForm.live_event_starts_at}
@@ -371,7 +373,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                                         />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Timezone</label>
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">{copy('Timezone', 'Eneo la muda')}</label>
                                                         <input
                                                             value={liveEventForm.live_event_timezone}
                                                             onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_timezone: e.target.value }))}
@@ -379,7 +381,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                                         />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Duration Minutes</label>
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">{copy('Duration (minutes)', 'Muda (dakika)')}</label>
                                                         <input
                                                             type="number"
                                                             min="1"
@@ -389,45 +391,45 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                                         />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Capacity (Attendee Limit)</label>
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">{copy('Capacity (attendee limit)', 'Uwezo (kikomo cha washiriki)')}</label>
                                                         <input
                                                             type="number"
                                                             min="1"
                                                             value={liveEventForm.live_event_capacity}
                                                             onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_capacity: e.target.value }))}
-                                                            placeholder="Optional"
+                                                            placeholder={copy('Optional', 'Si lazima')}
                                                             className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
                                                         />
                                                     </div>
                                                     <div className="md:col-span-2 space-y-1">
-                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Private Join Link</label>
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">{copy('Private join link', 'Kiungo binafsi cha kujiunga')}</label>
                                                         <input
                                                             value={liveEventForm.live_event_access_url}
                                                             onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_access_url: e.target.value }))}
-                                                            placeholder="Zoom, Google Meet, livestream, or webinar link"
+                                                            placeholder={copy('Zoom, Google Meet, livestream, or webinar link', 'Kiungo cha Zoom, Google Meet, livestream au webinar')}
                                                             className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
                                                         />
                                                     </div>
                                                     <div className="md:col-span-2 space-y-1">
-                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Venue / Access Note</label>
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">{copy('Venue / access note', 'Eneo / maelezo ya ufikiaji')}</label>
                                                         <input
                                                             value={liveEventForm.live_event_venue}
                                                             onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_venue: e.target.value }))}
-                                                            placeholder="Physical location or extra access note"
+                                                            placeholder={copy('Physical location or extra access note', 'Eneo la tukio au maelezo ya ziada ya ufikiaji')}
                                                             className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
                                                         />
                                                     </div>
                                                     <div className="md:col-span-2 space-y-1">
-                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Replay Link</label>
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">{copy('Replay link', 'Kiungo cha kurudia')}</label>
                                                         <input
                                                             value={liveEventForm.live_event_replay_url}
                                                             onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_replay_url: e.target.value }))}
-                                                            placeholder="Add after event when replay is ready"
+                                                            placeholder={copy('Add after the event when the replay is ready', 'Ongeza baada ya tukio wakati replay iko tayari')}
                                                             className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
                                                         />
                                                     </div>
                                                     <div className="md:col-span-2 space-y-1">
-                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Buyer Instructions</label>
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">{copy('Buyer instructions', 'Maelekezo kwa mnunuzi')}</label>
                                                         <textarea
                                                             value={liveEventForm.live_event_instructions}
                                                             onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_instructions: e.target.value }))}
@@ -439,18 +441,18 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                                 <div className="flex justify-end">
                                                     <Button onClick={saveLiveEvent} disabled={liveEventSaving} className="rounded-xl bg-brand-600 hover:bg-brand-700 text-white">
                                                         {liveEventSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                                                        Save Event Details
+                                                        {copy('Save event details', 'Hifadhi taarifa za tukio')}
                                                     </Button>
                                                 </div>
                                             </div>
 
                                             <div className="rounded-xl border border-slate-200 overflow-hidden">
                                                 <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
-                                                    <p className="text-sm font-black">Attendees</p>
+                                                    <p className="text-sm font-black">{copy('Attendees', 'Washiriki')}</p>
                                                     <span className="text-xs text-muted-foreground">{Number(liveEventDashboard?.attendees?.length || 0).toLocaleString()} orders</span>
                                                 </div>
                                                 {(liveEventDashboard?.attendees || []).length === 0 ? (
-                                                    <p className="p-4 text-sm text-muted-foreground">No paid attendees yet.</p>
+                                                    <p className="p-4 text-sm text-muted-foreground">{copy('No paid attendees yet.', 'Hakuna waliohudhuria waliolipa bado.')}</p>
                                                 ) : (
                                                     <div className="divide-y divide-slate-100">
                                                         {liveEventDashboard.attendees.map((attendee) => (
@@ -496,7 +498,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
 
                         <Card>
                             <CardContent className="p-4 space-y-3">
-                                <p className="text-sm font-bold">Product Info</p>
+                                <p className="text-sm font-bold">{copy('Product info', 'Taarifa za bidhaa')}</p>
                                 {productInfoRows.length > 0 ? (
                                     <div className="grid sm:grid-cols-2 gap-2 text-sm">
                                         {productInfoRows.map((row) => (
@@ -507,11 +509,11 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                         ))}
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-muted-foreground">Hakuna taarifa za ziada zilizoingizwa kwa bidhaa hii.</p>
+                                    <p className="text-sm text-muted-foreground">{copy('No additional information has been entered for this product.', 'Hakuna taarifa za ziada zilizoingizwa kwa bidhaa hii.')}</p>
                                 )}
                                 {attributeChips.length > 0 && (
                                     <div className="space-y-2">
-                                        <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Entered Attributes</p>
+                                        <p className="text-xs font-bold uppercase tracking-wide text-slate-600">{copy('Entered attributes', 'Sifa zilizoingizwa')}</p>
                                         <div className="flex flex-wrap gap-2">
                                             {attributeChips.map((chip) => (
                                                 <span key={chip.key} className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-xs">
@@ -528,7 +530,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
                             <Card>
                                 <CardContent className="p-4 space-y-3">
                                     <div className="flex items-center justify-between">
-                                        <p className="text-sm font-bold">Stock per Location</p>
+                                <p className="text-sm font-bold">{copy('Stock per location', 'Stock kwa eneo')}</p>
                                         <MapPin className="h-4 w-4 text-slate-400" />
                                     </div>
                                     <div className="divide-y divide-slate-100">
@@ -550,9 +552,9 @@ export default function ProductDetails({ merchantUsername, productId }) {
 
                         <Card>
                             <CardContent className="p-4 space-y-3">
-                                <p className="text-sm font-bold">Media & Hotspots</p>
+                                <p className="text-sm font-bold">{copy('Media & hotspots', 'Media na hotspots')}</p>
                                 {images.length === 0 ? (
-                                    <p className="text-sm text-muted-foreground">Hakuna media zilizowekwa.</p>
+                                    <p className="text-sm text-muted-foreground">{copy('No media have been added.', 'Hakuna media zilizowekwa.')}</p>
                                 ) : (
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                         {images.map((img, idx) => (
@@ -637,10 +639,10 @@ export default function ProductDetails({ merchantUsername, productId }) {
             <Dialog open={imageModalOpen} onOpenChange={setImageModalOpen}>
                 <DialogContent className="sm:max-w-3xl">
                     <DialogHeader>
-                        <DialogTitle>Picha & Hotspots</DialogTitle>
+                        <DialogTitle>{copy('Image & hotspots', 'Picha na hotspots')}</DialogTitle>
                     </DialogHeader>
                     {!activeImage ? (
-                        <p className="text-sm text-muted-foreground">Picha haijapatikana.</p>
+                        <p className="text-sm text-muted-foreground">{copy('Image not found.', 'Picha haijapatikana.')}</p>
                     ) : (
                         <div className="space-y-3">
                             <div className="relative overflow-hidden rounded-xl border border-slate-200">
@@ -687,12 +689,12 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                     ))}
                                 </div>
                             ) : (
-                                <p className="text-sm text-muted-foreground">Hakuna hotspots kwenye picha hii.</p>
+                                <p className="text-sm text-muted-foreground">{copy('No hotspots on this image.', 'Hakuna hotspots kwenye picha hii.')}</p>
                             )}
 
                             {activeHotspot && (
                                 <div className="rounded-xl border border-slate-200 p-3 space-y-1">
-                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Hotspot Detail</p>
+                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-600">{copy('Hotspot detail', 'Maelezo ya hotspot')}</p>
                                     <p className="text-sm flex items-center gap-1 text-slate-700 capitalize">
                                         {activeHotspot.type === 'link' ? <LinkIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                                         {activeHotspot.type}
@@ -709,11 +711,21 @@ export default function ProductDetails({ merchantUsername, productId }) {
 }
 
 function StatCard({ icon: Icon, label, value }) {
+    const { copy } = useLocale();
+    const translations = {
+        Views: 'Mionekano',
+        Purchases: 'Manunuzi',
+        'Available Stock': 'Stock inayopatikana',
+        Registered: 'Waliosajiliwa',
+        'Checked In': 'Walioingia',
+        Remaining: 'Iliyobaki',
+        Revenue: 'Mapato',
+    };
     return (
         <div className="rounded-xl border border-slate-200 p-3 bg-slate-50">
             <div className="flex items-center gap-1 text-slate-500 text-xs font-semibold">
                 <Icon className="h-3.5 w-3.5" />
-                <span>{label}</span>
+                <span>{copy(label, translations[label] || label)}</span>
             </div>
             <p className="mt-1 text-base font-black text-slate-900">{value}</p>
         </div>

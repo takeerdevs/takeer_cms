@@ -6,6 +6,7 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { CheckCircle2, Cpu, Eye, EyeOff, Key, Save, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const OPENROUTER_MODELS = [
     { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Google) - Fast and cost-efficient' },
@@ -24,6 +25,7 @@ const GEMINI_MODELS = [
 const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
 
 export default function AiSettings() {
+    const { t, copy } = useLocale();
     const [settings, setSettings] = useState({
         ai_provider: 'openrouter',
         openrouter_api_key: '',
@@ -42,7 +44,7 @@ export default function AiSettings() {
         fetch('/admin/api/settings', { headers: { Accept: 'application/json' } })
             .then(async (r) => {
                 const data = await r.json();
-                if (!r.ok) throw new Error(data.message || 'Failed to load AI settings.');
+                if (!r.ok) throw new Error(data.message || copy('Failed to load AI settings.', 'Imeshindikana kupakia mipangilio ya AI.'));
                 return data;
             })
             .then((data) => {
@@ -72,8 +74,8 @@ export default function AiSettings() {
                 }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to save AI settings.');
-            toast.success(data.message || 'AI settings saved');
+                if (!res.ok) throw new Error(data.message || copy('Failed to save AI settings.', 'Imeshindikana kuhifadhi mipangilio ya AI.'));
+            toast.success(data.message || copy('AI settings saved.', 'Mipangilio ya AI imehifadhiwa.'));
         } catch (err) {
             toast.error(err.message);
         } finally {
@@ -83,28 +85,28 @@ export default function AiSettings() {
 
     if (loading) {
         return (
-            <AdminLayout title="AI Settings">
-                <div className="flex h-64 items-center justify-center text-slate-500">Loading AI settings...</div>
+            <AdminLayout title={t('adminUi.aiSettings')}>
+                <div className="flex h-64 items-center justify-center text-slate-500">{copy('Loading AI settings...', 'Inapakia mipangilio ya AI...')}</div>
             </AdminLayout>
         );
     }
 
     return (
-        <AdminLayout title="AI Settings">
-            <Head title="AI Settings | Takeer" />
+        <AdminLayout title={t('adminUi.aiSettings')}>
+            <Head title={`${t('adminUi.aiSettings')} | Takeer`} />
 
             <div className="max-w-3xl space-y-8">
                 <div>
                     <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-                        <Settings2 className="h-6 w-6 text-brand-600" /> AI Settings
+                        <Settings2 className="h-6 w-6 text-brand-600" /> {t('adminUi.aiSettings')}
                     </h1>
-                    <p className="mt-1 text-sm text-slate-600">Configure provider selection, API keys, and default models.</p>
+                    <p className="mt-1 text-sm text-slate-600">{t('adminUi.aiDescription')}</p>
                 </div>
 
                 <Card className="border-slate-200 bg-white shadow-sm">
                     <CardContent className="space-y-4 p-6">
                         <h2 className="flex items-center gap-2 font-bold text-slate-900">
-                            <Cpu className="h-4 w-4 text-brand-600" /> Provider
+                            <Cpu className="h-4 w-4 text-brand-600" /> {copy('Provider', 'Provider')}
                         </h2>
                         <div className="grid grid-cols-2 gap-3">
                             {['openrouter', 'gemini'].map((provider) => (
@@ -192,7 +194,7 @@ function SecretInput({ label, placeholder, masked, value, visible, onToggle, onC
                     {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
             </div>
-            {masked && <p className="text-xs text-slate-500">Current key: <span className="font-mono">{masked}</span></p>}
+            {masked && <p className="text-xs text-slate-500">{copy('Current key', 'Key iliyopo')}: <span className="font-mono">{masked}</span></p>}
         </div>
     );
 }
@@ -200,7 +202,7 @@ function SecretInput({ label, placeholder, masked, value, visible, onToggle, onC
 function ModelSelect({ value, onChange, models }) {
     return (
         <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Default Model</label>
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Default model', 'Model ya msingi')}</label>
             <select className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" value={value} onChange={(e) => onChange(e.target.value)}>
                 {models.map((model) => (
                     <option key={model.value} value={model.value}>{model.label}</option>

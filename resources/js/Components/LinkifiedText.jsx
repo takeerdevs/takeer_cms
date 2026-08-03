@@ -1,5 +1,6 @@
 import React from 'react';
 import { trackPlatformEvent } from '@/lib/attribution';
+import { useLocale } from '@/lib/i18n';
 
 const URL_PATTERN = /\b((?:https?:\/\/|www\.)[^\s<]+)/gi;
 const URL_START_PATTERN = /^(?:https?:\/\/|www\.)/i;
@@ -46,10 +47,16 @@ export default function LinkifiedText({
     stopPropagationOnLinkClick = false,
     analyticsContext = {},
     disabledUrls = [],
-    disabledLinkMessage = 'This link is unavailable while Takeer reviews a safety issue.',
+    disabledLinkMessage = null,
 }) {
+    const { copy } = useLocale();
     const normalizedText = String(text || '');
     if (!normalizedText) return null;
+
+    const resolvedDisabledLinkMessage = disabledLinkMessage || copy(
+        'This link is unavailable while Takeer reviews a safety issue.',
+        'Kiungo hiki hakipatikani wakati Takeer inakagua suala la usalama.',
+    );
 
     const disabledUrlSet = new Set(
         (disabledUrls || [])
@@ -78,7 +85,7 @@ export default function LinkifiedText({
                                         key={`url-${lineIndex}-${index}`}
                                         aria-disabled="true"
                                         className={`${linkClassName || 'underline underline-offset-2 break-all'} cursor-not-allowed decoration-dotted opacity-70`}
-                                        title={disabledLinkMessage}
+                                        title={resolvedDisabledLinkMessage}
                                         onClick={(event) => {
                                             event.preventDefault();
                                             if (stopPropagationOnLinkClick) {

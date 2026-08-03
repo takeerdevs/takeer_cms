@@ -8,6 +8,7 @@ import { Textarea } from '@/Components/ui/Textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/Components/ui/Dialog';
 import { Check, Pencil, Plus, Ruler, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 import axios from 'axios';
 
 const emptyUnit = {
@@ -26,6 +27,7 @@ const emptyUnit = {
 const categories = ['count', 'weight', 'volume', 'length', 'area', 'package'];
 
 export default function SellableUnits() {
+    const { copy } = useLocale();
     const [unitTypes, setUnitTypes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [unitForm, setUnitForm] = useState(emptyUnit);
@@ -41,7 +43,7 @@ export default function SellableUnits() {
             const res = await axios.get('/admin/api/catalog/unit-types');
             setUnitTypes(res.data?.data || []);
         } catch {
-            toast.error('Failed to load unit types.');
+            toast.error(copy('Failed to load unit types.', 'Imeshindikana kupakia aina za vipimo.'));
         } finally {
             setLoading(false);
         }
@@ -72,16 +74,16 @@ export default function SellableUnits() {
 
     const createUnitType = async () => {
         if (!unitForm.name.trim() || !unitForm.code.trim()) {
-            toast.error('Unit name and code are required.');
+            toast.error(copy('Unit name and code are required.', 'Jina na msimbo wa kipimo vinahitajika.'));
             return;
         }
         try {
             await axios.post('/admin/api/catalog/unit-types', unitPayload(unitForm));
             setUnitForm(emptyUnit);
-            toast.success('Unit type created.');
+            toast.success(copy('Unit type created.', 'Aina ya kipimo imeundwa.'));
             await loadUnits();
         } catch (error) {
-            toast.error(error.response?.data?.message || error.message || 'Failed to create unit type.');
+            toast.error(error.response?.data?.message || error.message || copy('Failed to create unit type.', 'Imeshindikana kuunda aina ya kipimo.'));
         }
     };
 
@@ -107,21 +109,21 @@ export default function SellableUnits() {
         try {
             await axios.put(`/admin/api/catalog/unit-types/${editingUnit.id}`, unitPayload(editingUnit));
             setEditingUnit(null);
-            toast.success('Unit type updated.');
+            toast.success(copy('Unit type updated.', 'Aina ya kipimo imesasishwa.'));
             await loadUnits();
         } catch (error) {
-            toast.error(error.response?.data?.message || error.message || 'Failed to update unit type.');
+            toast.error(error.response?.data?.message || error.message || copy('Failed to update unit type.', 'Imeshindikana kusasisha aina ya kipimo.'));
         }
     };
 
     const deleteUnitType = async (unitId) => {
-        if (!window.confirm('Delete this unit type?')) return;
+        if (!window.confirm(copy('Delete this unit type?', 'Futa aina hii ya kipimo?'))) return;
         try {
             await axios.delete(`/admin/api/catalog/unit-types/${unitId}`);
-            toast.success('Unit type deleted.');
+            toast.success(copy('Unit type deleted.', 'Aina ya kipimo imefutwa.'));
             await loadUnits();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to delete unit type.');
+            toast.error(error.response?.data?.message || copy('Failed to delete unit type.', 'Imeshindikana kufuta aina ya kipimo.'));
         }
     };
 
@@ -133,39 +135,39 @@ export default function SellableUnits() {
     }, {});
 
     return (
-        <AdminLayout title="Sellable Unit Library">
-            <Head title="Sellable Unit Library | Takeer" />
+        <AdminLayout title={copy('Sellable Unit Library', 'Maktaba ya Vipimo vya Uuzaji')}>
+            <Head title={`${copy('Sellable Unit Library', 'Maktaba ya Vipimo vya Uuzaji')} | Takeer`} />
 
             <div className="space-y-6">
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                        <Ruler className="h-6 w-6 text-brand-700" /> Sellable Unit Library
+                        <Ruler className="h-6 w-6 text-brand-700" /> {copy('Sellable Unit Library', 'Maktaba ya vipimo vya uuzaji')}
                     </h1>
-                    <p className="text-slate-600 mt-1 text-sm">Manage reusable selling units and fractional quantity presets for global commerce.</p>
+                    <p className="text-slate-600 mt-1 text-sm">{copy('Manage reusable selling units and fractional quantity presets for global commerce.', 'Simamia vipimo vya uuzaji na kiasi cha sehemu kwa biashara ya jukwaa zima.')}</p>
                 </div>
 
                 <Card className="bg-white border-slate-200 p-4 space-y-3">
-                    <p className="font-bold text-slate-900">Create Unit</p>
+                    <p className="font-bold text-slate-900">{copy('Create Unit', 'Unda Kipimo')}</p>
                     <UnitFields unit={unitForm} setUnit={setUnitForm} />
                     <Button className="bg-brand-600 hover:bg-brand-700 text-white" onClick={createUnitType}>
-                        <Plus className="h-4 w-4 mr-1" /> Create Unit
+                        <Plus className="h-4 w-4 mr-1" /> {copy('Create Unit', 'Unda kipimo')}
                     </Button>
                 </Card>
 
                 {loading ? (
-                    <Card className="bg-white border-slate-200 p-10 text-center text-slate-500">Loading units...</Card>
+                    <Card className="bg-white border-slate-200 p-10 text-center text-slate-500">{copy('Loading units...', 'Inapakia vipimo...')}</Card>
                 ) : (
                     <div className="space-y-4">
                         {Object.entries(grouped).map(([category, items]) => (
                             <Card key={category} className="bg-white border-slate-200 p-4 space-y-3">
-                                <p className="font-black uppercase tracking-wider text-xs text-slate-600">{category}</p>
+                                <p className="font-black uppercase tracking-wider text-xs text-slate-600">{category === 'count' ? copy('Count', 'Idadi') : category === 'weight' ? copy('Weight', 'Uzito') : category === 'volume' ? copy('Volume', 'Ujazo') : category === 'length' ? copy('Length', 'Urefu') : category === 'area' ? copy('Area', 'Eneo') : category === 'package' ? copy('Package', 'Kifurushi') : category}</p>
                                 <div className="grid md:grid-cols-2 gap-3">
                                     {items.map((unit) => (
                                         <div key={unit.id} className="rounded-lg border border-slate-200 p-3 flex items-start justify-between gap-3">
                                             <div>
                                                 <p className="text-sm font-bold text-slate-900">{unit.name} <span className="text-slate-500 font-medium">({unit.code})</span></p>
-                                                <p className="text-xs text-slate-500">{unit.symbol || unit.code} · base {unit.base_unit_code || unit.code} · factor {unit.conversion_factor_to_base}</p>
-                                                <p className="text-xs text-slate-500">{unit.allows_decimal ? 'Decimal/fractional allowed' : 'Whole quantities only'} · {(unit.common_quantities || []).length} quick amounts · {unit.is_active === false ? 'inactive' : 'active'}</p>
+                                                <p className="text-xs text-slate-500">{unit.symbol || unit.code} · {copy('base', 'msingi')} {unit.base_unit_code || unit.code} · {copy('factor', 'kigezo')} {unit.conversion_factor_to_base}</p>
+                                                <p className="text-xs text-slate-500">{unit.allows_decimal ? copy('Decimal/fractional allowed', 'Desimali/sehemu zinaruhusiwa') : copy('Whole quantities only', 'Idadi kamili tu')} · {(unit.common_quantities || []).length} {copy('quick amounts', 'kiasi vya haraka')} · {unit.is_active === false ? copy('inactive', 'si hai') : copy('active', 'hai')}</p>
                                             </div>
                                             <div className="flex gap-2">
                                                 <Button variant="outline" onClick={() => openEditUnit(unit)}>
@@ -187,12 +189,12 @@ export default function SellableUnits() {
             <Dialog open={!!editingUnit} onOpenChange={(open) => { if (!open) setEditingUnit(null); }}>
                 <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Edit Unit Type</DialogTitle>
-                        <DialogDescription>Update unit math, labels, and quick quantity presets.</DialogDescription>
+                        <DialogTitle>{copy('Edit Unit Type', 'Hariri Aina ya Kipimo')}</DialogTitle>
+                        <DialogDescription>{copy('Update unit math, labels, and quick quantity presets.', 'Sasisha hesabu, lebo na kiasi cha haraka cha kipimo.')}</DialogDescription>
                     </DialogHeader>
                     {editingUnit && <UnitFields unit={editingUnit} setUnit={setEditingUnit} />}
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditingUnit(null)}>Cancel</Button>
+                        <Button variant="outline" onClick={() => setEditingUnit(null)}>{copy('Cancel', 'Ghairi')}</Button>
                         <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={saveUnit}>
                             <Check className="h-4 w-4 mr-1" /> Save Unit
                         </Button>
@@ -204,31 +206,32 @@ export default function SellableUnits() {
 }
 
 function UnitFields({ unit, setUnit }) {
+    const { copy } = useLocale();
     return (
         <div className="space-y-3">
             <div className="grid md:grid-cols-4 gap-2">
-                <Input value={unit.name} onChange={(e) => setUnit((p) => ({ ...p, name: e.target.value }))} placeholder="Name e.g Kilogram" />
-                <Input value={unit.code} onChange={(e) => setUnit((p) => ({ ...p, code: e.target.value }))} placeholder="Code e.g kg" />
-                <Input value={unit.symbol} onChange={(e) => setUnit((p) => ({ ...p, symbol: e.target.value }))} placeholder="Symbol" />
+                <Input value={unit.name} onChange={(e) => setUnit((p) => ({ ...p, name: e.target.value }))} placeholder={copy('Name e.g Kilogram', 'Jina mfano Kilogramu')} />
+                <Input value={unit.code} onChange={(e) => setUnit((p) => ({ ...p, code: e.target.value }))} placeholder={copy('Code e.g kg', 'Msimbo mfano kg')} />
+                <Input value={unit.symbol} onChange={(e) => setUnit((p) => ({ ...p, symbol: e.target.value }))} placeholder={copy('Symbol', 'Alama')} />
                 <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={unit.unit_category} onChange={(e) => setUnit((p) => ({ ...p, unit_category: e.target.value }))}>
                     {categories.map((category) => <option key={category} value={category}>{category}</option>)}
                 </select>
-                <Input value={unit.base_unit_code} onChange={(e) => setUnit((p) => ({ ...p, base_unit_code: e.target.value }))} placeholder="Base e.g g/ml" />
-                <Input type="number" min="0" step="0.000001" value={unit.conversion_factor_to_base} onChange={(e) => setUnit((p) => ({ ...p, conversion_factor_to_base: e.target.value }))} placeholder="Factor to base" />
-                <Input type="number" min="0" value={unit.sort_order} onChange={(e) => setUnit((p) => ({ ...p, sort_order: e.target.value }))} placeholder="Sort order" />
+                <Input value={unit.base_unit_code} onChange={(e) => setUnit((p) => ({ ...p, base_unit_code: e.target.value }))} placeholder={copy('Base e.g g/ml', 'Msingi mfano g/ml')} />
+                <Input type="number" min="0" step="0.000001" value={unit.conversion_factor_to_base} onChange={(e) => setUnit((p) => ({ ...p, conversion_factor_to_base: e.target.value }))} placeholder={copy('Factor to base', 'Kigezo kwa msingi')} />
+                <Input type="number" min="0" value={unit.sort_order} onChange={(e) => setUnit((p) => ({ ...p, sort_order: e.target.value }))} placeholder={copy('Sort order', 'Mpangilio')} />
                 <div className="flex gap-2">
                     <label className="h-10 rounded-md border border-slate-300 bg-white px-3 text-xs flex items-center gap-2">
                         <input type="checkbox" checked={!!unit.allows_decimal} onChange={(e) => setUnit((p) => ({ ...p, allows_decimal: e.target.checked }))} />
-                        Decimal
+                        {copy('Decimal', 'Desimali')}
                     </label>
                     <label className="h-10 rounded-md border border-slate-300 bg-white px-3 text-xs flex items-center gap-2">
                         <input type="checkbox" checked={!!unit.is_active} onChange={(e) => setUnit((p) => ({ ...p, is_active: e.target.checked }))} />
-                        Active
+                        {copy('Active', 'Hai')}
                     </label>
                 </div>
             </div>
             <div className="space-y-1">
-                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Common quantities JSON</p>
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">{copy('Common quantities JSON', 'JSON ya kiasi cha kawaida')}</p>
                 <Textarea
                     className="font-mono text-xs min-h-32"
                     value={unit.common_quantities_json}

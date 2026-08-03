@@ -86,6 +86,7 @@ class CheckoutRequest extends FormRequest
             'pickup_requested_start_at' => 'nullable|date',
             'pickup_requested_end_at' => 'nullable|date|after:pickup_requested_start_at',
             'idempotency_key' => 'required|string|max:255',
+            'accept_terms' => ['required', 'accepted'],
             'payment_page_id' => 'nullable|integer|exists:payment_pages,id',
             'coupon_code' => 'nullable|string|max:64',
             'referral_code' => 'nullable|string|max:80',

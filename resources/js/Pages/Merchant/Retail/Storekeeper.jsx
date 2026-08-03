@@ -6,8 +6,10 @@ import { Button } from '@/Components/ui/Button';
 import { Package, Truck, Clock3, ArrowRightLeft, MapPin, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { productQuantityLabel, productStockLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 export default function Storekeeper({ merchant }) {
+    const { copy } = useLocale();
     const [hasTerminalSession, setHasTerminalSession] = useState(false);
     const [checkedTerminalSession, setCheckedTerminalSession] = useState(false);
     const [transfers, setTransfers] = useState([]);
@@ -30,7 +32,7 @@ export default function Storekeeper({ merchant }) {
             const res = await window.axios.get('/api/retail/transfers');
             setTransfers(res.data?.data || []);
         } catch (err) {
-            toast.error('Imeshindwa kupakia transfer tasks.');
+            toast.error(copy('Unable to load transfer tasks.', 'Imeshindikana kupakia kazi za uhamishaji.'));
         } finally {
             setLoading(false);
         }
@@ -91,10 +93,10 @@ export default function Storekeeper({ merchant }) {
     const act = async (id, action) => {
         try {
             await window.axios.patch(`/api/retail/transfers/${id}/${action}`, {});
-            toast.success(action === 'dispatch' ? 'Bidhaa zimetoka store.' : 'Bidhaa zimepokelewa.');
+            toast.success(action === 'dispatch' ? copy('Products dispatched.', 'Bidhaa zimetumwa.') : copy('Products received.', 'Bidhaa zimepokelewa.'));
             loadTransfers();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindwa kufanya hatua hii.');
+            toast.error(err.response?.data?.message || copy('Unable to complete this action.', 'Imeshindikana kukamilisha hatua hii.'));
         }
     };
 
@@ -119,47 +121,47 @@ export default function Storekeeper({ merchant }) {
                     <div className="min-w-0 flex items-start gap-3">
                         <button
                             type="button"
-                            onClick={() => t.product?.image_url ? setPreviewImage({ url: t.product.image_url, title: t.product?.title || 'Product' }) : null}
+                            onClick={() => t.product?.image_url ? setPreviewImage({ url: t.product.image_url, title: t.product?.title || copy('Product', 'Bidhaa') }) : null}
                             className="h-12 w-12 rounded-xl border border-brand-100 bg-white overflow-hidden shrink-0 flex items-center justify-center"
                         >
                             {t.product?.image_url ? (
-                                <img src={t.product.image_url} alt={t.product?.title || 'Product'} className="h-full w-full object-cover" />
+                                <img src={t.product.image_url} alt={t.product?.title || copy('Product', 'Bidhaa')} className="h-full w-full object-cover" />
                             ) : (
                                 <Package className="h-5 w-5 text-brand-300" />
                             )}
                         </button>
                         <div className="min-w-0">
-                            <p className="font-black text-sm truncate">{t.product?.title || 'Product'}</p>
+                            <p className="font-black text-sm truncate">{t.product?.title || copy('Product', 'Bidhaa')}</p>
                             {label && (
                                 <p className="mt-0.5 inline-flex max-w-full rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-brand-700 truncate">
                                     {label}
                                 </p>
                             )}
-                            <p className="text-xs text-muted-foreground">Qty: {productQuantityLabel(t.product, quantity)}</p>
-                            <p className="text-xs text-slate-500">Available: {productStockLabel(t.product, Number(t.available_source_quantity ?? 0))}</p>
+                            <p className="text-xs text-muted-foreground">{copy('Qty', 'Idadi')}: {productQuantityLabel(t.product, quantity)}</p>
+                            <p className="text-xs text-slate-500">{copy('Available', 'Iliyopo')}: {productStockLabel(t.product, Number(t.available_source_quantity ?? 0))}</p>
                         </div>
                     </div>
                     <span className="text-[10px] font-black px-2 py-1 rounded-full bg-slate-100">{t.status}</span>
                 </div>
 
                 <div className="text-xs text-muted-foreground space-y-1">
-                    <p className="flex items-center gap-1"><MapPin className="h-3 w-3" /> From: {t.from_location?.name}</p>
-                    <p className="flex items-center gap-1"><MapPin className="h-3 w-3" /> To: {t.to_location?.name}</p>
+                    <p className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {copy('From', 'Kutoka')}: {t.from_location?.name}</p>
+                    <p className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {copy('To', 'Kwenda')}: {t.to_location?.name}</p>
                 </div>
 
                 <div className="flex gap-2">
                     {canDispatch(t) && (
                         <Button size="sm" className="h-9 rounded-xl bg-brand-600 text-white font-bold" onClick={() => act(t.id, 'dispatch')}>
-                            <Truck className="h-4 w-4 mr-1" /> Dispatch
+                            <Truck className="h-4 w-4 mr-1" /> {copy('Dispatch', 'Tuma')}
                         </Button>
                     )}
                     {canReceive(t) && (
                         <Button size="sm" className="h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold" onClick={() => act(t.id, 'receive')}>
-                            <CheckCircle2 className="h-4 w-4 mr-1" /> Confirm Receipt
+                            <CheckCircle2 className="h-4 w-4 mr-1" /> {copy('Confirm receipt', 'Thibitisha kupokea')}
                         </Button>
                     )}
                     {!canDispatch(t) && !canReceive(t) && (
-                        <p className="text-[10px] font-bold text-muted-foreground">Waiting for the other location to verify.</p>
+                        <p className="text-[10px] font-bold text-muted-foreground">{copy('Waiting for the other location to verify.', 'Inasubiri eneo jingine lithibitishe.')}</p>
                     )}
                 </div>
             </CardContent>
@@ -170,55 +172,55 @@ export default function Storekeeper({ merchant }) {
     if (!checkedTerminalSession || !hasTerminalSession) {
         return (
             <AppLayout>
-                <Head title="Storekeeper | Takeer" />
+                <Head title={`${copy('Storekeeper', 'Mhifadhi stoo')} | Takeer`} />
             </AppLayout>
         );
     }
 
     return (
         <AppLayout>
-            <Head title="Storekeeper | Takeer" />
+            <Head title={`${copy('Storekeeper', 'Mhifadhi stoo')} | Takeer`} />
             <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-6 pb-24">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-black flex items-center gap-2">Storekeeper Tasks <Package className="h-6 w-6 text-brand-600" /></h1>
-                        <p className="text-sm text-muted-foreground">Manage transfer requests for your assigned location.</p>
+                        <h1 className="text-2xl font-black flex items-center gap-2">{copy('Storekeeper tasks', 'Kazi za mhifadhi stoo')} <Package className="h-6 w-6 text-brand-600" /></h1>
+                        <p className="text-sm text-muted-foreground">{copy('Manage transfer requests for your assigned location.', 'Simamia maombi ya uhamishaji kwa eneo ulilopangiwa.')}</p>
                         {activeStaff && (
                             <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
                                 <span className="px-2 py-1 rounded-full bg-brand-100 text-brand-700 font-black uppercase">{activeStaff.role || 'STOREKEEPER'}</span>
-                                <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 font-bold">{activeStaff.user?.name || activeStaff.name || 'Staff'}</span>
-                                <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-bold">{staffSessionLocation?.name || activeStaff.location?.name || 'No assigned location'}</span>
+                                <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 font-bold">{activeStaff.user?.name || activeStaff.name || copy('Staff', 'Mhudumu')}</span>
+                                <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-bold">{staffSessionLocation?.name || activeStaff.location?.name || copy('No assigned location', 'Hakuna eneo lililopangiwa')}</span>
                             </div>
                         )}
                     </div>
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={() => router.visit(`/merchant/${merchant.username}/retail/inventory`)}>
-                            Inventory
+                            {copy('Inventory', 'Hesabu ya bidhaa')}
                         </Button>
                         <Button variant="outline" onClick={() => router.visit(`/merchant/${merchant.username}/retail/pos`)}>
                             POS
                         </Button>
                         <Button variant="outline" className="text-red-700 border-red-200" onClick={handleStaffLogout}>
-                            Logout
+                            {copy('Log out', 'Toka')}
                         </Button>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card className="rounded-2xl"><CardContent className="p-4"><p className="text-xs text-muted-foreground">Pending Dispatch</p><p className="text-2xl font-black">{grouped.pending.length}</p></CardContent></Card>
-                    <Card className="rounded-2xl"><CardContent className="p-4"><p className="text-xs text-muted-foreground">In Transit</p><p className="text-2xl font-black">{grouped.dispatched.length}</p></CardContent></Card>
-                    <Card className="rounded-2xl"><CardContent className="p-4"><p className="text-xs text-muted-foreground">Completed</p><p className="text-2xl font-black">{grouped.received.length}</p></CardContent></Card>
+                    <Card className="rounded-2xl"><CardContent className="p-4"><p className="text-xs text-muted-foreground">{copy('Pending dispatch', 'Zinasubiri kutumwa')}</p><p className="text-2xl font-black">{grouped.pending.length}</p></CardContent></Card>
+                    <Card className="rounded-2xl"><CardContent className="p-4"><p className="text-xs text-muted-foreground">{copy('In transit', 'Ziko njiani')}</p><p className="text-2xl font-black">{grouped.dispatched.length}</p></CardContent></Card>
+                    <Card className="rounded-2xl"><CardContent className="p-4"><p className="text-xs text-muted-foreground">{copy('Completed', 'Imekamilika')}</p><p className="text-2xl font-black">{grouped.received.length}</p></CardContent></Card>
                 </div>
 
                 <Card className="rounded-2xl border-brand-100/60">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2"><ArrowRightLeft className="h-4 w-4" /> Open Transfer Tasks</CardTitle>
+                        <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2"><ArrowRightLeft className="h-4 w-4" /> {copy('Open transfer tasks', 'Kazi za uhamishaji zilizo wazi')}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                         {loading ? (
-                            <div className="text-sm text-muted-foreground flex items-center gap-2"><Clock3 className="h-4 w-4 animate-pulse" /> Loading...</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-2"><Clock3 className="h-4 w-4 animate-pulse" /> {copy('Loading...', 'Inapakia...')}</div>
                         ) : transfers.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No transfer tasks right now.</p>
+                            <p className="text-sm text-muted-foreground">{copy('No transfer tasks right now.', 'Hakuna kazi za uhamishaji kwa sasa.')}</p>
                         ) : (
                             transfers.filter((t) => t.status === 'PENDING' || t.status === 'DISPATCHED').map((t) => <TransferCard key={t.id} t={t} />)
                         )}
@@ -231,7 +233,7 @@ export default function Storekeeper({ merchant }) {
                     <div className="max-w-3xl w-full bg-white rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between px-4 py-3 border-b">
                             <p className="font-bold text-sm truncate pr-3">{previewImage.title}</p>
-                            <Button variant="ghost" size="sm" onClick={() => setPreviewImage(null)}>Close</Button>
+                            <Button variant="ghost" size="sm" onClick={() => setPreviewImage(null)}>{copy('Close', 'Funga')}</Button>
                         </div>
                         <div className="bg-slate-50">
                             <img src={previewImage.url} alt={previewImage.title} className="w-full max-h-[75vh] object-contain" />

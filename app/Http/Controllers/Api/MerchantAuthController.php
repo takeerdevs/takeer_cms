@@ -8,7 +8,6 @@ use App\Http\Resources\UserResource;
 use App\Models\Merchant;
 use App\Models\Country;
 use App\Models\User;
-use App\Models\Wallet;
 use App\Services\PhoneService;
 use App\Support\BusinessOperationRegistry;
 use Illuminate\Http\JsonResponse;
@@ -90,11 +89,6 @@ class MerchantAuthController extends Controller
             ]);
         }
 
-        // Ensure wallet exists
-        if (!$user->wallet) {
-            Wallet::create(['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]);
-        }
-
         // Ensure merchant profile exists
         $merchant = Merchant::where('user_id', $user->id)->first();
 
@@ -147,11 +141,6 @@ class MerchantAuthController extends Controller
                 'timezone' => $timezone,
             ]);
         }
-
-        $merchant->wallet()->firstOrCreate(
-            ['merchant_id' => $merchant->id],
-            ['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]
-        );
 
 
         // Revoke old tokens
@@ -221,10 +210,6 @@ class MerchantAuthController extends Controller
             $user->save();
         }
 
-        if (! $user->wallet) {
-            Wallet::create(['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]);
-        }
-
         $merchant = Merchant::where('user_id', $user->id)->where('type', 'personal')->first()
             ?? Merchant::where('user_id', $user->id)->first();
 
@@ -259,11 +244,6 @@ class MerchantAuthController extends Controller
                 'kyc_status' => 'unverified',
             ]);
         }
-
-        $merchant->wallet()->firstOrCreate(
-            ['merchant_id' => $merchant->id],
-            ['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]
-        );
 
         session(['active_merchant_id' => $merchant->id]);
 
@@ -335,11 +315,6 @@ class MerchantAuthController extends Controller
             ],
             'active_modules' => [],
         ]);
-
-        $merchant->wallet()->firstOrCreate(
-            ['merchant_id' => $merchant->id],
-            ['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]
-        );
 
         // Switch to the new profile
         session(['active_merchant_id' => $merchant->id]);

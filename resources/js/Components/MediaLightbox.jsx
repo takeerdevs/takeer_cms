@@ -4,6 +4,7 @@ import { X, Heart, MessageCircle, MapPin, Link as LinkIcon, Edit3, ShoppingBag }
 import { Button } from '@/Components/ui/Button';
 import { Card, CardContent } from '@/Components/ui/Card';
 import VideoPlayer, { resolvePlayableVideoUrl } from '@/Components/VideoPlayer';
+import { useLocale } from '@/lib/i18n';
 
 const isVideo = (item) => {
     const url = typeof item === 'string' ? item : item?.url ?? '';
@@ -50,6 +51,7 @@ function LightboxVideoPlayer({ item }) {
  * All media items are stacked vertically. Scrolls to clicked item on open.
  */
 export default function MediaLightbox({ post, items = [], startIndex = 0, isOpen, onClose }) {
+    const { copy } = useLocale();
     const scrollRef = useRef(null);
     const itemRefs = useRef([]);
     const [activeHotspot, setActiveHotspot] = useState(null);
@@ -88,7 +90,7 @@ export default function MediaLightbox({ post, items = [], startIndex = 0, isOpen
                             <X className="h-6 w-6 text-white" />
                         </button>
                         <div className="flex-1 text-center">
-                            <span className="text-white text-sm font-bold uppercase tracking-widest">Picha & Video</span>
+                            <span className="text-white text-sm font-bold uppercase tracking-widest">{copy('Photos & Video', 'Picha & Video')}</span>
                         </div>
                         <div className="w-10" />
                     </div>
@@ -150,7 +152,7 @@ export default function MediaLightbox({ post, items = [], startIndex = 0, isOpen
                                             <button
                                                 onClick={() => {
                                                     // Open chat interaction here
-                                                    alert("Hii itafungua chat na " + (post?.merchant_profile?.display_name || "muuzaji") + " kuuliza kuhusu picha hii.");
+                                                    alert(copy('This will open a chat with ', 'Hii itafungua chat na ') + (post?.merchant_profile?.display_name || copy('the seller', 'muuzaji')) + copy(' to ask about this photo.', ' kuuliza kuhusu picha hii.'));
                                                 }}
                                                 className="h-12 w-12 rounded-full bg-black/50 backdrop-blur border border-white/10 flex items-center justify-center text-white hover:bg-black/70 transition-all active:scale-95"
                                             >
@@ -218,14 +220,14 @@ export default function MediaLightbox({ post, items = [], startIndex = 0, isOpen
                                                             } else {
                                                                 window.__openCheckout?.({
                                                                     id: activeHotspot.product?.id || activeHotspot.data,
-                                                                    title: activeHotspot.product?.title || 'Product',
+                                                                    title: activeHotspot.product?.title || copy('Product', 'Bidhaa'),
                                                                     price: activeHotspot.product?.price || 0,
                                                                     checkoutType: 'product'
                                                                 });
                                                             }
                                                         }}
                                                     >
-                                                        {activeHotspot.product?.has_access ? 'Fungua' : 'Nunua Sasa'}
+                                                        {activeHotspot.product?.has_access ? copy('Open', 'Fungua') : copy('Buy now', 'Nunua sasa')}
                                                     </Button>
                                                 </div>
                                             </>
@@ -234,7 +236,7 @@ export default function MediaLightbox({ post, items = [], startIndex = 0, isOpen
                                             <div className="flex-1 min-w-0 py-2">
                                                 <div className="flex items-center gap-2 text-brand-600 font-bold mb-1">
                                                     <LinkIcon className="h-4 w-4" />
-                                                    <span className="truncate">{hotspotLinkDomain(activeHotspot.data) || 'Fungua kiungo'}</span>
+                                                    <span className="truncate">{hotspotLinkDomain(activeHotspot.data) || copy('Open link', 'Fungua kiungo')}</span>
                                                 </div>
                                                 <p className="text-xs text-muted-foreground line-clamp-1 break-all">
                                                     {activeHotspot.data}
@@ -245,7 +247,7 @@ export default function MediaLightbox({ post, items = [], startIndex = 0, isOpen
                                                     asChild
                                                 >
                                                     <a href={activeHotspot.data} target="_blank" rel="noreferrer">
-                                                        Fungua
+                                                        {copy('Open', 'Fungua')}
                                                     </a>
                                                 </Button>
                                             </div>

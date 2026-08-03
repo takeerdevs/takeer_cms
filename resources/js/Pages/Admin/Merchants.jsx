@@ -6,12 +6,14 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Store, Search, ShieldAlert, BadgeCheck, Power } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
 
 const kycOptions = ['unverified', 'pending', 'verified', 'rejected'];
 
 export default function AdminMerchants() {
+    const { copy } = useLocale();
     const [merchants, setMerchants] = useState([]);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
@@ -25,7 +27,7 @@ export default function AdminMerchants() {
         fetch(`/admin/api/merchants?page=${nextPage}&search=${encodeURIComponent(nextSearch)}&status=${encodeURIComponent(nextStatus)}`, { headers: { Accept: 'application/json' } })
             .then(async (r) => {
                 const data = await r.json();
-                if (!r.ok) throw new Error(data.message || 'Failed to load merchants.');
+                if (!r.ok) throw new Error(data.message || copy('Failed to load merchants.', 'Imeshindikana kupakia wauzaji.'));
                 return data;
             })
             .then(data => {
@@ -53,8 +55,8 @@ export default function AdminMerchants() {
                 body: JSON.stringify(payload),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to update merchant');
-            toast.success(data.message || 'Merchant updated');
+            if (!res.ok) throw new Error(data.message || copy('Failed to update merchant', 'Imeshindikana kusasisha muuzaji'));
+            toast.success(data.message || copy('Merchant updated', 'Muuzaji amesasishwa'));
             fetchMerchants(page);
         } catch (err) {
             toast.error(err.message);
@@ -64,15 +66,15 @@ export default function AdminMerchants() {
     };
 
     return (
-        <AdminLayout title="Merchants">
-            <Head title="Admin Merchants | Takeer" />
+        <AdminLayout title={copy('Merchants', 'Wauzaji')}>
+            <Head title={`${copy('Admin Merchants', 'Wauzaji wa Msimamizi')} | Takeer`} />
 
             <div className="space-y-6">
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                        <Store className="h-6 w-6 text-indigo-700" /> Merchant Control
+                        <Store className="h-6 w-6 text-indigo-700" /> {copy('Merchant Control', 'Udhibiti wa Wauzaji')}
                     </h1>
-                    <p className="text-slate-600 mt-1 text-sm">Manage merchant trust, verification, activity, and suspension controls.</p>
+                    <p className="text-slate-600 mt-1 text-sm">{copy('Manage merchant trust, verification, activity, and suspension controls.', 'Simamia uaminifu, uthibitishaji, shughuli na kusimamishwa kwa wauzaji.')}</p>
                 </div>
 
                 <div className="grid md:grid-cols-3 gap-3">
@@ -80,7 +82,7 @@ export default function AdminMerchants() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                         <Input
                             className="bg-white border-slate-300 text-slate-900 pl-9"
-                            placeholder="Search by merchant name or username..."
+                            placeholder={copy('Search by merchant name or username...', 'Tafuta kwa jina la muuzaji au jina la mtumiaji...')}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
@@ -90,35 +92,35 @@ export default function AdminMerchants() {
                         value={status}
                         onChange={(e) => setStatus(e.target.value)}
                     >
-                        <option value="all">All statuses</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                        <option value="suspended">Suspended</option>
-                        <option value="verified">Verified</option>
+                        <option value="all">{copy('All statuses', 'Hali zote')}</option>
+                        <option value="active">{copy('Active', 'Hai')}</option>
+                        <option value="inactive">{copy('Inactive', 'Haifanyi kazi')}</option>
+                        <option value="suspended">{copy('Suspended', 'Imesimamishwa')}</option>
+                        <option value="verified">{copy('Verified', 'Imethibitishwa')}</option>
                     </select>
                 </div>
                 <div className="flex justify-end">
-                    <Button variant="outline" onClick={() => fetchMerchants(1, search, status)}>Apply Filters</Button>
+                    <Button variant="outline" onClick={() => fetchMerchants(1, search, status)}>{copy('Apply Filters', 'Tumia Vichujio')}</Button>
                 </div>
 
                 <Card className="bg-white border-slate-200 shadow-sm overflow-x-auto">
                     <table className="w-full text-sm min-w-[1100px]">
                         <thead>
                             <tr className="border-b border-slate-200">
-                                <th className="p-4 text-left text-slate-500">Merchant</th>
-                                <th className="p-4 text-left text-slate-500">Owner</th>
-                                <th className="p-4 text-left text-slate-500">Catalog</th>
-                                <th className="p-4 text-left text-slate-500">KYC</th>
-                                <th className="p-4 text-center text-slate-500">Verified</th>
-                                <th className="p-4 text-center text-slate-500">Active</th>
-                                <th className="p-4 text-center text-slate-500">Suspended</th>
+                                <th className="p-4 text-left text-slate-500">{copy('Merchant', 'Muuzaji')}</th>
+                                <th className="p-4 text-left text-slate-500">{copy('Owner', 'Mmiliki')}</th>
+                                <th className="p-4 text-left text-slate-500">{copy('Catalog', 'Orodha')}</th>
+                                <th className="p-4 text-left text-slate-500">{copy('KYC', 'KYC')}</th>
+                                <th className="p-4 text-center text-slate-500">{copy('Verified', 'Imethibitishwa')}</th>
+                                <th className="p-4 text-center text-slate-500">{copy('Active', 'Hai')}</th>
+                                <th className="p-4 text-center text-slate-500">{copy('Suspended', 'Imesimamishwa')}</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={7} className="text-center py-12 text-slate-500">Loading merchants...</td></tr>
+                                <tr><td colSpan={7} className="text-center py-12 text-slate-500">{copy('Loading merchants...', 'Inapakia wauzaji...')}</td></tr>
                             ) : merchants.length === 0 ? (
-                                <tr><td colSpan={7} className="text-center py-12 text-slate-500">No merchants found.</td></tr>
+                                <tr><td colSpan={7} className="text-center py-12 text-slate-500">{copy('No merchants found.', 'Hakuna wauzaji waliopatikana.')}</td></tr>
                             ) : merchants.map((merchant) => (
                                 <tr
                                     key={merchant.id}
@@ -193,9 +195,9 @@ export default function AdminMerchants() {
                 </Card>
 
                 <div className="flex items-center justify-end gap-2">
-                    <Button variant="outline" disabled={page <= 1} onClick={() => fetchMerchants(page - 1, search, status)}>Prev</Button>
-                    <span className="text-sm text-slate-700">Page {page} / {lastPage}</span>
-                    <Button variant="outline" disabled={page >= lastPage} onClick={() => fetchMerchants(page + 1, search, status)}>Next</Button>
+                    <Button variant="outline" disabled={page <= 1} onClick={() => fetchMerchants(page - 1, search, status)}>{copy('Prev', 'Iliyotangulia')}</Button>
+                    <span className="text-sm text-slate-700">{copy('Page', 'Ukurasa')} {page} / {lastPage}</span>
+                    <Button variant="outline" disabled={page >= lastPage} onClick={() => fetchMerchants(page + 1, search, status)}>{copy('Next', 'Inayofuata')}</Button>
                 </div>
             </div>
         </AdminLayout>

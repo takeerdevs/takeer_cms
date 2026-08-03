@@ -9,6 +9,7 @@ use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\MarketingEvent;
 use App\Models\Order;
+use App\Models\PaymentAttempt;
 use App\Models\ForwarderShipment;
 use App\Models\MerchantCoupon;
 use App\Models\MerchantReferralLink;
@@ -25,6 +26,7 @@ use App\Models\UserAddress;
 use App\Payments\GatewayRegistry;
 use App\Services\EntitlementService;
 use App\Services\ForwarderShipmentService;
+use App\Services\LegalAcceptanceService;
 use App\Services\MoneyQuoteService;
 use App\Services\OfferingGroupCheckoutResolver;
 use App\Services\PickupAgreementService;
@@ -46,6 +48,7 @@ class CheckoutController extends Controller
         private readonly GatewayRegistry $gatewayRegistry,
         private readonly SmsService $smsService,
         private readonly GeographyResolver $geography,
+        private readonly LegalAcceptanceService $legalAcceptance,
     ) {
     }
 
@@ -62,6 +65,11 @@ class CheckoutController extends Controller
     public function initiate(CheckoutRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        try {
+            $checkoutDocuments = $this->legalAcceptance->assertCheckoutReady();
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 503);
+        }
         $paymentPhone = $validated['payment_number'] ?? null;
         $accountPhone = $validated['account_phone'] ?? null;
 
@@ -83,12 +91,11 @@ class CheckoutController extends Controller
                 $buyer->update(['name' => $validated['buyer_name']]);
             }
 
-            if (!$buyer->wallet) {
-                \App\Models\Wallet::create(['user_id' => $buyer->id, 'balance' => 0, 'frozen_balance' => 0]);
-            }
         } else {
             $accountPhone = $buyer->phone_number;
         }
+
+        $this->legalAcceptance->recordFor($buyer, $request, null, $checkoutDocuments, 'checkout_clickwrap');
 
         $selectedCheckoutAddress = null;
         if (($validated['delivery_type'] ?? 'local_boda') !== 'self_pickup' && !empty($validated['user_address_id'])) {
@@ -338,7 +345,11 @@ class CheckoutController extends Controller
         // ── Create pending Order ──────────────────────────────────────────────
         $transactionRef = 'TXN-' . Str::upper(Str::random(10));
         $liveGatewayCheckout = (bool) env('LIVE_GATEWAY_CHECKOUT', false);
-        $pickupRequestSnapshot = $this->pickupRequestSnapshot($validated, $deliveryType === 'self_pickup');
+        $pickupRequestSnapshot = $this->pickupRequestSnapshot(
+            $validated,
+            $deliveryType === 'self_pickup',
+            (int) $purchasable->merchant_id,
+        );
         $expiresAt = $this->pendingOrderExpiresAt($purchasable, $pickupRequestSnapshot, $deliveryType === 'self_pickup');
 
         try {
@@ -594,33 +605,6 @@ class CheckoutController extends Controller
                     $coupon->increment('times_used');
                 }
 
-                if (!$isInquiry && !$liveGatewayCheckout) {
-                    $isCustomDelivery = $product?->isDigital()
-                        && ($product->digital_delivery_type ?? null) === 'custom_delivery';
-                    $newOrder->update([
-                        'payment_status' => $newOrder->requiresPhysicalFulfillment()
-                            ? 'awaiting_merchant_confirmation'
-                            : (($serviceRequest || $isCustomDelivery) ? 'escrow_locked' : 'resolved_merchant_paid'),
-                        'custom_delivery_due_at' => $isCustomDelivery ? $newOrder->customDeliveryDueAtFrom() : null,
-                        'merchant_confirmed_at' => $newOrder->requiresPhysicalFulfillment() ? null : $newOrder->merchant_confirmed_at,
-                    ]);
-                    if (!$newOrder->requiresPhysicalFulfillment() && !($purchasable instanceof OfferingGroup)) {
-                        app(\App\Services\EntitlementService::class)->grantForOrder($newOrder->fresh(['product']));
-                    }
-                    if ($serviceRequest) {
-                        $serviceRequest->update([
-                            'payment_status' => 'held',
-                            'delivery_status' => 'scheduled',
-                            'status' => 'confirmed',
-                        ]);
-                    }
-
-                    if ($validated['purchasable_type'] === 'subscription_plan') {
-                        $subscription = app(SubscriptionRenewalService::class)->createOrExtendFromOrder($newOrder);
-                        app(\App\Services\EntitlementService::class)->grantForSubscription($subscription);
-                    }
-                }
-
                 if (!$newOrder->is_inquiry && $newOrder->payment_status !== 'pending') {
                     $this->createTakeerOrderForwarderShipment($newOrder, $validated['user_address_id'] ?? null);
                 }
@@ -633,7 +617,33 @@ class CheckoutController extends Controller
 
         $this->recordCheckoutAttribution($request, $order, $validated, $referralLink);
 
+        if (!$order->is_inquiry && !$liveGatewayCheckout) {
+            if (app()->environment('production')) {
+                $order->releaseInventory();
+                $order->update(['payment_status' => 'failed']);
+
+                return response()->json(['message' => 'A licensed provider payment route is required in production.'], 503);
+            }
+
+            $attempt = $this->createPaymentAttempt($order->fresh(['merchant', 'paymentProvider']), $paymentPhone, (string) $validated['idempotency_key']);
+            app(\App\Payments\PaymentCallbackProcessor::class)->handleConfirmedPayment(
+                $attempt,
+                new \App\Payments\PaymentEvent(
+                    provider: (string) ($order->paymentProvider?->key ?: $gateway->getName()),
+                    direction: 'payin',
+                    status: 'success',
+                    providerReference: 'SIM-' . $order->transaction_ref,
+                    takeerReference: $attempt->takeer_reference,
+                    amount: (float) $order->total_paid,
+                    currency: (string) ($order->customer_currency_code ?: $order->merchant_currency_code ?: 'TZS'),
+                    rawPayload: ['simulated' => true, 'source' => 'checkout'],
+                ),
+            );
+            $order = $order->fresh(['product']);
+        }
+
         if (!$order->is_inquiry && $liveGatewayCheckout) {
+            $attempt = $this->createPaymentAttempt($order->fresh(['merchant', 'paymentProvider']), $paymentPhone, (string) $validated['idempotency_key']);
             $gatewayResult = $gateway->initiate($order->fresh(['buyer']), [
                 'payment_number' => $paymentPhone,
                 'buyer_name' => $order->buyer?->name,
@@ -660,10 +670,24 @@ class CheckoutController extends Controller
             ]);
 
             if ($gatewayResult->raw['simulated'] ?? false) {
-                app(\App\Payments\PaymentCallbackProcessor::class)->handleSuccess(
-                    $order->fresh(['merchant', 'product']),
-                    (string) $gatewayResult->gatewayRef,
-                    $gateway->getName(),
+                if (app()->environment('production')) {
+                    $order->releaseInventory();
+                    $order->update(['payment_status' => 'failed']);
+
+                    return response()->json(['message' => 'Payment simulation is disabled in production.'], 503);
+                }
+                app(\App\Payments\PaymentCallbackProcessor::class)->handleConfirmedPayment(
+                    $attempt,
+                    new \App\Payments\PaymentEvent(
+                        provider: $gateway->getName(),
+                        direction: 'payin',
+                        status: 'success',
+                        providerReference: (string) $gatewayResult->gatewayRef,
+                        takeerReference: $attempt->takeer_reference,
+                        amount: (float) $order->total_paid,
+                        currency: (string) ($order->customer_currency_code ?: $order->merchant_currency_code ?: 'TZS'),
+                        rawPayload: ['simulated' => true],
+                    ),
                 );
 
                 $order = $order->fresh(['product']);
@@ -693,7 +717,7 @@ class CheckoutController extends Controller
             'message' => $order->is_inquiry
                 ? 'Agizo lako limepokelewa! Sasa mnaweza kuwasiliana.'
                 : ($serviceRequest
-                    ? 'Malipo yamehifadhiwa SafePay. Thibitisha huduma ikitolewa.'
+                    ? 'PSP imethibitisha malipo. Thibitisha huduma ikitolewa.'
                     : 'Malipo yamefanikiwa! Sasa unaweza kuona maudhui yako.'),
             'order' => OrderResource::make($order->loadMissing('product')),
         ];
@@ -711,7 +735,7 @@ class CheckoutController extends Controller
 
     /**
      * POST /api/v1/orders/{order}/complete
-     * Buyer confirms delivery. Escrow released to merchant.
+     * Buyer confirms delivery; the order becomes eligible for a PSP payout request.
      */
     public function complete(Order $order): JsonResponse
     {
@@ -723,28 +747,19 @@ class CheckoutController extends Controller
             return response()->json(['message' => 'Agizo hili halihitaji hatua ya kukamilisha delivery.'], 400);
         }
 
-        if (!$order->isEscrowLocked()) {
+        if (!in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed', 'release_eligible'], true)) {
             return response()->json(['message' => 'Agizo hili halijafika katika hatua hii.'], 400);
         }
 
         DB::transaction(function () use ($order) {
-            $order->update(['payment_status' => 'resolved_merchant_paid']);
-            $netAmount = \App\Models\Transaction::query()
-                ->where('order_id', $order->id)
-                ->where('type', 'order_revenue')
-                ->latest()
-                ->value('net_amount')
-                ?? app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid)['net_amount'];
-            $wallet = $order->merchant->wallet()->firstOrCreate(
-                ['merchant_id' => $order->merchant_id],
-                ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
-            );
-            $wallet->increment('balance', $netAmount);
-            $wallet->decrement('frozen_balance', $order->total_paid);
-
             if ($order->delivery) {
                 $order->delivery()->update(['delivery_status' => 'delivered']);
             }
+            app(\App\Services\MarketplaceSettlementService::class)->releaseAfterFulfillment(
+                $order,
+                'buyer_confirmed_delivery',
+                ['buyer_id' => request()->user()?->id],
+            );
         });
 
         app(EntitlementService::class)->grantForOrder($order->fresh(['product']));
@@ -1492,7 +1507,7 @@ class CheckoutController extends Controller
 
     private function sendDigitalAccessSmsIfPaid(Order $order): void
     {
-        if (!in_array($order->payment_status, ['resolved_merchant_paid', 'escrow_locked'], true)) {
+        if (!in_array($order->payment_status, ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'], true)) {
             return;
         }
 
@@ -1513,6 +1528,57 @@ class CheckoutController extends Controller
             $order->buyer_id,
             'digital-delivery:' . ($order->public_id ?: $order->id)
         );
+    }
+
+    private function createPaymentAttempt(Order $order, ?string $paymentPhone, string $clientIdempotencyKey): PaymentAttempt
+    {
+        if (! $order->payment_provider_id) {
+            throw new RuntimeException('A licensed PSP route is required before payment can be initiated.');
+        }
+
+        if (app()->environment('production')) {
+            $sellerProfile = \App\Models\MarketplaceSellerPaymentProfile::query()
+                ->where('merchant_id', $order->merchant_id)
+                ->where('payment_provider_id', $order->payment_provider_id)
+                ->first();
+            if (! $sellerProfile?->collections_enabled || ! $sellerProfile->isPayoutReady()) {
+                throw new RuntimeException('The seller is not onboarded and verified for this PSP marketplace flow.');
+            }
+        }
+
+        $providerAmount = (float) ($order->customer_total_amount ?? $order->total_paid);
+        $providerCurrency = strtoupper((string) ($order->customer_currency_code ?: $order->merchant_currency_code ?: 'TZS'));
+
+        $attempt = PaymentAttempt::query()->firstOrCreate(
+            ['idempotency_key' => $clientIdempotencyKey],
+            [
+                'order_id' => $order->id,
+                'payment_provider_id' => $order->payment_provider_id,
+                'payment_provider_channel_id' => $order->payment_provider_channel_id,
+                'provider_merchant_id' => data_get($order->payment_channel_snapshot, 'provider_merchant_id'),
+                'takeer_reference' => (string) $order->transaction_ref,
+                'expected_amount_minor' => (int) round($providerAmount * 100),
+                'expected_currency' => $providerCurrency,
+                'expected_country_code' => strtoupper((string) ($order->country_code ?: 'TZ')),
+                'payment_phone_encrypted' => $paymentPhone,
+                'payment_phone_hash' => $paymentPhone ? hash('sha256', preg_replace('/\D+/', '', $paymentPhone)) : null,
+                'state' => 'created',
+                'request_snapshot' => [
+                    'order_id' => $order->id,
+                    'order_public_id' => $order->public_id,
+                    'seller_id' => $order->merchant_id,
+                    'amount_minor' => (int) round($providerAmount * 100),
+                    'currency' => $providerCurrency,
+                    'fee_policy_snapshot' => app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid)['snapshot'],
+                ],
+                'initiated_at' => now(),
+                'expires_at' => $order->expires_at,
+            ],
+        );
+
+        app(\App\Services\MarketplaceSettlementService::class)->createForAttempt($order, $attempt);
+
+        return $attempt;
     }
 
     private function resolveGroupSaleCampaign(int $campaignId, Product $product): MerchantGroupSaleCampaign
@@ -2056,7 +2122,7 @@ class CheckoutController extends Controller
             : ($isForwarderCheckout ? 'forwarder' : ($resolvedShippingZone?->delivery_type ?: $deliveryType));
         $inquiryStatus = ($isSelfPickup || $resolvedShippingZone) ? 'quoted' : 'pending';
         $transactionRef = 'INQ-' . Str::upper(Str::random(10));
-        $pickupRequestSnapshot = $this->pickupRequestSnapshot($validated, $isSelfPickup);
+        $pickupRequestSnapshot = $this->pickupRequestSnapshot($validated, $isSelfPickup, $merchantId);
         $expiresAt = $this->pendingOrderExpiresAt($product ?? $bundle ?? $offeringGroup, $pickupRequestSnapshot, $isSelfPickup);
 
         $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $moneySnapshot, $unitMoneySnapshot, $shippingMoneySnapshot, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $isForwarderCheckout, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus, $resolvedHotspotId, $merchantId, $countryCode, $pickupRequestSnapshot, $expiresAt) {
@@ -2140,12 +2206,11 @@ class CheckoutController extends Controller
                     'deposit_mode' => $product->wholesale_deposit_mode ?: 'quote_based',
                     'deposit_percent' => $product->wholesale_deposit_percent !== null ? (float) $product->wholesale_deposit_percent : null,
                     'balance_due' => $product->wholesale_balance_due ?: 'before_delivery',
-                    'safepay_required' => true,
-                    'safepay_methods' => collect([
-                        'mobile_money' => (bool) ($product->safepay_mobile_money_enabled ?? true),
-                        'bank_transfer' => (bool) ($product->safepay_bank_transfer_enabled ?? true),
-                        'wallet' => (bool) ($product->safepay_wallet_enabled ?? true),
-                        'card' => (bool) ($product->safepay_card_enabled ?? false),
+                    'provider_payment_required' => true,
+                    'provider_payment_methods' => collect([
+                        'mobile_money' => (bool) ($product->provider_mobile_money_enabled ?? true),
+                        'bank_transfer' => (bool) ($product->provider_bank_transfer_enabled ?? true),
+                        'card' => (bool) ($product->provider_card_enabled ?? false),
                     ])->filter()->keys()->values()->all(),
                     'requested_at' => now()->toISOString(),
                 ], fn($value) => $value !== null && $value !== '') : null,
@@ -2200,6 +2265,17 @@ class CheckoutController extends Controller
      */
     public function payInquiry(Request $request, Order $order): JsonResponse
     {
+        $request->validate(['accept_terms' => ['required', 'accepted']]);
+        try {
+            $checkoutDocuments = $this->legalAcceptance->assertCheckoutReady();
+            $buyer = $request->user() ?: $order->buyer;
+            if ($buyer) {
+                $this->legalAcceptance->recordFor($buyer, $request, $order->merchant_id, $checkoutDocuments, 'inquiry_payment_clickwrap');
+            }
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 503);
+        }
+
         if (!$order->is_inquiry || $order->inquiry_status !== 'quoted') {
             return response()->json(['message' => 'Order is not ready for payment.'], 400);
         }
@@ -2267,6 +2343,7 @@ class CheckoutController extends Controller
 
         // Trigger gateway payment push
         try {
+            $attempt = $this->createPaymentAttempt($order->fresh(['merchant', 'paymentProvider']), $paymentPhone, 'inquiry-' . $order->id . '-' . (string) ($order->idempotency_key ?: Str::random(12)));
             $response = $gateway->initiate($order->fresh(['buyer']), [
                 'payment_number' => $paymentPhone,
                 'buyer_name' => $order->buyer?->name,
@@ -2274,66 +2351,25 @@ class CheckoutController extends Controller
                 'order_id' => $order->id,
             ]);
 
-            // SIMULATION: Auto-approve payment for testing
-            $isPhysical = $order->requiresPhysicalFulfillment();
-            $isService = $order->product?->isService();
-            $serviceRequest = \App\Models\ServiceRequest::query()
-                ->where('payment_order_id', $order->id)
-                ->first();
-            $targetStatus = $isPhysical ? 'awaiting_merchant_confirmation' : (($serviceRequest || $isService) ? 'escrow_locked' : 'resolved_merchant_paid');
-
-            $order->markPhysicalAgreement([
-                'total_paid' => (float) $order->total_paid,
-                'notes' => $isService
-                    ? 'Buyer accepted the quoted service offer and initiated payment.'
-                    : 'Buyer accepted the quoted physical order and initiated payment.',
-            ]);
-            $order->update([
-                'payment_status' => $targetStatus,
-                'merchant_confirmed_at' => $order->merchant_confirmed_at,
-            ]);
-
-            if (!$isPhysical) {
-                app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
-            }
-            if ($serviceRequest) {
-                $serviceRequest->update([
-                    'payment_status' => 'held',
-                    'delivery_status' => 'scheduled',
-                    'status' => 'confirmed',
-                ]);
+            if (($response->raw['simulated'] ?? false) && app()->environment('production')) {
+                return response()->json(['message' => 'Payment simulation is disabled in production.'], 503);
             }
 
-            if ($isPhysical) {
-                $this->createTakeerOrderForwarderShipment($order, $order->user_address_id);
-                $order->loadMissing(['delivery']);
-                if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup') {
-                    app(PickupAgreementService::class)->ensureAgreementForPaidPickup($order);
-                    $order->refresh()->loadMissing(['delivery']);
-                }
+            if ($response->raw['simulated'] ?? false) {
+                app(\App\Payments\PaymentCallbackProcessor::class)->handleConfirmedPayment(
+                    $attempt,
+                    new \App\Payments\PaymentEvent(
+                        provider: $gateway->getName(),
+                        direction: 'payin',
+                        status: 'success',
+                        providerReference: (string) $response->gatewayRef,
+                        takeerReference: $attempt->takeer_reference,
+                        amount: (float) $order->total_paid,
+                        currency: (string) ($order->customer_currency_code ?: $order->merchant_currency_code ?: 'TZS'),
+                        rawPayload: ['simulated' => true],
+                    ),
+                );
             }
-
-            // Log TRA-ready transaction simulation
-            $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
-            \App\Models\Transaction::create([
-                'user_id' => $order->buyer_id,
-                'merchant_id' => $order->merchant_id,
-                'order_id' => $order->id,
-                'type' => 'order_revenue',
-                ...$fee['snapshot'],
-                'gross_amount' => $order->total_paid,
-                'fee_amount' => $fee['fee_amount'],
-                'net_amount' => $fee['net_amount'],
-                'tax_amount' => $fee['tax_amount'],
-                'reference' => 'SIM-' . strtoupper(Str::random(10)),
-            ]);
-
-            // Freeze funds in merchant's wallet simulation
-            $wallet = $order->merchant->wallet()->firstOrCreate(
-                ['merchant_id' => $order->merchant_id],
-                ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
-            );
-            $wallet->increment('frozen_balance', $order->total_paid);
 
             $order->loadMissing(['buyer', 'merchant.user']);
             $publicId = (string) ($order->public_id ?: $order->id);
@@ -2348,7 +2384,7 @@ class CheckoutController extends Controller
             }
 
             return response()->json([
-                'message' => 'Malipo ya majaribio yamefanikiwa! Agizo limehifadhiwa (Escrow).',
+                'message' => 'Malipo ya majaribio yamefanikiwa! PSP payment imethibitishwa na order ipo kwenye utimilishaji.',
                 'order' => OrderResource::make($order->fresh(['product', 'delivery']))->resolve(),
             ]);
 
@@ -2437,17 +2473,17 @@ class CheckoutController extends Controller
             $merchantBody .= "Hii ni enquiry ya order. Tafadhali ongea na mteja hapa, mkubaliane mahitaji, muda, na bei ya mwisho kabla ya kutuma offer.";
             $buyerBody .= "Ombi lako limefika kwa muuzaji. Mtakubaliana mahitaji, muda, na bei hapa kwenye chat kabla ya malipo.";
         } elseif ($isService) {
-            $merchantBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Tafadhali tumia chat kuthibitisha muda, mahitaji, na hatua za kutimiza huduma. Ukikamilisha huduma, malipo yataendelea kulingana na mchakato wa order.";
-            $buyerBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Muuzaji atathibitisha muda, mahitaji, na hatua za kukamilisha huduma hapa kwenye chat.";
+            $merchantBody .= "Malipo yamefanikiwa na yamethibitishwa na PSP. Tafadhali tumia chat kuthibitisha muda, mahitaji, na hatua za kutimiza huduma. Ukikamilisha huduma, payout itaendelea kulingana na mchakato wa order.";
+            $buyerBody .= "Malipo yamefanikiwa na yamethibitishwa na PSP. Muuzaji atathibitisha muda, mahitaji, na hatua za kukamilisha huduma hapa kwenye chat.";
         } elseif ($isCustomDigital) {
-            $merchantBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Tafadhali tumia chat kuthibitisha scope ya mwisho, deadline, na kukabidhi digital file/custom work kwa mteja.";
-            $buyerBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Muuzaji atakabidhi digital file/custom work hapa kwenye Takeer kulingana na makubaliano yenu kwenye chat.";
+            $merchantBody .= "Malipo yamefanikiwa na yamethibitishwa na PSP. Tafadhali tumia chat kuthibitisha scope ya mwisho, deadline, na kukabidhi digital file/custom work kwa mteja.";
+            $buyerBody .= "Malipo yamefanikiwa na yamethibitishwa na PSP. Muuzaji atakabidhi digital file/custom work hapa kwenye Takeer kulingana na makubaliano yenu kwenye chat.";
         } elseif ($isDigital) {
             $merchantBody .= "Malipo yamefanikiwa. Hii ni digital order; mteja atapata access/download kwenye Takeer kulingana na aina ya content uliyouza. Hakuna usafirishaji wa physical product unaohitajika.";
             $buyerBody .= "Malipo yamefanikiwa. Unaweza kufungua au kudownload digital content yako kwenye Takeer kulingana na aina ya content uliyonunua na ruhusa toka kwa muuzaji.";
         } else {
-            $merchantBody .= "Malipo yamefanikiwa na yamehifadhiwa (Escrow). Tafadhali anza mchakato wa kusafirisha. Mteja akapopokea bidhaa pesa itatumwa moja kwa moja kwako kama umechagua automatic payout au utahitajika kuomba kuitoa wakati wowote.";
-            $buyerBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Muuzaji ataanza mchakato wa kukutumia order.";
+            $merchantBody .= "Malipo yamefanikiwa na yamethibitishwa na PSP. Tafadhali anza mchakato wa kusafirisha. Mteja akapopokea bidhaa, order itakuwa eligible kwa provider payout request.";
+            $buyerBody .= "Malipo yamefanikiwa na yamethibitishwa na PSP. Muuzaji ataanza mchakato wa kukutumia order.";
         }
 
         \App\Models\Message::create([
@@ -2605,20 +2641,40 @@ class CheckoutController extends Controller
         return app(MoneyQuoteService::class)->amountFromQuote($quote, $merchantAmount);
     }
 
-    private function pickupRequestSnapshot(array $validated, bool $isSelfPickup): ?array
+    private function pickupRequestSnapshot(array $validated, bool $isSelfPickup, ?int $merchantId = null): ?array
     {
-        if (!$isSelfPickup || empty($validated['pickup_requested_start_at']) || empty($validated['pickup_requested_end_at'])) {
+        if (!$isSelfPickup) {
             return null;
+        }
+
+        $location = $merchantId
+            ? \App\Models\MerchantLocation::query()
+                ->where('merchant_id', $merchantId)
+                ->where('allow_self_pickup', true)
+                ->orderByDesc('is_primary')
+                ->first()
+            : null;
+
+        $snapshot = [
+            'location_id' => $location?->id,
+            'location_name' => $location?->name,
+            'location_address' => $location?->address,
+            'cancellation_penalty_percent' => max(0, min(99.99, (float) ($location?->pickup_cancellation_penalty_percent ?? 0))),
+            'policy_captured_at' => now()->toISOString(),
+        ];
+
+        if (empty($validated['pickup_requested_start_at']) || empty($validated['pickup_requested_end_at'])) {
+            return $snapshot;
         }
 
         $start = Carbon::parse($validated['pickup_requested_start_at']);
         $end = Carbon::parse($validated['pickup_requested_end_at']);
 
         if ($end->lessThanOrEqualTo($start)) {
-            return null;
+            return $snapshot;
         }
 
-        return [
+        return $snapshot + [
             'buyer_requested_slot' => [
                 'requested_at' => now()->toISOString(),
                 'start_at' => $start->toISOString(),

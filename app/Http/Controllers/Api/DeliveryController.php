@@ -32,18 +32,20 @@ class DeliveryController extends Controller
             return response()->json(['message' => 'PIN si sahihi.'], 400);
         }
 
-        // Release Escrow
         DB::transaction(function () use ($delivery) {
             $order = $delivery->order;
 
             // Mark as delivered
             $delivery->update(['delivery_status' => 'delivered']);
 
-            app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
+            app(\App\Services\MarketplaceSettlementService::class)->releaseAfterFulfillment($order, 'local_delivery_confirmed', [
+                'delivery_id' => $delivery->id,
+                'delivery_status' => 'delivered',
+            ]);
         });
 
         return response()->json([
-            'message' => 'Delivery imethibitishwa. Pesa imeingizwa kwa muuzaji.',
+            'message' => 'Delivery imethibitishwa. PSP payout processing is recorded against this order.',
         ]);
     }
 }

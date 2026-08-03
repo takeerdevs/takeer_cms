@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { ArrowLeft, Box, Download, CalendarClock, BookOpen, Boxes, Crown, Settings, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const typeCards = [
     { key: 'physical', label: 'Physical Products', icon: Box },
@@ -24,12 +25,13 @@ const credentialReviewItems = [
 ];
 
 export default function MerchantDetails({ merchantId }) {
+    const { copy } = useLocale();
     const [merchant, setMerchant] = useState(null);
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
     const [credentialReviews, setCredentialReviews] = useState({});
 
-    const title = useMemo(() => merchant?.display_name ? `${merchant.display_name} - Merchant Control` : 'Merchant Control', [merchant]);
+    const title = useMemo(() => merchant?.display_name ? `${merchant.display_name} - ${copy('Merchant control', 'Udhibiti wa mfanyabiashara')}` : copy('Merchant control', 'Udhibiti wa mfanyabiashara'), [merchant, copy]);
     const kycDocuments = useMemo(() => buildKycDocuments(merchant?.kyc), [merchant]);
     const identityDocuments = useMemo(() => kycDocuments.filter((document) => document.group === 'identity'), [kycDocuments]);
     const businessDocuments = useMemo(() => kycDocuments.filter((document) => document.group === 'business'), [kycDocuments]);
@@ -40,7 +42,7 @@ export default function MerchantDetails({ merchantId }) {
         try {
             const res = await fetch(`/admin/api/merchants/${merchantId}`, { headers: { Accept: 'application/json' } });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to load merchant details.');
+            if (!res.ok) throw new Error(data.message || copy('Failed to load merchant details.', 'Imeshindikana kupakia maelezo ya mfanyabiashara.'));
             setMerchant(data.merchant);
             setSummary(data.summary || {});
         } catch (err) {
@@ -57,10 +59,10 @@ export default function MerchantDetails({ merchantId }) {
     const handleKycAction = async (action) => {
         let reason = '';
         if (action === 'reject') {
-            reason = window.prompt('Please enter the reason for rejection:');
+            reason = window.prompt(copy('Please enter the reason for rejection:', 'Weka sababu ya kukataa:'));
             if (!reason) return;
         } else {
-            if (!window.confirm('Are you sure you want to verify this merchant?')) return;
+            if (!window.confirm(copy('Are you sure you want to verify this merchant?', 'Una uhakika unataka kumthibitisha mfanyabiashara huyu?'))) return;
         }
 
         try {
@@ -101,10 +103,10 @@ export default function MerchantDetails({ merchantId }) {
         } else {
             const missing = credentialReviewItems.filter((item) => !review[item.key]);
             if (missing.length > 0) {
-                toast.error('Complete the review checklist before approval.');
+                toast.error(copy('Complete the review checklist before approval.', 'Kamilisha orodha ya ukaguzi kabla ya kuidhinisha.'));
                 return;
             }
-            if (!window.confirm(`Approve ${credential.document_name}?`)) {
+            if (!window.confirm(`${copy('Approve', 'Idhinisha')} ${credential.document_name}?`)) {
                 return;
             }
         }
@@ -131,7 +133,7 @@ export default function MerchantDetails({ merchantId }) {
                     }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to update credential.');
+            if (!res.ok) throw new Error(data.message || copy('Failed to update credential.', 'Imeshindikana kusasisha hati ya uthibitisho.'));
             toast.success(data.message);
             await loadMerchant();
         } catch (err) {
@@ -146,29 +148,29 @@ export default function MerchantDetails({ merchantId }) {
             <div className="space-y-6">
                 <div>
                     <Link href="/admin/merchants" className="inline-flex items-center text-sm text-slate-600 hover:text-slate-900">
-                        <ArrowLeft className="h-4 w-4 mr-1" /> Back to merchants
+                        <ArrowLeft className="h-4 w-4 mr-1" /> {copy('Back to merchants', 'Rudi kwa wafanyabiashara')}
                     </Link>
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-2">
                         <div className="flex items-center gap-3">
-                            <h1 className="text-2xl font-black text-slate-900">{merchant?.display_name || 'Merchant'}</h1>
+                            <h1 className="text-2xl font-black text-slate-900">{merchant?.display_name || copy('Merchant', 'Mfanyabiashara')}</h1>
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${merchant?.type === 'business' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
                                 {merchant?.type || 'personal'}
                             </span>
                             {summary?.retail_settings?.disable_pos_payment_links && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-50 text-red-700 border border-red-100">
-                                    POS links disabled
+                                {copy('POS links disabled', 'Viungo vya POS vimezimwa')}
                                 </span>
                             )}
                             {hasReleaseOverrides(summary) && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-100">
-                                    Release override active
+                                    {copy('Release override active', 'Marekebisho ya kutolewa yamewashwa')}
                                 </span>
                             )}
                         </div>
                         <Link href={`/admin/merchants/${merchantId}/settings`}>
                             <Button variant="outline">
                                 <Settings className="h-4 w-4 mr-2" />
-                                Merchant Settings
+                                {copy('Merchant settings', 'Mipangilio ya mfanyabiashara')}
                             </Button>
                         </Link>
                     </div>
@@ -176,10 +178,10 @@ export default function MerchantDetails({ merchantId }) {
                 </div>
 
                 <div className="grid md:grid-cols-4 gap-3">
-                    <Metric label="Total orders" value={merchant?.orders_count ?? 0} />
-                    <Metric label="Gross revenue" value={`TZS ${Number(summary?.gross_revenue || 0).toLocaleString()}`} />
-                    <Metric label="Open disputes" value={`${summary?.open_disputes ?? 0} / ${summary?.total_disputes ?? 0}`} />
-                    <Metric label="POS reports" value={`${summary?.open_pos_link_reports ?? 0} / ${summary?.pos_link_reports ?? 0}`} />
+                    <Metric label={copy('Total orders', 'Jumla ya oda')} value={merchant?.orders_count ?? 0} />
+                    <Metric label={copy('Gross revenue', 'Mapato ghafi')} value={`TZS ${Number(summary?.gross_revenue || 0).toLocaleString()}`} />
+                    <Metric label={copy('Open disputes', 'Migogoro wazi')} value={`${summary?.open_disputes ?? 0} / ${summary?.total_disputes ?? 0}`} />
+                    <Metric label={copy('POS reports', 'Ripoti za POS')} value={`${summary?.open_pos_link_reports ?? 0} / ${summary?.pos_link_reports ?? 0}`} />
                 </div>
 
                 <Card className="bg-white border-slate-200">
@@ -188,14 +190,14 @@ export default function MerchantDetails({ merchantId }) {
                             <div>
                                 <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                                     <ShieldAlert className="h-5 w-5 text-amber-700" />
-                                    Trust & Safety
+                                    {copy('Trust & safety', 'Uaminifu na usalama')}
                                 </h2>
                                 <p className="text-sm text-slate-600 mt-1">
-                                    Merchant has {summary?.merchant_strikes ?? 0} recorded strike{Number(summary?.merchant_strikes || 0) === 1 ? '' : 's'}.
+                                    {copy('Merchant has', 'Mfanyabiashara ana')} {summary?.merchant_strikes ?? 0} {copy('recorded strike(s).', 'onyo lililorekodiwa.')}
                                 </p>
                             </div>
                             <Link href={`/admin/disputes`}>
-                                <Button variant="outline">View Disputes</Button>
+                                <Button variant="outline">{copy('View disputes', 'Tazama migogoro')}</Button>
                             </Link>
                         </div>
                         {(summary?.recent_strikes || []).length > 0 && (
@@ -203,7 +205,7 @@ export default function MerchantDetails({ merchantId }) {
                                 {summary.recent_strikes.map((strike) => (
                                     <div key={strike.id} className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm">
                                         <p className="font-black text-amber-900">{strike.severity} · {strike.type}</p>
-                                        <p className="text-amber-800 mt-1">{strike.notes || 'No notes recorded.'}</p>
+                                        <p className="text-amber-800 mt-1">{strike.notes || copy('No notes recorded.', 'Hakuna dokezo lililorekodiwa.')}</p>
                                     </div>
                                 ))}
                             </div>
@@ -213,36 +215,36 @@ export default function MerchantDetails({ merchantId }) {
 
                 <Card className="bg-white border-slate-200">
                     <CardContent className="p-5">
-                        <h2 className="text-lg font-black text-slate-900 mb-3">KYC Information & Documents</h2>
+                        <h2 className="text-lg font-black text-slate-900 mb-3">{copy('KYC information & documents', 'Taarifa na hati za KYC')}</h2>
                         {loading ? (
-                            <p className="text-slate-500">Loading merchant profile...</p>
+                            <p className="text-slate-500">{copy('Loading merchant profile...', 'Inapakia wasifu wa mfanyabiashara...')}</p>
                         ) : (
                             <div className="space-y-6">
                                 <div className="grid md:grid-cols-3 gap-3">
-                                    <Detail label="Owner name" value={merchant?.user?.name} />
-                                    <Detail label="Owner phone" value={merchant?.user?.phone_number} />
-                                    <Detail label="Owner email" value={merchant?.user?.email} />
-                                    <Detail label="Account Type" value={merchant?.type || 'personal'} />
-                                    <Detail label="Country" value={merchant?.country?.name ? `${merchant.country.name} (${merchant.country.iso_alpha2 || '-'})` : '-'} />
-                                    <Detail label="Currency" value={merchant?.currency?.code || '-'} />
-                                    <Detail label="KYC status" value={merchant?.kyc_status || 'unverified'} />
-                                    <Detail label="Subaccount ID" value={merchant?.subaccount_id || '-'} />
-                                    <Detail label="Verified" value={merchant?.is_verified ? 'Yes' : 'No'} />
-                                    <Detail label="Suspended" value={merchant?.is_suspended ? 'Yes' : 'No'} />
+                                    <Detail label={copy('Owner name', 'Jina la mmiliki')} value={merchant?.user?.name} />
+                                    <Detail label={copy('Owner phone', 'Simu ya mmiliki')} value={merchant?.user?.phone_number} />
+                                    <Detail label={copy('Owner email', 'Barua pepe ya mmiliki')} value={merchant?.user?.email} />
+                                    <Detail label={copy('Account type', 'Aina ya akaunti')} value={merchant?.type || 'personal'} />
+                                    <Detail label={copy('Country', 'Nchi')} value={merchant?.country?.name ? `${merchant.country.name} (${merchant.country.iso_alpha2 || '-'})` : '-'} />
+                                    <Detail label={copy('Currency', 'Sarafu')} value={merchant?.currency?.code || '-'} />
+                                    <Detail label={copy('KYC status', 'Hali ya KYC')} value={merchant?.kyc_status || 'unverified'} />
+                                    <Detail label={copy('Subaccount ID', 'Namba ya subaccount')} value={merchant?.subaccount_id || '-'} />
+                                    <Detail label={copy('Verified', 'Imethibitishwa')} value={merchant?.is_verified ? copy('Yes', 'Ndiyo') : copy('No', 'Hapana')} />
+                                    <Detail label={copy('Suspended', 'Imesimamishwa')} value={merchant?.is_suspended ? copy('Yes', 'Ndiyo') : copy('No', 'Hapana')} />
                                 </div>
 
                                 {merchant?.kyc && (
                                     <div className="mt-6 border-t pt-6 space-y-6">
                                         <div className="flex items-center justify-between">
                                                     <div>
-                                                        <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs">Submitted KYC Data</h3>
+                                                        <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs">{copy('Submitted KYC Data', 'Taarifa za KYC zilizowasilishwa')}</h3>
                                                         {inheritedIdentitySource && (
                                                             <p className="mt-1 text-xs font-semibold text-slate-500">
-                                                                Identity is already verified from{' '}
+                                                                {copy('Identity is already verified from', 'Utambulisho tayari umethibitishwa kutoka')} {' '}
                                                                 <Link href={`/admin/merchants/${inheritedIdentitySource.merchant_id}`} className="text-brand-700 underline underline-offset-2">
                                                                     {inheritedIdentitySource.display_name}
                                                                 </Link>
-                                                                . Review the new business data and documents for this merchant.
+                                                                . {copy('Review the new business data and documents for this merchant.', 'Kagua taarifa mpya za biashara na nyaraka za mfanyabiashara huyu.')}
                                                             </p>
                                                         )}
                                                     </div>
@@ -253,7 +255,7 @@ export default function MerchantDetails({ merchantId }) {
                                                             onClick={() => handleKycAction('approve')}
                                                             disabled={merchant.kyc_status === 'verified'}
                                                         >
-                                                    {inheritedIdentitySource ? 'Verify Business KYC' : 'Verify Identity'}
+                                                    {inheritedIdentitySource ? copy('Verify Business KYC', 'Thibitisha KYC ya biashara') : copy('Verify Identity', 'Thibitisha utambulisho')}
                                                 </Button>
                                                 <Button 
                                                     size="sm" 
@@ -262,25 +264,25 @@ export default function MerchantDetails({ merchantId }) {
                                                     onClick={() => handleKycAction('reject')}
                                                     disabled={merchant.kyc_status === 'verified'}
                                                 >
-                                                    Reject
+                                                    {copy('Reject', 'Kataa')}
                                                 </Button>
                                             </div>
                                         </div>
 
                                         <div className="grid md:grid-cols-3 gap-4">
                                             <div className="md:col-span-2 grid grid-cols-2 gap-3">
-                                                <Detail label="KYC Full Name" value={`${merchant.kyc.first_name} ${merchant.kyc.last_name}`} />
-                                                <Detail label="Business Type" value={merchant.kyc.business_type || merchant.type || '-'} />
-                                                <Detail label="ID Type" value={merchant.kyc.id_type} />
-                                                <Detail label="ID Number" value={merchant.kyc.id_number} />
-                                                <Detail label="Date of Birth" value={merchant.kyc.date_of_birth ? new Date(merchant.kyc.date_of_birth).toLocaleDateString() : '-'} />
-                                                <Detail label="Gender" value={merchant.kyc.gender} />
-                                                <Detail label="Occupation" value={merchant.kyc.occupation} />
-                                                {merchant.kyc.tin_number && <Detail label="TIN Number" value={merchant.kyc.tin_number} />}
-                                                {merchant.kyc.brela_number && <Detail label="BRELA Number" value={merchant.kyc.brela_number} />}
-                                                {merchant.kyc.rejection_reason && <Detail label="Rejection Reason" value={merchant.kyc.rejection_reason} />}
+                                                <Detail label={copy('KYC Full Name', 'Jina kamili la KYC')} value={`${merchant.kyc.first_name} ${merchant.kyc.last_name}`} />
+                                                <Detail label={copy('Business Type', 'Aina ya biashara')} value={merchant.kyc.business_type || merchant.type || '-'} />
+                                                <Detail label={copy('ID Type', 'Aina ya kitambulisho')} value={merchant.kyc.id_type} />
+                                                <Detail label={copy('ID Number', 'Namba ya kitambulisho')} value={merchant.kyc.id_number} />
+                                                <Detail label={copy('Date of Birth', 'Tarehe ya kuzaliwa')} value={merchant.kyc.date_of_birth ? new Date(merchant.kyc.date_of_birth).toLocaleDateString() : '-'} />
+                                                <Detail label={copy('Gender', 'Jinsia')} value={merchant.kyc.gender} />
+                                                <Detail label={copy('Occupation', 'Kazi')} value={merchant.kyc.occupation} />
+                                                {merchant.kyc.tin_number && <Detail label={copy('TIN number', 'Namba ya TIN')} value={merchant.kyc.tin_number} />}
+                                                {merchant.kyc.brela_number && <Detail label={copy('BRELA number', 'Namba ya BRELA')} value={merchant.kyc.brela_number} />}
+                                                {merchant.kyc.rejection_reason && <Detail label={copy('Rejection Reason', 'Sababu ya kukataa')} value={merchant.kyc.rejection_reason} />}
                                                 <div className="col-span-2">
-                                                    <Detail label="Residential Address" value={merchant.kyc.residential_address} />
+                                                    <Detail label={copy('Residential Address', 'Anwani ya makazi')} value={merchant.kyc.residential_address} />
                                                 </div>
                                             </div>
 
@@ -288,11 +290,11 @@ export default function MerchantDetails({ merchantId }) {
                                                 <div>
                                                     <div className="flex items-center justify-between gap-2">
                                                         <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                                            {inheritedIdentitySource ? 'Verified identity documents' : 'ID documents'}
+                                                            {inheritedIdentitySource ? copy('Verified identity documents', 'Nyaraka za utambulisho zilizothibitishwa') : copy('ID documents', 'Nyaraka za kitambulisho')}
                                                         </p>
                                                         {inheritedIdentitySource && (
                                                             <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-700 border border-emerald-100">
-                                                                Inherited
+                                                                {copy('Inherited', 'Zimerithiwa')}
                                                             </span>
                                                         )}
                                                     </div>
@@ -304,7 +306,7 @@ export default function MerchantDetails({ merchantId }) {
                                                 </div>
 
                                                 <div className="border-t border-slate-100 pt-4">
-                                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Business documents to review</p>
+                                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{copy('Business documents to review', 'Nyaraka za biashara za kukagua')}</p>
                                                     <div className="mt-2 grid grid-cols-1 gap-2">
                                                         {businessDocuments.length > 0 ? (
                                                             businessDocuments.map((document) => (
@@ -312,7 +314,7 @@ export default function MerchantDetails({ merchantId }) {
                                                             ))
                                                         ) : (
                                                             <div className="flex min-h-24 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 text-center text-xs font-semibold text-slate-400">
-                                                                No extra business documents submitted.
+                                                                {copy('No extra business documents submitted.', 'Hakuna nyaraka za ziada za biashara zilizowasilishwa.')}
                                                             </div>
                                                         )}
                                                     </div>
@@ -324,16 +326,16 @@ export default function MerchantDetails({ merchantId }) {
 
                                 {!merchant?.kyc && (
                                     <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-                                        <p className="text-sm text-slate-600 font-medium">No KYC documents submitted yet.</p>
-                                        <p className="text-xs text-slate-400 mt-1">Merchant has not started the verification process.</p>
+                                        <p className="text-sm text-slate-600 font-medium">{copy('No KYC documents submitted yet.', 'Hakuna nyaraka za KYC zilizowasilishwa bado.')}</p>
+                                        <p className="text-xs text-slate-400 mt-1">{copy('Merchant has not started the verification process.', 'Mfanyabiashara bado hajaianza mchakato wa uthibitishaji.')}</p>
                                     </div>
                                 )}
 
                                 <div className="mt-6 border-t pt-6 space-y-3">
-                                    <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs">Service Credentials</h3>
+                                    <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs">{copy('Service Credentials', 'Hati za huduma')}</h3>
                                     {(merchant?.service_credentials || []).length === 0 ? (
                                         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                                            No service credentials submitted.
+                                            {copy('No service credentials submitted.', 'Hakuna hati za huduma zilizowasilishwa.')}
                                         </div>
                                     ) : (
                                         <div className="grid gap-3">
@@ -346,15 +348,15 @@ export default function MerchantDetails({ merchantId }) {
                                                                 {credential.subcategory_name ? `${credential.category_name} / ${credential.subcategory_name}` : credential.category_name}
                                                             </p>
                                                             <p className="text-xs text-slate-500 mt-1">
-                                                                {credential.document_type} · {credential.document_number || 'no number'} · {credential.issuer || 'no issuer'}
-                                                                {credential.expires_at ? ` · expires ${new Date(credential.expires_at).toLocaleDateString()}` : ''}
+                                                                {credential.document_type} · {credential.document_number || copy('no number', 'hakuna namba')} · {credential.issuer || copy('no issuer', 'hakuna mtoaji')}
+                                                                {credential.expires_at ? ` · ${copy('expires', 'inaisha')} ${new Date(credential.expires_at).toLocaleDateString()}` : ''}
                                                             </p>
                                                             {credential.rejection_reason && (
                                                                 <p className="mt-2 text-xs font-bold text-red-700">{credential.rejection_reason}</p>
                                                             )}
                                                         </div>
                                                         <div className="rounded-xl border border-slate-200 bg-white p-3">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Review checklist</p>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Review checklist', 'Orodha ya ukaguzi')}</p>
                                                             <div className="mt-2 grid md:grid-cols-2 gap-2">
                                                                 {credentialReviewItems.map((item) => (
                                                                     <label key={item.key} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
@@ -370,7 +372,7 @@ export default function MerchantDetails({ merchantId }) {
                                                             </div>
                                                             <textarea
                                                                 className="mt-3 min-h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"
-                                                                placeholder="Admin review notes"
+                                                                placeholder={copy('Admin review notes', 'Maelezo ya ukaguzi wa admin')}
                                                                 value={(credentialReviews[credential.id]?.notes ?? credential.review_notes) || ''}
                                                                 disabled={credential.status === 'verified'}
                                                                 onChange={(event) => updateCredentialReview(credential.id, 'notes', event.target.value)}
@@ -390,7 +392,7 @@ export default function MerchantDetails({ merchantId }) {
                                                             </span>
                                                             {credential.document_signed_url && (
                                                                 <a href={credential.document_signed_url} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-brand-700">
-                                                                    View document
+                                                                    {copy('View document', 'Tazama hati')}
                                                                 </a>
                                                             )}
                                                             <Button
@@ -399,7 +401,7 @@ export default function MerchantDetails({ merchantId }) {
                                                                 disabled={credential.status === 'verified'}
                                                                 onClick={() => handleCredentialAction(credential, 'approve')}
                                                             >
-                                                                Approve
+                                                                {copy('Approve', 'Idhinisha')}
                                                             </Button>
                                                             <Button
                                                                 size="sm"
@@ -408,7 +410,7 @@ export default function MerchantDetails({ merchantId }) {
                                                                 disabled={credential.status === 'verified'}
                                                                 onClick={() => handleCredentialAction(credential, 'reject')}
                                                             >
-                                                                Reject
+                                                                {copy('Reject', 'Kataa')}
                                                             </Button>
                                                         </div>
                                                     </div>
@@ -435,8 +437,8 @@ export default function MerchantDetails({ merchantId }) {
                                             {countForType(summary?.content_types, key)}
                                         </span>
                                     </div>
-                                    <p className="mt-3 font-black text-slate-900">{label}</p>
-                                    <p className="text-xs text-slate-600 mt-1">Read-only admin review and validation</p>
+                                    <p className="mt-3 font-black text-slate-900">{copy(label, label === 'Physical Products' ? 'Bidhaa halisi' : label === 'Digital Downloads' ? 'Upakuaji wa kidijitali' : label === 'Services / Bookings' ? 'Huduma / Booking' : label === 'Posts' ? 'Machapisho' : label === 'Bundles' ? 'Vifurushi' : 'Usajili')}</p>
+                                    <p className="text-xs text-slate-600 mt-1">{copy('Read-only admin review and validation', 'Ukaguzi na uthibitishaji wa admin wa kusoma tu')}</p>
                                 </CardContent>
                             </Card>
                         </Link>

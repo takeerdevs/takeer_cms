@@ -63,26 +63,6 @@ return new class extends Migration
             $table->index(['country_code', 'direction', 'method', 'status']);
         });
 
-        Schema::create('merchant_payout_credentials', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('merchant_id')->constrained('merchants')->cascadeOnDelete();
-            $table->foreignId('payment_provider_channel_id')->constrained('payment_provider_channels')->restrictOnDelete();
-            $table->string('label');
-            $table->string('method')->index();
-            $table->string('network')->nullable()->index();
-            $table->string('currency_code', 3)->index();
-            $table->text('details_encrypted')->nullable();
-            $table->json('details_masked')->nullable();
-            $table->string('verification_status')->default('unverified')->index();
-            $table->timestamp('verified_at')->nullable();
-            $table->boolean('is_default')->default(false)->index();
-            $table->string('status')->default('active')->index();
-            $table->json('metadata')->nullable();
-            $table->timestamps();
-
-            $table->index(['merchant_id', 'status']);
-        });
-
         Schema::create('payment_channel_incidents', function (Blueprint $table) {
             $table->id();
             $table->foreignId('payment_provider_channel_id')->constrained('payment_provider_channels')->cascadeOnDelete();
@@ -95,12 +75,6 @@ return new class extends Migration
             $table->json('notified_merchant_ids')->nullable();
             $table->json('metadata')->nullable();
             $table->timestamps();
-        });
-
-        Schema::table('withdrawal_requests', function (Blueprint $table) {
-            $table->foreignId('payment_provider_id')->nullable()->after('method')->constrained('payment_providers')->nullOnDelete();
-            $table->foreignId('payment_provider_channel_id')->nullable()->after('payment_provider_id')->constrained('payment_provider_channels')->nullOnDelete();
-            $table->foreignId('merchant_payout_credential_id')->nullable()->after('payment_provider_channel_id')->constrained('merchant_payout_credentials')->nullOnDelete();
         });
 
         Schema::table('orders', function (Blueprint $table) {
@@ -118,14 +92,7 @@ return new class extends Migration
             $table->dropColumn('payment_channel_snapshot');
         });
 
-        Schema::table('withdrawal_requests', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('merchant_payout_credential_id');
-            $table->dropConstrainedForeignId('payment_provider_channel_id');
-            $table->dropConstrainedForeignId('payment_provider_id');
-        });
-
         Schema::dropIfExists('payment_channel_incidents');
-        Schema::dropIfExists('merchant_payout_credentials');
         Schema::dropIfExists('payment_provider_channels');
         Schema::dropIfExists('payment_provider_countries');
         Schema::dropIfExists('payment_providers');

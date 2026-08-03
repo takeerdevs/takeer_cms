@@ -20,7 +20,7 @@ class MarkOverduePickupOrders extends Command
             ->with(['delivery', 'merchant.user', 'buyer'])
             ->whereNotNull('pickup_deadline_at')
             ->where('pickup_deadline_at', '<=', now())
-            ->whereIn('payment_status', ['awaiting_merchant_confirmation', 'escrow_locked'])
+            ->whereIn('payment_status', ['pending_fulfillment', 'payment_confirmed'])
             ->where(function ($query) {
                 $query->whereNull('pickup_status')
                     ->orWhereIn('pickup_status', [

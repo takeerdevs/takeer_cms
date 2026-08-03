@@ -6,15 +6,16 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Save, Settings2, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
 
 export default function GeneralSettings() {
+    const { copy } = useLocale();
     const [settings, setSettings] = useState({
         kyc_enforcement_mode: 'off',
         kyc_trigger_gmv_tzs: '0',
         kyc_trigger_order_count: '0',
-        kyc_trigger_withdrawal_tzs: '0',
         catalog_item_picker_default_limit: '5',
         upload_allowed_extensions: 'jpg,jpeg,png,webp,gif,mp4,mov,webm,pdf,zip,doc,docx,xls,xlsx,ppt,pptx,csv,txt',
         upload_allowed_mime_types: 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,application/zip,application/x-zip-compressed,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/csv,text/plain',
@@ -29,7 +30,7 @@ export default function GeneralSettings() {
         fetch('/admin/api/settings', { headers: { Accept: 'application/json' } })
             .then(async (r) => {
                 const data = await r.json();
-                if (!r.ok) throw new Error(data.message || 'Failed to load settings.');
+                if (!r.ok) throw new Error(data.message || copy('Failed to load settings.', 'Imeshindikana kupakia mipangilio.'));
                 return data;
             })
             .then((data) => {
@@ -54,7 +55,6 @@ export default function GeneralSettings() {
                     kyc_enforcement_mode: settings.kyc_enforcement_mode,
                     kyc_trigger_gmv_tzs: settings.kyc_trigger_gmv_tzs,
                     kyc_trigger_order_count: settings.kyc_trigger_order_count,
-                    kyc_trigger_withdrawal_tzs: settings.kyc_trigger_withdrawal_tzs,
                     catalog_item_picker_default_limit: settings.catalog_item_picker_default_limit,
                     upload_allowed_extensions: settings.upload_allowed_extensions,
                     upload_allowed_mime_types: settings.upload_allowed_mime_types,
@@ -64,8 +64,8 @@ export default function GeneralSettings() {
                 }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to save settings.');
-            toast.success(data.message || 'Settings saved');
+            if (!res.ok) throw new Error(data.message || copy('Failed to save settings.', 'Imeshindikana kuhifadhi mipangilio.'));
+            toast.success(data.message || copy('Settings saved', 'Mipangilio imehifadhiwa'));
         } catch (err) {
             toast.error(err.message);
         } finally {
@@ -75,30 +75,30 @@ export default function GeneralSettings() {
 
     if (loading) {
         return (
-            <AdminLayout title="General Settings">
-                <div className="flex h-64 items-center justify-center text-slate-500">Loading settings...</div>
+            <AdminLayout title={copy('General Settings', 'Mipangilio ya Jumla')}>
+                <div className="flex h-64 items-center justify-center text-slate-500">{copy('Loading settings...', 'Inapakia mipangilio...')}</div>
             </AdminLayout>
         );
     }
 
     return (
-        <AdminLayout title="General Settings">
-            <Head title="General Settings | Takeer" />
+        <AdminLayout title={copy('General Settings', 'Mipangilio ya Jumla')}>
+            <Head title={`${copy('General Settings', 'Mipangilio ya Jumla')} | Takeer`} />
 
             <div className="max-w-3xl space-y-8">
                 <div>
                     <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-                        <Settings2 className="h-6 w-6 text-brand-600" /> General Settings
+                        <Settings2 className="h-6 w-6 text-brand-600" /> {copy('General Settings', 'Mipangilio ya Jumla')}
                     </h1>
-                    <p className="mt-1 text-sm text-slate-600">Platform-wide controls that are not tied to AI or payout scheduling.</p>
+                    <p className="mt-1 text-sm text-slate-600">{copy('Platform-wide controls that are not tied to AI or payout scheduling.', 'Udhibiti wa jukwaa zima usiohusiana na AI au ratiba ya malipo.')}</p>
                 </div>
 
                 <Card className="border-slate-200 bg-white shadow-sm">
                     <CardContent className="space-y-4 p-6">
-                        <h2 className="font-bold text-slate-900">Commerce Defaults</h2>
-                        <p className="text-xs text-slate-600">Control default list size in bundle/subscription item pickers for merchants.</p>
+                        <h2 className="font-bold text-slate-900">{copy('Commerce Defaults', 'Chaguo-msingi za Biashara')}</h2>
+                        <p className="text-xs text-slate-600">{copy('Control default list size in bundle/subscription item pickers for merchants.', 'Dhibiti ukubwa wa orodha chaguo-msingi kwenye wachaguaji wa vifurushi/uanachama kwa wauzaji.')}</p>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Item Picker Default Limit</label>
+                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Item Picker Default Limit', 'Kikomo cha Chaguo-msingi cha Vipengee')}</label>
                             <Input
                                 type="number"
                                 min="1"
@@ -113,11 +113,11 @@ export default function GeneralSettings() {
                 <Card className="border-slate-200 bg-white shadow-sm">
                     <CardContent className="space-y-4 p-6">
                         <h2 className="flex items-center gap-2 font-bold text-slate-900">
-                            <ShieldCheck className="h-4 w-4 text-brand-600" /> Analytics Privacy
+                            <ShieldCheck className="h-4 w-4 text-brand-600" /> {copy('Analytics Privacy', 'Faragha ya Takwimu')}
                         </h2>
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Retention Period (days)</label>
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Retention Period (days)', 'Muda wa Kuhifadhi (siku)')}</label>
                                 <Input
                                     type="number"
                                     min="30"
@@ -134,8 +134,8 @@ export default function GeneralSettings() {
                                     className="mt-1 h-4 w-4 rounded border-slate-300"
                                 />
                                 <span>
-                                    <span className="block text-sm font-bold text-slate-900">Exclude admins from analytics</span>
-                                    <span className="mt-1 block text-xs leading-5 text-slate-600">Admin activity will not pollute buyer and creator reports.</span>
+                                    <span className="block text-sm font-bold text-slate-900">{copy('Exclude admins from analytics', 'Ondoa wasimamizi kwenye takwimu')}</span>
+                                    <span className="mt-1 block text-xs leading-5 text-slate-600">{copy('Admin activity will not pollute buyer and creator reports.', 'Shughuli za wasimamizi hazitaathiri ripoti za wanunuzi na wabunifu.')}</span>
                                 </span>
                             </label>
                         </div>
@@ -145,10 +145,10 @@ export default function GeneralSettings() {
                 <Card className="border-slate-200 bg-white shadow-sm">
                     <CardContent className="space-y-4 p-6">
                         <h2 className="flex items-center gap-2 font-bold text-slate-900">
-                            <ShieldCheck className="h-4 w-4 text-brand-600" /> Upload Policy
+                            <ShieldCheck className="h-4 w-4 text-brand-600" /> {copy('Upload Policy', 'Sera ya Upakiaji')}
                         </h2>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Max File Size (MB)</label>
+                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Max File Size (MB)', 'Ukubwa wa Juu wa Faili (MB)')}</label>
                             <Input
                                 type="number"
                                 min="1"
@@ -158,7 +158,7 @@ export default function GeneralSettings() {
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Allowed Extensions</label>
+                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Allowed Extensions', 'Viendelezi Vinavyoruhusiwa')}</label>
                             <textarea
                                 className="min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900"
                                 value={settings.upload_allowed_extensions}
@@ -166,7 +166,7 @@ export default function GeneralSettings() {
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Allowed MIME Types</label>
+                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Allowed MIME Types', 'Aina za MIME Zinazoruhusiwa')}</label>
                             <textarea
                                 className="min-h-28 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900"
                                 value={settings.upload_allowed_mime_types}
@@ -178,32 +178,27 @@ export default function GeneralSettings() {
 
                 <Card className="border-slate-200 bg-white shadow-sm">
                     <CardContent className="space-y-4 p-6">
-                        <h2 className="font-bold text-slate-900">KYC Threshold Controls</h2>
-                        <p className="text-xs text-slate-600">Allow new merchants to sell first, then enforce KYC once thresholds are crossed.</p>
+                        <h2 className="font-bold text-slate-900">{copy('KYC Threshold Controls', 'Udhibiti wa Viwango vya KYC')}</h2>
+                        <p className="text-xs text-slate-600">{copy('Allow new merchants to sell first, then enforce KYC once thresholds are crossed.', 'Ruhusu wauzaji wapya kuuza kwanza, kisha tekeleza KYC viwango vinapovukwa.')}</p>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Enforcement Mode</label>
+                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Enforcement Mode', 'Njia ya Utekelezaji')}</label>
                             <select
                                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                                 value={settings.kyc_enforcement_mode}
                                 onChange={(e) => set('kyc_enforcement_mode', e.target.value)}
                             >
-                                <option value="off">Off</option>
-                                <option value="withdrawals_only">Withdrawals Only</option>
-                                <option value="listings_and_withdrawals">Listings + Withdrawals</option>
+                                <option value="off">{copy('Off', 'Zima')}</option>
+                                <option value="listings_and_provider_payouts">{copy('Listings + Provider Payouts', 'Matangazo + Malipo ya PSP')}</option>
                             </select>
                         </div>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold uppercase tracking-wider text-slate-600">GMV Threshold (TZS)</label>
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('GMV Threshold (TZS)', 'Kiwango cha GMV (TZS)')}</label>
                                 <Input type="number" min="0" value={settings.kyc_trigger_gmv_tzs} onChange={(e) => set('kyc_trigger_gmv_tzs', e.target.value)} />
                             </div>
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Order Count Threshold</label>
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Order Count Threshold', 'Kiwango cha Idadi ya Oda')}</label>
                                 <Input type="number" min="0" value={settings.kyc_trigger_order_count} onChange={(e) => set('kyc_trigger_order_count', e.target.value)} />
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Withdrawal Threshold (TZS)</label>
-                                <Input type="number" min="0" value={settings.kyc_trigger_withdrawal_tzs} onChange={(e) => set('kyc_trigger_withdrawal_tzs', e.target.value)} />
                             </div>
                         </div>
                     </CardContent>
@@ -211,7 +206,7 @@ export default function GeneralSettings() {
 
                 <Button className="h-12 w-full rounded-xl bg-brand-600 font-bold text-white hover:bg-brand-700" onClick={handleSave} disabled={saving}>
                     <Save className="mr-2 h-4 w-4" />
-                    {saving ? 'Saving...' : 'Save General Settings'}
+                    {saving ? copy('Saving...', 'Inahifadhi...') : copy('Save General Settings', 'Hifadhi Mipangilio ya Jumla')}
                 </Button>
             </div>
         </AdminLayout>

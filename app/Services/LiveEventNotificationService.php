@@ -49,7 +49,7 @@ class LiveEventNotificationService
     {
         $buyerIds = Order::query()
             ->where('product_id', $event->id)
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->whereIn('payment_status', ['payment_confirmed', 'release_eligible', 'paid_out'])
             ->where(function ($query): void {
                 $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
             })

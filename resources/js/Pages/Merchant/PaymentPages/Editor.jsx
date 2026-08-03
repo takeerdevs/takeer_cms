@@ -9,8 +9,10 @@ import {
     ArrowLeft, Save, Trash2, Search, Plus, 
     GripVertical, Package, Box, ExternalLink, Sparkles 
 } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 export default function PaymentPageEditor({ merchantUsername, pageData = null }) {
+    const { copy } = useLocale();
     const isEditing = !!pageData;
     const { data, setData, post, put, processing, errors } = useForm({
         title: pageData?.title || '',
@@ -23,7 +25,7 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
         items: pageData?.items?.map(i => ({
             id: i.item_id,
             type: i.item_type,
-            title: i.item?.title || 'Unknown Item',
+            title: i.item?.title || copy('Unknown item', 'Kipengele kisichojulikana'),
             sub: i.item?.type || 'bundle'
         })) || [],
     });
@@ -86,7 +88,7 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
 
     return (
         <AppLayout>
-            <Head title={isEditing ? 'Hariri Payment Page' : 'Tengeneza Payment Page'} />
+            <Head title={isEditing ? copy('Edit payment page', 'Hariri ukurasa wa malipo') : copy('Create payment page', 'Tengeneza ukurasa wa malipo')} />
             
             <form onSubmit={handleSubmit} className="max-w-5xl mx-auto p-4 md:p-8 pb-32">
                 
@@ -103,7 +105,7 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
                             <ArrowLeft className="h-5 w-5" />
                         </Button>
                         <h1 className="text-xl md:text-2xl font-black tracking-tight">
-                            {isEditing ? 'Hariri Page' : 'Page Mpya'}
+                            {isEditing ? copy('Edit page', 'Hariri ukurasa') : copy('New page', 'Ukurasa mpya')}
                         </h1>
                     </div>
                     <Button 
@@ -111,8 +113,8 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
                         disabled={processing}
                         className="bg-brand-600 hover:bg-brand-700 text-white font-black px-8 rounded-xl h-12 shadow-lg shadow-brand-600/20"
                     >
-                        {processing ? 'Inahifadhi...' : (
-                            <><Save className="mr-2 h-5 w-5" /> Hifadhi Page</>
+                        {processing ? copy('Saving...', 'Inahifadhi...') : (
+                            <><Save className="mr-2 h-5 w-5" /> {copy('Save page', 'Hifadhi ukurasa')}</>
                         )}
                     </Button>
                 </div>
@@ -124,9 +126,9 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
                         <Card>
                             <CardContent className="p-6 space-y-6">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-bold">Jina la Kampeni (Title)</label>
+                                    <label className="text-sm font-bold">{copy('Campaign name (title)', 'Jina la kampeni (kichwa)')}</label>
                                     <Input 
-                                        placeholder="Mf: Black Friday Offer 2026"
+                                        placeholder={copy('E.g. Black Friday Offer 2026', 'Mf: Black Friday Offer 2026')}
                                         className="h-12 text-lg font-bold"
                                         value={data.title}
                                         onChange={e => {
@@ -140,26 +142,26 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-bold">Custom Link Slug</label>
+                                    <label className="text-sm font-bold">{copy('Custom link slug', 'Slug ya kiungo maalum')}</label>
                                     <div className="flex items-center">
                                         <div className="h-12 px-4 bg-muted border border-r-0 rounded-l-xl flex items-center text-muted-foreground text-sm font-mono">
                                             takeer.me/pay/
                                         </div>
                                         <Input 
-                                            placeholder="slug-yako"
+                                            placeholder={copy('your-slug', 'slug-yako')}
                                             className="h-12 rounded-l-none font-mono text-brand-600 font-bold"
                                             value={data.slug}
                                             onChange={e => setData('slug', e.target.value)}
                                         />
                                     </div>
-                                    <p className="text-[10px] text-muted-foreground font-medium italic">Hii ndio link utakayo-share kwa wateja wako.</p>
+                                    <p className="text-[10px] text-muted-foreground font-medium italic">{copy('This is the link you will share with your customers.', 'Hii ndio link utakayo-share kwa wateja wako.')}</p>
                                     {errors.slug && <p className="text-xs text-red-500 font-bold">{errors.slug}</p>}
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-bold">Maelezo Mafupi (Optional)</label>
+                                    <label className="text-sm font-bold">{copy('Short description (optional)', 'Maelezo mafupi (si lazima)')}</label>
                                     <Textarea 
-                                        placeholder="Andika ujumbe kwa wateja watakaofungua link hii..."
+                                        placeholder={copy('Write a message for customers who open this link...', 'Andika ujumbe kwa wateja watakaofungua link hii...')}
                                         className="min-h-[100px] resize-none"
                                         value={data.description}
                                         onChange={e => setData('description', e.target.value)}
@@ -173,10 +175,10 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
                             <CardContent className="p-6 space-y-6">
                                 <div className="flex items-center justify-between">
                                     <h3 className="font-black text-lg flex items-center gap-2">
-                                        <Package className="h-5 w-5 text-brand-600" /> Bidhaa Kwenye Page
+                                        <Package className="h-5 w-5 text-brand-600" /> {copy('Products on this page', 'Bidhaa kwenye ukurasa')}
                                     </h3>
                                     <span className="text-[10px] font-bold bg-white border border-brand-200 px-2 py-0.5 rounded-full">
-                                        {data.items.length} Zimeongezwa
+                                        {data.items.length} {copy('added', 'zimeongezwa')}
                                     </span>
                                 </div>
 
@@ -186,7 +188,7 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
                                     </div>
                                     <Input 
                                         className="pl-10 h-12 bg-white"
-                                        placeholder="Tafuta bidhaa au bundle..."
+                                        placeholder={copy('Search products or bundles...', 'Tafuta bidhaa au vifurushi...')}
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
                                     />
@@ -222,7 +224,7 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
                                     {data.items.length === 0 ? (
                                         <div className="py-12 border-2 border-dashed border-brand-100 rounded-xl flex flex-col items-center opacity-40">
                                             <Package className="h-8 w-8 mb-2" />
-                                            <p className="text-xs font-bold uppercase tracking-widest text-center">Hakuna bidhaa iliyochaguliwa</p>
+                                            <p className="text-xs font-bold uppercase tracking-widest text-center">{copy('No product selected', 'Hakuna bidhaa iliyochaguliwa')}</p>
                                         </div>
                                     ) : (
                                         data.items.map((item, index) => (
@@ -255,10 +257,10 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
                     <div className="space-y-6">
                         <Card>
                             <CardContent className="p-6 space-y-6">
-                                <h3 className="font-black text-lg">Muonekano (Theme)</h3>
+                                <h3 className="font-black text-lg">{copy('Appearance (theme)', 'Muonekano (mandhari)')}</h3>
                                 
                                 <div className="space-y-3">
-                                    <label className="text-sm font-bold">Rangi ya Page</label>
+                                    <label className="text-sm font-bold">{copy('Page color', 'Rangi ya ukurasa')}</label>
                                     <div className="flex flex-wrap gap-3">
                                         {colors.map(color => (
                                             <button
@@ -274,7 +276,7 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
 
                                 <div className="pt-4 border-t border-border">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm font-bold">Page Is Active</span>
+                                        <span className="text-sm font-bold">{copy('Page is active', 'Ukurasa unatumika')}</span>
                                         <button 
                                             type="button"
                                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${data.is_active ? 'bg-brand-600' : 'bg-muted'}`}
@@ -291,10 +293,10 @@ export default function PaymentPageEditor({ merchantUsername, pageData = null })
                             <CardContent className="p-6 space-y-4">
                                 <div className="flex items-center gap-2">
                                     <Sparkles className="h-5 w-5 text-indigo-200" />
-                                    <h4 className="font-black">Campaign Pro Tip</h4>
+                                    <h4 className="font-black">{copy('Campaign tip', 'Ushauri wa kampeni')}</h4>
                                 </div>
                                 <p className="text-sm text-indigo-100 leading-relaxed">
-                                    Tumia link hii kwenye <strong>Bio yako ya Instagram</strong> au kwenye <strong>WhatsApp Status</strong>. Wateja wataweza kulipia bila kuhangaika.
+                                    {copy('Use this link in your Instagram bio or WhatsApp Status. Customers can pay without friction.', 'Tumia link hii kwenye Bio yako ya Instagram au kwenye WhatsApp Status. Wateja wataweza kulipia bila kuhangaika.')}
                                 </p>
                             </CardContent>
                         </Card>

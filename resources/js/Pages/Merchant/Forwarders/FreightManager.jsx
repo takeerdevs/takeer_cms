@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const sectionMeta = {
     locations: { title: 'Locations', icon: MapPin, description: 'Origin warehouses, drop-off points, and destination collection offices.' },
@@ -98,11 +99,34 @@ const blankTransportDetail = {
     details: {},
 };
 
+const FREIGHT_LABEL_TRANSLATIONS = {
+    'Location roles': 'Aina ya eneo', 'Location name': 'Jina la eneo', 'Official address': 'Anuani rasmi', Country: 'Nchi', 'State / region': 'Jimbo / mkoa', City: 'Jiji', Latitude: 'Latitudo', Longitude: 'Longitudo', 'Contact person': 'Mtu wa mawasiliano', 'Contact phone': 'Simu ya mawasiliano', 'Business hours': 'Masaa ya biashara', 'Seller instructions': 'Maelekezo kwa seller', 'Customer instructions': 'Maelekezo kwa mteja', 'Schedule title': 'Kichwa cha ratiba', Route: 'Njia', 'Transport mode': 'Aina ya usafirishaji', 'Departure date': 'Tarehe ya kuondoka', 'Cargo cutoff date': 'Tarehe ya mwisho ya cargo', 'ETA text': 'Maelezo ya ETA', Status: 'Hali', Notes: 'Maelezo', 'Update title': 'Kichwa cha update', Audience: 'Walengwa', Message: 'Ujumbe', 'Origin country': 'Nchi ya chanzo', 'Destination country': 'Nchi lengwa', 'Origin locations': 'Maeneo ya chanzo', 'Destination collection offices': 'Ofisi za kukusanyia lengwa', 'Shipping types available': 'Aina za usafirishaji zinazopatikana', 'Documents required': 'Nyaraka zinazohitajika', 'Government charges note': 'Maelezo ya gharama za serikali', 'HS code support': 'Msaada wa HS code', 'Permit support': 'Msaada wa permit', 'Restricted items note': 'Maelezo ya vitu vilivyopigwa marufuku', 'Free storage days': 'Siku za storage bila malipo', 'Receiving fee': 'Gharama ya kupokea', 'Handling fee': 'Gharama ya handling', 'Max dimensions': 'Vipimo vya juu', 'Storage rules': 'Sheria za storage', 'Insurance note': 'Maelezo ya bima', 'Coverage area': 'Eneo la huduma', 'Max weight': 'Uzito wa juu', 'Proof of delivery': 'Uthibitisho wa delivery', 'COD support': 'Msaada wa COD', 'Return handling': 'Ushughulikiaji wa returns', 'Service scope': 'Wigo wa huduma', 'Customer steps': 'Hatua za mteja', 'Origin handling': 'Handling ya chanzo', 'Destination handling': 'Handling ya lengwa', 'Required documents': 'Nyaraka zinazohitajika', 'Allowed items': 'Vitu vinavyoruhusiwa', 'Disallowed items': 'Vitu visivyoruhusiwa', 'Billing weight note': 'Maelezo ya uzito wa billing', 'Consolidation schedule': 'Ratiba ya consolidation', 'Cutoff note': 'Maelezo ya cutoff', Estimate: 'Makadirio', 'Processing time': 'Muda wa kushughulikia', 'Storage availability': 'Upatikanaji wa storage', 'Delivery window': 'Muda wa delivery', 'Handling time': 'Muda wa kushughulikia', 'Transit estimate': 'Makadirio ya safari', 'Pricing model': 'Mfumo wa bei', Price: 'Bei', 'Service fee': 'Gharama ya huduma', 'Storage fee': 'Gharama ya storage', 'Delivery fee': 'Gharama ya delivery', 'Forwarding fee': 'Gharama ya forwarding', 'Freight price': 'Bei ya freight', Currency: 'Sarafu', 'Minimum charge': 'Gharama ya chini', 'Duties / taxes note': 'Maelezo ya ushuru / kodi', 'Storage notes': 'Maelezo ya storage', 'Delivery notes': 'Maelezo ya delivery', 'Forwarding notes': 'Maelezo ya forwarding', 'Cargo notes': 'Maelezo ya cargo', 'Payment terms': 'Masharti ya malipo', 'Deposit type': 'Aina ya deposit', 'Deposit value': 'Kiasi cha deposit', 'Balance due': 'Salio linalodaiwa', 'Payment notes': 'Maelezo ya malipo',
+};
+const FREIGHT_LABEL_EXTRA_TRANSLATIONS = {
+    'Carrier / cargo company': 'Carrier / kampuni ya cargo',
+    'Tracking link': 'Link ya ufuatiliaji',
+    'Flight / ship / container / batch': 'Ndege / meli / kontena / batch',
+    'ETA / next movement': 'ETA / hatua inayofuata',
+    'New status': 'Hali mpya',
+    Location: 'Eneo',
+    Tracking: 'Ufuatiliaji',
+    Reference: 'Rejeo',
+    'Latest update': 'Update ya mwisho',
+};
+const FREIGHT_HINT_TRANSLATIONS = {
+    'This is the address customers copy/import for this exact location. Add customer fields with {{field_key: Field label}}, e.g. Suite {{suite_number: Suite number}}.': 'Hii ni anuani ambayo wateja watanukuu/import kwa eneo hili. Ongeza fields za mteja kwa {{field_key: Field label}}, mf. Suite {{suite_number: Suite number}}.',
+    'Filled from the map pin for accurate country matching.': 'Inajazwa kutoka pin ya ramani ili kulinganisha nchi kwa usahihi.',
+    'When this office accepts packages or serves customers.': 'Muda ambao ofisi hii inapokea packages au kuhudumia wateja.',
+    'Information sellers/merchants should know before sending a package to this location.': 'Taarifa ambazo sellers/merchants wanapaswa kujua kabla ya kutuma package kwenye eneo hili.',
+    'Information customers should see when choosing this pickup or forwarding location.': 'Taarifa ambazo wateja wanapaswa kuona wanapochagua pickup au eneo hili la forwarding.',
+};
+
 function Field({ label, children, hint, className = '' }) {
+    const { copy } = useLocale();
     return (
         <label className={`block min-w-0 space-y-1.5 ${className}`}>
-            <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</span>
-            {hint && <span className="block text-[11px] font-semibold leading-5 text-slate-500">{hint}</span>}
+            <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{copy(label, FREIGHT_LABEL_TRANSLATIONS[label] || FREIGHT_LABEL_EXTRA_TRANSLATIONS[label] || label)}</span>
+            {hint && <span className="block text-[11px] font-semibold leading-5 text-slate-500">{copy(hint, FREIGHT_HINT_TRANSLATIONS[hint] || hint)}</span>}
             {children}
         </label>
     );
@@ -120,8 +144,8 @@ const errorMessage = (error, fallback = 'Something went wrong.') => {
     return firstValidationMessage || error.response?.data?.message || error.message || fallback;
 };
 const roleMeta = {
-    origin: { label: 'Origin warehouse / drop-off', badge: 'bg-indigo-50 text-indigo-700', icon: 'Origin' },
-    destination: { label: 'Destination collection office', badge: 'bg-emerald-50 text-emerald-700', icon: 'Destination' },
+    origin: { label: 'Origin warehouse / drop-off', swahiliLabel: 'Ghala la chanzo / drop-off', badge: 'bg-indigo-50 text-indigo-700', icon: 'Origin', swahiliIcon: 'Chanzo' },
+    destination: { label: 'Destination collection office', swahiliLabel: 'Ofisi ya kukusanyia lengwa', badge: 'bg-emerald-50 text-emerald-700', icon: 'Destination', swahiliIcon: 'Lengwa' },
 };
 
 const transportOptions = [
@@ -143,20 +167,54 @@ const paymentTermOptions = [
     ['quote_after_receiving', 'Quote after receiving'],
     ['included_or_seller_paid', 'Included / seller paid'],
 ];
+const FREIGHT_OPTION_TRANSLATIONS = {
+    'Sea cargo': 'Cargo ya baharini', 'Air cargo': 'Cargo ya ndege', 'Pay on pickup': 'Lipa wakati wa pickup', 'Pay before shipping': 'Lipa kabla ya usafirishaji', 'Deposit + balance': 'Deposit + salio', 'Quote after receiving': 'Quote baada ya kupokea', 'Included / seller paid': 'Imejumuishwa / seller amelipa', Percent: 'Asilimia', Fixed: 'Kiasi maalum', 'No location': 'Hakuna eneo', 'Select country': 'Chagua nchi', 'Select route': 'Chagua njia', 'Quote first': 'Pata quote kwanza', 'Fixed clearing fee': 'Gharama maalum ya clearing', '% of declared/CIF value': '% ya thamani iliyotangazwa/CIF', '% of duty/tax amount': '% ya kiasi cha ushuru/kodi', 'Service fee + government charges': 'Gharama ya huduma + gharama za serikali', 'Per day': 'Kwa siku', 'Per week': 'Kwa wiki', 'Per CBM/day': 'Kwa CBM/siku', 'Per pallet': 'Kwa pallet', 'Per zone': 'Kwa eneo', 'Per km': 'Kwa km', 'Per kg': 'Kwa kg', 'Fixed service fee': 'Gharama maalum ya huduma', '% of declared value': '% ya thamani iliyotangazwa', Retainer: 'Retainer', 'Per CBM': 'Kwa CBM', 'No approved shipping service type is enabled yet.': 'Hakuna aina ya huduma ya usafirishaji iliyoruhusiwa bado.',
+};
 
-function shipmentPaymentTermText(shipment) {
+const FREIGHT_TEXT_TRANSLATIONS = {
+    'Takeer order': 'Order ya Takeer', 'External purchase': 'Manunuzi ya nje', 'Not linked': 'Haijaunganishwa', 'Drop-off': 'Drop-off', 'Route landing': 'Kufika kwa njia', 'Drop-off address': 'Anuani ya drop-off', 'Landing address': 'Anuani ya kufikia', 'No address snapshot': 'Hakuna nakala ya anuani', 'No destination office linked': 'Hakuna ofisi ya lengwa iliyounganishwa', 'Customer phone': 'Simu ya mteja', Email: 'Barua pepe', Name: 'Jina', Customer: 'Mteja', 'Not provided': 'Haijatolewa', 'Default delivery address': 'Anuani chaguo-msingi ya delivery', 'Hide package': 'Ficha kifurushi', 'Check package': 'Angalia kifurushi', 'Package contents': 'Vilivyomo kwenye kifurushi', 'Package item': 'Kitu cha kifurushi', Qty: 'Idadi', 'Order details': 'Maelezo ya order', Order: 'Order', Payment: 'Malipo', 'Seller handoff': 'Makabidhiano ya seller', Total: 'Jumla', 'No provider payment recorded': 'Hakuna malipo ya provider yaliyorekodiwa', Destination: 'Lengwa', 'Order ref': 'Reference ya order', Packages: 'Vifurushi', Weight: 'Uzito', Declared: 'Kilichotangazwa', 'Not set': 'Haijawekwa', 'Payment terms': 'Masharti ya malipo', 'Customer note': 'Ujumbe wa mteja', Attachment: 'Kiambatisho', 'External purchase: Takeer helps track this shipment, but refunds and seller disputes are handled where the customer paid.': 'Manunuzi ya nje: Takeer husaidia kufuatilia mzigo huu, lakini marejesho na migogoro ya seller hushughulikiwa mahali mteja alipolipa.', 'No location': 'Hakuna eneo', 'Forwarder tracking code': 'Msimbo wa ufuatiliaji wa forwarder', 'E.g. Received at Foshan warehouse': 'Mf. Imepokelewa kwenye ghala la Foshan', 'DHL, Silent Ocean, SF Express': 'DHL, Silent Ocean, SF Express', 'Flight, vessel, container, batch': 'Ndege, meli, kontena, batch', 'E.g. Departs Friday, ETA 14 days': 'Mf. Inaondoka Ijumaa, ETA siku 14', 'Update status': 'Sasisha hali', Latest: 'Ya mwisho', 'Tracking history': 'Historia ya ufuatiliaji', 'Status updated.': 'Hali imesasishwa.', 'Carrier/cargo': 'Carrier/cargo', Tracking: 'Ufuatiliaji', Reference: 'Reference', 'ETA / next movement': 'ETA / hatua inayofuata', 'Tracking link': 'Link ya ufuatiliaji', 'Select at least one shipping type to add pricing and restrictions.': 'Chagua angalau aina moja ya usafirishaji ili kuongeza bei na masharti.', 'Route name': 'Jina la njia', 'Add air or sea cargo': 'Ongeza cargo ya ndege au baharini', Quote: 'Quote', 'No approved shipping service type is enabled yet.': 'Hakuna aina ya huduma ya usafirishaji iliyoruhusiwa bado.', 'Saved to verified profile': 'Imehifadhiwa kwenye wasifu uliothibitishwa', 'Nothing added': 'Hakuna kilichoongezwa', Entry: 'Kipengele', 'Select transport type': 'Chagua aina ya usafirishaji', 'Select a route': 'Chagua njia', 'Saved': 'Imehifadhiwa', 'Save': 'Hifadhi', 'Cancel': 'Ghairi', 'Close': 'Funga', 'Add': 'Ongeza', 'Delete': 'Futa', 'Edit': 'Hariri', 'Archive': 'Weka archive', 'Activate': 'Washa', 'Select': 'Chagua',
+};
+
+function freightCopy(translate, english, swahili = FREIGHT_TEXT_TRANSLATIONS[english] || english) {
+    return translate(english, swahili);
+}
+
+function freightPlaceholder(translate, english) {
+    const translations = {
+        '7-10 days': 'siku 7-10', '35-45 days': 'siku 35-45', '1-3 working days after documents': 'siku 1-3 za kazi baada ya nyaraka', 'Available after cargo receipt': 'Inapatikana baada ya cargo kupokelewa', 'Same day / next day': 'Siku hiyo / siku inayofuata', 'Confirmed after seller tracking': 'Inathibitishwa baada ya tracking ya seller', '2-7 days': 'siku 2-7', 'Quote after invoice review': 'Quote baada ya kukagua invoice', 'E.g. 20 USD service minimum': 'Mf. kiwango cha chini cha huduma USD 20', 'E.g. 5 USD/day minimum': 'Mf. kiwango cha chini USD 5/siku', 'E.g. 10,000 TZS': 'Mf. TZS 10,000', 'E.g. 15 USD': 'Mf. USD 15', '10 USD': 'USD 10', 'Duties/taxes are government charges and confirmed after documents/HS code review.': 'Ushuru/kodi ni gharama za serikali na huthibitishwa baada ya kukagua nyaraka/HS code.', 'Storage starts after free days; abandoned cargo policy applies.': 'Storage huanza baada ya siku za bure; sera ya cargo iliyoachwa inatumika.', 'Remote areas, fragile cargo, and oversized cargo may require quote first.': 'Maeneo ya mbali, cargo dhaifu na cargo kubwa vinaweza kuhitaji quote kwanza.', 'Forwarding fee excludes supplier cost, duties, storage, and inspections unless stated.': 'Gharama ya forwarding haijumuishi gharama ya supplier, ushuru, storage na ukaguzi isipokuwa ikiwa imeelezwa.', 'E.g. Volume weight applies for bulky cargo.': 'Mf. uzito wa ujazo hutumika kwa cargo kubwa.', 'Quote': 'Quote', '1': '1', '5': '5',
+    };
+    const extraTranslations = {
+        '{{full_name:Customer full name}}\nNo. 15 Gongtong Industrial Zone East, Lishui Town, Nanhai District, Foshan City\nSuite {{suite_number:Suite number}}\n{{phone_number:Customer phone number}}': '{{full_name:Jina kamili la mteja}}\nNa. 15 Gongtong Industrial Zone East, Lishui Town, Nanhai District, Foshan City\nSuite {{suite_number:Namba ya suite}}\n{{phone_number:Simu ya mteja}}',
+        'E.g. Mon-Fri (09:00 AM - 2:00 PM), Sat (09:00 AM - 12:00 PM)': 'Mf. Jumatatu-Ijumaa (09:00 AM - 2:00 PM), Jumamosi (09:00 AM - 12:00 PM)',
+        'E.g. Write customer code on the carton, send packing list on WhatsApp, no liquids or restricted goods.': 'Mf. Andika code ya mteja kwenye carton, tuma packing list kwa WhatsApp, hakuna vimiminika au bidhaa zilizozuiwa.',
+        'E.g. Bring ID and order code when collecting. You will receive SMS/WhatsApp once cargo arrives.': 'Mf. Leta kitambulisho na code ya order unapochukua. Utapokea SMS/WhatsApp mzigo ukifika.',
+        'Guangzhou sea cargo - June batch': 'Cargo ya baharini Guangzhou - batch ya Juni',
+        'Arrives Dar in 35-45 days': 'Inafika Dar kwa siku 35-45',
+    };
+    return translate(english, translations[english] || extraTranslations[english] || english);
+}
+
+function shipmentPaymentTermText(shipment, translate = (english) => english) {
     const detail = shipment.route_snapshot?.payment_terms?.[shipment.transport_mode] || {};
     const label = paymentTermOptions.find(([key]) => key === detail.payment_term)?.[1] || '';
     if (!label) return '';
+    const localizedLabel = freightCopy(translate, label, FREIGHT_OPTION_TRANSLATIONS[label] || label);
     if (detail.payment_term === 'deposit_balance' && detail.deposit_value) {
         const deposit = detail.deposit_type === 'fixed' ? detail.deposit_value : `${detail.deposit_value}%`;
-        return `${label}: ${deposit}${detail.balance_due ? `, balance ${detail.balance_due}` : ''}`;
+        return `${localizedLabel}: ${deposit}${detail.balance_due ? `, ${freightCopy(translate, 'balance', 'salio')} ${detail.balance_due}` : ''}`;
     }
-    return [label, detail.payment_notes].filter(Boolean).join(' · ');
+    return [localizedLabel, detail.payment_notes].filter(Boolean).join(' · ');
 }
 
 export default function FreightManager({ merchantUsername, section = 'profile', forwarder = {}, countries = [], currencies = [] }) {
+    const { copy } = useLocale();
     const activeMeta = sectionMeta[section] || sectionMeta.locations;
+    const localizedMeta = {
+        locations: { title: copy('Locations', 'Maeneo'), description: copy('Origin warehouses, drop-off points, and destination collection offices.', 'Maghala ya chanzo, vituo vya kuachia na ofisi za kukusanyia lengwa.') },
+        routes: { title: copy('Routes', 'Njia'), description: copy('Build import routes from real origin locations to real collection offices.', 'Unda njia za uagizaji kutoka maeneo halisi ya chanzo hadi ofisi halisi za kukusanyia.') },
+        schedules: { title: copy('Schedules', 'Ratiba'), description: copy('Attach shipping windows to the routes customers follow.', 'Ambatanisha muda wa usafirishaji kwenye njia zinazofuatwa na wateja.') },
+        shipments: { title: copy('Shipments', 'Mizigo'), description: copy('Track incoming customer cargo requests.', 'Fuatilia maombi ya mizigo ya wateja yanayoingia.') },
+    }[section] || { title: copy(activeMeta.title, activeMeta.title), description: copy(activeMeta.description, activeMeta.description) };
     const ActiveIcon = activeMeta.icon;
     const [data, setData] = useState(forwarder);
     const [saving, setSaving] = useState(false);
@@ -221,7 +279,7 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                 setShipments(res.shipments || []);
                 setShipmentsMeta(res.meta || { current_page: 1, last_page: 1, total: res.shipments?.length || 0, per_page: 12, status_counts: {} });
             })
-            .catch(() => toast.error('Could not load shipments.'))
+            .catch(() => toast.error(copy('Could not load shipments.', 'Imeshindikana kupakia mizigo.')))
             .finally(() => setShipmentsLoading(false));
     }, [section, apiBase, shipmentPage, shipmentQuery, shipmentsMeta.per_page]);
 
@@ -239,9 +297,9 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
         try {
             const { data: res } = await axios.patch(`${apiBase}/profile`, profileForm);
             refreshForwarder(res.forwarder);
-            toast.success(res.message || 'Profile updated.');
+            toast.success(res.message || copy('Profile updated.', 'Wasifu umesasishwa.'));
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not save profile.'));
+            toast.error(errorMessage(error, copy('Could not save profile.', 'Imeshindikana kuhifadhi wasifu.')));
         } finally {
             setSaving(false);
         }
@@ -250,11 +308,11 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
     const saveLocation = async (event) => {
         event.preventDefault();
         if ((locationForm.roles || []).length === 0) {
-            toast.error('Choose whether this location is an origin, destination, or both.');
+            toast.error(copy('Choose whether this location is an origin, destination, or both.', 'Chagua kama eneo hili ni chanzo, lengwa au vyote viwili.'));
             return;
         }
         if (!locationForm.latitude || !locationForm.longitude || !(locationForm.country_id || locationForm.country_iso2 || locationForm.country_name)) {
-            toast.error('Pick the exact location on the map first so we can link country, region, city, and coordinates.');
+            toast.error(copy('Pick the exact location on the map first so we can link country, region, city, and coordinates.', 'Chagua eneo kamili kwenye ramani kwanza ili nchi, mkoa, jiji na viwianishi viunganishwe.'));
             return;
         }
         setSaving(true);
@@ -278,9 +336,9 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
             setData((prev) => ({ ...prev, locations: nextLocations }));
             setLocationForm(blankLocation);
             setEditingLocationId(null);
-            toast.success(res.message || 'Location saved.');
+            toast.success(res.message || copy('Location saved.', 'Eneo limehifadhiwa.'));
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not save location.'));
+            toast.error(errorMessage(error, copy('Could not save location.', 'Imeshindwa kuhifadhi eneo.')));
         } finally {
             setSaving(false);
         }
@@ -317,13 +375,13 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
     };
 
     const deleteLocation = async (location) => {
-        if (!confirm(`Delete ${location.name}?`)) return;
+        if (!confirm(copy(`Delete ${location.name}?`, `Futa ${location.name}?`))) return;
         try {
             await axios.delete(`${apiBase}/locations/${location.id}`);
             setData((prev) => ({ ...prev, locations: locations.filter((item) => item.id !== location.id) }));
-            toast.success('Location deleted.');
+            toast.success(copy('Location deleted.', 'Eneo limefutwa.'));
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not delete location.'));
+            toast.error(errorMessage(error, copy('Could not delete location.', 'Imeshindwa kufuta eneo.')));
         }
     };
 
@@ -341,9 +399,9 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                 setDestinations(res.forwarder?.destinations_config || destinations);
                 setEditingRouteId(null);
             }
-            toast.success(res.message || 'Saved.');
+            toast.success(res.message || copy('Saved.', 'Imehifadhiwa.'));
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not save.'));
+            toast.error(errorMessage(error, copy('Could not save.', 'Imeshindwa kuhifadhi.')));
         } finally {
             setSaving(false);
         }
@@ -373,9 +431,9 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
         try {
             const { data: res } = await axios.patch(`${apiBase}/shipments/${shipment.id}`, payload);
             setShipments((items) => items.map((item) => Number(item.id) === Number(shipment.id) ? res.shipment : item));
-            toast.success(res.message || 'Shipment updated.');
+            toast.success(res.message || copy('Shipment updated.', 'Mzigo umesasishwa.'));
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not update shipment.'));
+            toast.error(errorMessage(error, copy('Could not update shipment.', 'Imeshindwa kusasisha mzigo.')));
         }
     };
 
@@ -403,25 +461,25 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
 
     return (
         <AppLayout>
-            <Head title={`${activeMeta.title} | Freight Hub`} />
+            <Head title={`${localizedMeta.title} | Freight Hub`} />
             <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
                         <Link href="/profile" className="mb-3 inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-700">
-                            <ArrowLeft className="h-4 w-4" /> Profile
+                            <ArrowLeft className="h-4 w-4" /> {copy('Profile', 'Wasifu')}
                         </Link>
                         <div className="flex items-center gap-3">
                             <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-indigo-100 bg-indigo-50 text-indigo-700">
                                 <ActiveIcon className="h-7 w-7" />
                             </div>
                             <div>
-                                <h1 className="text-2xl font-black tracking-tight text-slate-950">{activeMeta.title}</h1>
-                                <p className="text-sm font-semibold text-slate-500">{activeMeta.description}</p>
+                                <h1 className="text-2xl font-black tracking-tight text-slate-950">{localizedMeta.title}</h1>
+                                <p className="text-sm font-semibold text-slate-500">{localizedMeta.description}</p>
                             </div>
                         </div>
                     </div>
                     <span className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-700">
-                        <Ship className="h-4 w-4" /> Verified Freight
+                        <Ship className="h-4 w-4" /> {copy('Verified freight', 'Mizigo iliyothibitishwa')}
                     </span>
                 </div>
 
@@ -429,7 +487,7 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                     <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
                         <div className="space-y-3">
                             {locations.length === 0 ? (
-                                <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm font-bold text-slate-500">No locations yet.</div>
+                                <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm font-bold text-slate-500">{copy('No locations yet.', 'Hakuna maeneo bado.')}</div>
                             ) : locations.map((location) => (
                                 <Card key={location.id} className="rounded-2xl border-slate-200 bg-white shadow-sm">
                                     <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-start md:justify-between">
@@ -445,13 +503,13 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                                             <div className="mt-3 flex flex-wrap gap-2">
                                                 {(location.roles || []).map((role) => (
                                                     <span key={role} className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${roleMeta[role]?.badge || 'bg-slate-100 text-slate-600'}`}>
-                                                        {roleMeta[role]?.icon || role}
+                                                        {copy(roleMeta[role]?.icon || role, roleMeta[role]?.swahiliIcon || role)}
                                                     </span>
                                                 ))}
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
-                                            <Button type="button" variant="outline" onClick={() => editLocation(location)}>Edit</Button>
+                                            <Button type="button" variant="outline" onClick={() => editLocation(location)}>{copy('Edit', 'Hariri')}</Button>
                                             <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteLocation(location)}><Trash2 className="h-4 w-4" /></Button>
                                         </div>
                                     </CardContent>
@@ -462,7 +520,7 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                         <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
                             <CardContent className="p-5">
                                 <form onSubmit={saveLocation} className="space-y-4">
-                                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">{editingLocationId ? 'Edit location' : 'Add location'}</h2>
+                                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">{editingLocationId ? copy('Edit location', 'Hariri eneo') : copy('Add location', 'Ongeza eneo')}</h2>
                                     <Field label="Location roles" hint="A single physical office can be used as origin, destination, or both.">
                                         <div className="grid gap-2">
                                             {Object.entries(roleMeta).map(([role, meta]) => {
@@ -474,7 +532,7 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                                                         onClick={() => toggleLocationRole(role)}
                                                         className={`flex min-h-12 items-center justify-between rounded-xl border px-3 text-left text-sm font-black transition ${active ? 'border-brand-400 bg-brand-50 text-brand-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
                                                     >
-                                                        {meta.label}
+                                                        {copy(meta.label, meta.swahiliLabel || meta.label)}
                                                         <span className={`h-3 w-3 rounded-full ${active ? 'bg-brand-600' : 'bg-slate-200'}`} />
                                                     </button>
                                                 );
@@ -491,7 +549,7 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                                             className={textAreaClass}
                                             value={locationForm.address_template || ''}
                                             onChange={(e) => setLocationForm({ ...locationForm, address_template: e.target.value })}
-                                            placeholder={'{{full_name:Customer full name}}\nNo. 15 Gongtong Industrial Zone East, Lishui Town, Nanhai District, Foshan City\nSuite {{suite_number:Suite number}}\n{{phone_number:Customer phone number}}'}
+                                            placeholder={freightPlaceholder(copy, '{{full_name:Customer full name}}\nNo. 15 Gongtong Industrial Zone East, Lishui Town, Nanhai District, Foshan City\nSuite {{suite_number:Suite number}}\n{{phone_number:Customer phone number}}')}
                                         />
                                     </Field>
                                     <button
@@ -499,16 +557,16 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                                         onClick={() => setIsLocationPickerOpen(true)}
                                         className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 text-sm font-black text-emerald-800 transition hover:bg-emerald-100"
                                     >
-                                        <MapPin className="h-4 w-4" /> Pick exact location on map (required)
+                                        <MapPin className="h-4 w-4" /> {copy('Pick exact location on map (required)', 'Chagua eneo kamili kwenye ramani (inahitajika)')}
                                     </button>
                                     <Field label="Country" hint="Filled from the map pin for accurate country matching.">
-                                        <Input className={readOnlyInputClass} value={geoCountryLabel} placeholder="Pick on map" readOnly />
+                                        <Input className={readOnlyInputClass} value={geoCountryLabel} placeholder={copy('Pick on map', 'Chagua kwenye ramani')} readOnly />
                                     </Field>
                                     <div className="grid gap-3 md:grid-cols-2">
-                                        <Field label="State / region"><Input className={readOnlyInputClass} value={locationForm.state_name} placeholder="Pick on map" readOnly /></Field>
-                                        <Field label="City"><Input className={readOnlyInputClass} value={locationForm.city_name} placeholder="Pick on map" readOnly /></Field>
-                                        <Field label="Latitude"><Input className={readOnlyInputClass} value={locationForm.latitude} placeholder="Pick on map" readOnly /></Field>
-                                        <Field label="Longitude"><Input className={readOnlyInputClass} value={locationForm.longitude} placeholder="Pick on map" readOnly /></Field>
+                                        <Field label="State / region"><Input className={readOnlyInputClass} value={locationForm.state_name} placeholder={copy('Pick on map', 'Chagua kwenye ramani')} readOnly /></Field>
+                                        <Field label="City"><Input className={readOnlyInputClass} value={locationForm.city_name} placeholder={copy('Pick on map', 'Chagua kwenye ramani')} readOnly /></Field>
+                                        <Field label="Latitude"><Input className={readOnlyInputClass} value={locationForm.latitude} placeholder={copy('Pick on map', 'Chagua kwenye ramani')} readOnly /></Field>
+                                        <Field label="Longitude"><Input className={readOnlyInputClass} value={locationForm.longitude} placeholder={copy('Pick on map', 'Chagua kwenye ramani')} readOnly /></Field>
                                     </div>
                                     <Field label="Contact person"><Input className={inputClass} value={locationForm.contact_person} onChange={(e) => setLocationForm({ ...locationForm, contact_person: e.target.value })} /></Field>
                                     <Field label="Contact phone"><Input className={inputClass} value={locationForm.contact_phone} onChange={(e) => setLocationForm({ ...locationForm, contact_phone: e.target.value })} /></Field>
@@ -517,7 +575,7 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                                             className={inputClass}
                                             value={locationForm.business_hours}
                                             onChange={(e) => setLocationForm({ ...locationForm, business_hours: e.target.value })}
-                                            placeholder="E.g. Mon-Fri (09:00 AM - 2:00 PM), Sat (09:00 AM - 12:00 PM)"
+                                            placeholder={freightPlaceholder(copy, 'E.g. Mon-Fri (09:00 AM - 2:00 PM), Sat (09:00 AM - 12:00 PM)')}
                                         />
                                     </Field>
                                     <Field label="Seller instructions" hint="Information sellers/merchants should know before sending a package to this location.">
@@ -525,7 +583,7 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                                             className={textAreaClass}
                                             value={locationForm.merchant_instructions}
                                             onChange={(e) => setLocationForm({ ...locationForm, merchant_instructions: e.target.value })}
-                                            placeholder="E.g. Write customer code on the carton, send packing list on WhatsApp, no liquids or restricted goods."
+                                            placeholder={freightPlaceholder(copy, 'E.g. Write customer code on the carton, send packing list on WhatsApp, no liquids or restricted goods.')}
                                         />
                                     </Field>
                                     <Field label="Customer instructions" hint="Information customers should see when choosing this pickup or forwarding location.">
@@ -533,12 +591,12 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                                             className={textAreaClass}
                                             value={locationForm.customer_instructions}
                                             onChange={(e) => setLocationForm({ ...locationForm, customer_instructions: e.target.value })}
-                                            placeholder="E.g. Bring ID and order code when collecting. You will receive SMS/WhatsApp once cargo arrives."
+                                            placeholder={freightPlaceholder(copy, 'E.g. Bring ID and order code when collecting. You will receive SMS/WhatsApp once cargo arrives.')}
                                         />
                                     </Field>
                                     <div className="flex gap-2">
-                                        <Button type="submit" disabled={saving} className="h-12 flex-1 rounded-2xl font-black"><Save className="mr-2 h-4 w-4" /> Save</Button>
-                                        {editingLocationId && <Button type="button" variant="outline" onClick={() => { setEditingLocationId(null); setLocationForm(blankLocation); }}>Cancel</Button>}
+                                        <Button type="submit" disabled={saving} className="h-12 flex-1 rounded-2xl font-black"><Save className="mr-2 h-4 w-4" /> {copy('Save', 'Hifadhi')}</Button>
+                                        {editingLocationId && <Button type="button" variant="outline" onClick={() => { setEditingLocationId(null); setLocationForm(blankLocation); }}>{copy('Cancel', 'Ghairi')}</Button>}
                                     </div>
                                 </form>
                             </CardContent>
@@ -586,13 +644,13 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                         onRemove={removeRow}
                         renderItem={(item, index) => (
                             <div className="grid gap-3 md:grid-cols-2">
-                                <Field label="Schedule title"><Input className={inputClass} value={item.title || ''} onChange={(e) => updateRow('schedules', index, { title: e.target.value })} placeholder="Guangzhou sea cargo - June batch" /></Field>
+                                <Field label="Schedule title"><Input className={inputClass} value={item.title || ''} onChange={(e) => updateRow('schedules', index, { title: e.target.value })} placeholder={freightPlaceholder(copy, 'Guangzhou sea cargo - June batch')} /></Field>
                                 <Field label="Route"><RouteSelect routes={routeOptions} value={item.route_id} onChange={(value) => updateRow('schedules', index, { route_id: value })} /></Field>
                                 <Field label="Transport mode"><TransportSelect value={item.transport_mode} onChange={(value) => updateRow('schedules', index, { transport_mode: value })} /></Field>
                                 <Field label="Departure date"><Input type="date" className={inputClass} value={item.departure_date || ''} onChange={(e) => updateRow('schedules', index, { departure_date: e.target.value })} /></Field>
                                 <Field label="Cargo cutoff date"><Input type="date" className={inputClass} value={item.cutoff_date || ''} onChange={(e) => updateRow('schedules', index, { cutoff_date: e.target.value })} /></Field>
-                                <Field label="ETA text"><Input className={inputClass} value={item.eta_text || ''} onChange={(e) => updateRow('schedules', index, { eta_text: e.target.value })} placeholder="Arrives Dar in 35-45 days" /></Field>
-                                <Field label="Status"><Input className={inputClass} value={item.status || ''} onChange={(e) => updateRow('schedules', index, { status: e.target.value })} placeholder="open / full / departed" /></Field>
+                                <Field label="ETA text"><Input className={inputClass} value={item.eta_text || ''} onChange={(e) => updateRow('schedules', index, { eta_text: e.target.value })} placeholder={freightPlaceholder(copy, 'Arrives Dar in 35-45 days')} /></Field>
+                                <Field label="Status"><Input className={inputClass} value={item.status || ''} onChange={(e) => updateRow('schedules', index, { status: e.target.value })} placeholder={freightCopy(copy, 'open / full / departed', 'imefunguliwa / imejaa / imeondoka')} /></Field>
                                 <div className="md:col-span-2"><Field label="Notes"><textarea className={textAreaClass} value={item.notes || ''} onChange={(e) => updateRow('schedules', index, { notes: e.target.value })} /></Field></div>
                             </div>
                         )}
@@ -623,9 +681,9 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                         onRemove={removeRow}
                         renderItem={(item, index) => (
                             <div className="grid gap-3 md:grid-cols-2">
-                                <Field label="Update title"><Input className={inputClass} value={item.title || ''} onChange={(e) => updateRow('updates', index, { title: e.target.value })} placeholder="June shipment has departed" /></Field>
-                                <Field label="Audience"><Input className={inputClass} value={item.audience || ''} onChange={(e) => updateRow('updates', index, { audience: e.target.value })} placeholder="customers / sellers" /></Field>
-                                <Field label="Status"><Input className={inputClass} value={item.status || ''} onChange={(e) => updateRow('updates', index, { status: e.target.value })} placeholder="published / draft" /></Field>
+                                <Field label="Update title"><Input className={inputClass} value={item.title || ''} onChange={(e) => updateRow('updates', index, { title: e.target.value })} placeholder={freightCopy(copy, 'June shipment has departed', 'Mizigo ya Juni imeondoka')} /></Field>
+                                <Field label="Audience"><Input className={inputClass} value={item.audience || ''} onChange={(e) => updateRow('updates', index, { audience: e.target.value })} placeholder={freightCopy(copy, 'customers / sellers', 'wateja / sellers')} /></Field>
+                                <Field label="Status"><Input className={inputClass} value={item.status || ''} onChange={(e) => updateRow('updates', index, { status: e.target.value })} placeholder={freightCopy(copy, 'published / draft', 'imechapishwa / draft')} /></Field>
                                 <div className="md:col-span-2"><Field label="Message"><textarea className={textAreaClass} value={item.body || ''} onChange={(e) => updateRow('updates', index, { body: e.target.value })} /></Field></div>
                             </div>
                         )}
@@ -646,8 +704,12 @@ const shipmentStatuses = [
     ['completed', 'Completed'],
     ['on_hold', 'On hold'],
 ];
+const FREIGHT_STATUS_TRANSLATIONS = {
+    Incoming: 'Inakuja', 'Received at origin': 'Imepokelewa chanzo', 'In transit': 'Iko njiani', 'Arrived in country': 'Imefika nchini', 'Customs / handling': 'Forodha / handling', 'Ready for pickup': 'Tayari kwa pickup', Completed: 'Imekamilika', 'On hold': 'Imesitishwa',
+};
 
 function ShipmentsPanel({ shipments, meta, loading, query, onQueryChange, onPageChange, locations, onStatusChange }) {
+    const { copy } = useLocale();
     const statusCounts = meta?.status_counts || {};
     const currentPage = Number(meta?.current_page || 1);
     const lastPage = Number(meta?.last_page || 1);
@@ -657,15 +719,15 @@ function ShipmentsPanel({ shipments, meta, loading, query, onQueryChange, onPage
             <CardContent className="space-y-4 p-5">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">Shipment inbox</h2>
-                        <p className="text-xs font-semibold text-slate-500">Customers create these from imported forwarder addresses. External purchases are tracking-only, not Takeer purchase protection.</p>
-                        <p className="mt-1 text-xs font-semibold text-slate-400">Integration-ready lookup: update by Takeer shipment ID, tracking number, or external order reference.</p>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">{copy('Shipment inbox', 'Inbox ya mizigo')}</h2>
+                        <p className="text-xs font-semibold text-slate-500">{copy('Customers create these from imported forwarder addresses. External purchases are tracking-only, not Takeer purchase protection.', 'Wateja huunda hizi kutoka anuani za forwarder zilizoingizwa. Manunuzi ya nje ni ya kufuatilia tu, si ulinzi wa manunuzi wa Takeer.')}</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-400">{copy('Integration-ready lookup: update by Takeer shipment ID, tracking number, or external order reference.', 'Utafutaji ulio tayari kwa integration: update kwa shipment ID ya Takeer, tracking number, au reference ya order ya nje.')}</p>
                     </div>
                     <Input
                         className={`${inputClass} lg:max-w-xs`}
                         value={query}
                         onChange={(event) => onQueryChange(event.target.value)}
-                        placeholder="Search shipment, tracking, customer..."
+                        placeholder={copy('Search shipment, tracking, customer...', 'Tafuta mzigo, tracking, mteja...')}
                     />
                 </div>
 
@@ -673,7 +735,7 @@ function ShipmentsPanel({ shipments, meta, loading, query, onQueryChange, onPage
                     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                         {shipmentStatuses.slice(0, 4).map(([key, label]) => (
                             <div key={key} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy(label, FREIGHT_STATUS_TRANSLATIONS[label] || label)}</p>
                                 <p className="mt-1 text-2xl font-black text-slate-950">{statusCounts[key] || 0}</p>
                             </div>
                         ))}
@@ -681,9 +743,9 @@ function ShipmentsPanel({ shipments, meta, loading, query, onQueryChange, onPage
                 )}
 
                 {loading ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">Loading shipments...</div>
+                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">{copy('Loading shipments...', 'Inapakia mizigo...')}</div>
                 ) : shipments.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">No shipment requests yet.</div>
+                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">{copy('No shipment requests yet.', 'Bado hakuna maombi ya mizigo.')}</div>
                 ) : (
                     <div className="space-y-3">
                         {shipments.map((shipment) => (
@@ -694,10 +756,10 @@ function ShipmentsPanel({ shipments, meta, loading, query, onQueryChange, onPage
 
                 {lastPage > 1 && (
                     <div className="flex flex-col gap-2 border-t border-slate-100 pt-3 text-xs font-black text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                        <span>Page {currentPage} of {lastPage} · {meta?.total || 0} shipments</span>
+                        <span>{copy(`Page ${currentPage} of ${lastPage} · ${meta?.total || 0} shipments`, `Ukurasa ${currentPage} kati ya ${lastPage} · mizigo ${meta?.total || 0}`)}</span>
                         <div className="flex gap-2">
-                            <Button type="button" variant="outline" disabled={currentPage <= 1 || loading} onClick={() => onPageChange(currentPage - 1)}>Previous</Button>
-                            <Button type="button" variant="outline" disabled={currentPage >= lastPage || loading} onClick={() => onPageChange(currentPage + 1)}>Next</Button>
+                            <Button type="button" variant="outline" disabled={currentPage <= 1 || loading} onClick={() => onPageChange(currentPage - 1)}>{copy('Previous', 'Iliyotangulia')}</Button>
+                            <Button type="button" variant="outline" disabled={currentPage >= lastPage || loading} onClick={() => onPageChange(currentPage + 1)}>{copy('Next', 'Ifuatayo')}</Button>
                         </div>
                     </div>
                 )}
@@ -707,9 +769,10 @@ function ShipmentsPanel({ shipments, meta, loading, query, onQueryChange, onPage
 }
 
 function ShipmentCard({ shipment, locations, onStatusChange }) {
+    const { copy } = useLocale();
     const events = [...(shipment.events || [])].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
     const latestEvent = events[events.length - 1];
-    const paymentText = shipmentPaymentTermText(shipment);
+    const paymentText = shipmentPaymentTermText(shipment, copy);
     const [status, setStatus] = useState(shipment.status || 'incoming');
     const [note, setNote] = useState('');
     const [locationId, setLocationId] = useState('');
@@ -724,10 +787,10 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
     const customerContact = shipment.customer_contact || {};
     const packageItems = Array.isArray(shipment.package_items) ? shipment.package_items : [];
     const orderSummary = shipment.order_summary || null;
-    const paymentLabel = shipmentPaymentStatusLabel(orderSummary?.payment_status || shipment.metadata?.payment_status, shipment.source_type);
-    const deliveryLabel = shipmentDeliveryStatusLabel(orderSummary?.delivery_status, shipment.source_type);
-    const dropOffPlace = selectedAddress.place || placeLabel(selectedAddress.location) || selectedAddress.name || 'Not linked';
-    const destinationPlace = destinationAddress?.place || placeLabel(destinationAddress) || destinationAddress?.name || routeDisplayName(shipment) || 'Not linked';
+    const paymentLabel = shipmentPaymentStatusLabel(orderSummary?.payment_status || shipment.metadata?.payment_status, shipment.source_type, copy);
+    const deliveryLabel = shipmentDeliveryStatusLabel(orderSummary?.delivery_status, shipment.source_type, copy);
+    const dropOffPlace = selectedAddress.place || placeLabel(selectedAddress.location) || selectedAddress.name || freightCopy(copy, 'Not linked');
+    const destinationPlace = destinationAddress?.place || placeLabel(destinationAddress) || destinationAddress?.name || routeDisplayName(shipment) || freightCopy(copy, 'Not linked');
     const customerMapUrl = customerContact.default_delivery_map_url || googleMapsUrl(customerContact.default_delivery_address);
     const freightTracking = shipment.metadata?.freight_tracking || {};
 
@@ -744,34 +807,34 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{shipment.public_id} · {shipment.source_type === 'takeer_order' ? 'Takeer order' : 'External purchase'}</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{shipment.public_id} · {shipment.source_type === 'takeer_order' ? freightCopy(copy, 'Takeer order') : freightCopy(copy, 'External purchase')}</p>
                 </div>
-                <span className="w-fit rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700">{statusLabel(shipment.status)}</span>
+                <span className="w-fit rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700">{statusLabel(shipment.status, copy)}</span>
             </div>
             <div className="mt-4 grid gap-2 text-xs font-bold text-slate-500 md:grid-cols-2">
-                <span className="rounded-xl bg-white px-3 py-2">Drop-off: {dropOffPlace}</span>
-                <span className="rounded-xl bg-white px-3 py-2">Route landing: {destinationPlace}</span>
+                <span className="rounded-xl bg-white px-3 py-2">{freightCopy(copy, 'Drop-off')}: {dropOffPlace}</span>
+                <span className="rounded-xl bg-white px-3 py-2">{freightCopy(copy, 'Route landing')}: {destinationPlace}</span>
                 <span className="rounded-xl bg-white px-3 py-2">
-                    Drop-off address:
+                    {freightCopy(copy, 'Drop-off address')}:
                     <span className="mt-1 block whitespace-pre-line text-slate-700">
-                        {selectedAddress.address_line || selectedAddress.location?.address_line || 'No address snapshot'}
+                        {selectedAddress.address_line || selectedAddress.location?.address_line || freightCopy(copy, 'No address snapshot')}
                     </span>
                 </span>
                 <span className="rounded-xl bg-white px-3 py-2">
-                    Landing address:
+                    {freightCopy(copy, 'Landing address')}:
                     <span className="mt-1 block whitespace-pre-line text-slate-700">
-                        {destinationAddress?.address_line || destinationAddress?.name || 'No destination office linked'}
+                        {destinationAddress?.address_line || destinationAddress?.name || freightCopy(copy, 'No destination office linked')}
                     </span>
                 </span>
             </div>
 
             <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600 md:grid-cols-3">
-                <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950">Customer phone: {customerContact.phone || 'Not provided'}</span>
-                <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950">Email: {customerContact.email || 'Not provided'}</span>
-                <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950">Name: {customerContact.name || shipment.user?.name || 'Customer'}</span>
+                <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950">{freightCopy(copy, 'Customer phone')}: {customerContact.phone || freightCopy(copy, 'Not provided')}</span>
+                <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950">{freightCopy(copy, 'Email')}: {customerContact.email || freightCopy(copy, 'Not provided')}</span>
+                <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950">{freightCopy(copy, 'Name')}: {customerContact.name || shipment.user?.name || freightCopy(copy, 'Customer')}</span>
                 {customerContact.default_delivery_address && (
                     <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950 md:col-span-3">
-                        Default delivery address:
+                        {freightCopy(copy, 'Default delivery address')}:
                         {customerMapUrl ? (
                             <a
                                 href={customerMapUrl}
@@ -796,20 +859,20 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
 
             <div className="mt-3 flex flex-wrap gap-2">
                 <Button type="button" variant="outline" className="h-9 rounded-xl text-xs font-black" onClick={() => setExpanded((value) => !value)}>
-                    {expanded ? 'Hide package' : 'Check package'}
+                    {expanded ? freightCopy(copy, 'Hide package') : freightCopy(copy, 'Check package')}
                 </Button>
             </div>
 
             {expanded && (
                 <div className="mt-3 grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 lg:grid-cols-[1.2fr_0.8fr]">
                     <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Package contents</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{freightCopy(copy, 'Package contents')}</p>
                         <div className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-100">
                             {packageItems.map((item, index) => (
                                 <div key={`${item.title}-${index}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                                     <div className="min-w-0">
-                                        <p className="truncate font-black text-slate-900">{item.title || 'Package item'}</p>
-                                        <p className="text-xs font-bold text-slate-400">Qty {item.quantity || 1}</p>
+                                        <p className="truncate font-black text-slate-900">{item.title || freightCopy(copy, 'Package item')}</p>
+                                        <p className="text-xs font-bold text-slate-400">{freightCopy(copy, 'Qty')} {item.quantity || 1}</p>
                                     </div>
                                     {item.amount !== null && item.amount !== undefined && (
                                         <span className="text-xs font-black text-slate-700">TZS {Number(item.amount || 0).toLocaleString()}</span>
@@ -819,28 +882,28 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
                         </div>
                     </div>
                     <div className="space-y-2 text-xs font-bold text-slate-600">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Order details</p>
-                        <div className="rounded-xl bg-slate-50 px-3 py-2">Order: {orderSummary?.public_id || shipment.external_order_ref || shipment.public_id}</div>
-                        <div className="rounded-xl bg-slate-50 px-3 py-2">Payment: {paymentLabel}</div>
-                        <div className="rounded-xl bg-slate-50 px-3 py-2">Seller handoff: {deliveryLabel}</div>
-                        <div className="rounded-xl bg-slate-50 px-3 py-2">Total: {orderSummary?.total_paid ? `TZS ${Number(orderSummary.total_paid).toLocaleString()}` : 'Not in Takeer escrow'}</div>
-                        {destinationAddress.name && <div className="rounded-xl bg-slate-50 px-3 py-2">Destination: {destinationAddress.name}</div>}
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{freightCopy(copy, 'Order details')}</p>
+                        <div className="rounded-xl bg-slate-50 px-3 py-2">{freightCopy(copy, 'Order')}: {orderSummary?.public_id || shipment.external_order_ref || shipment.public_id}</div>
+                        <div className="rounded-xl bg-slate-50 px-3 py-2">{freightCopy(copy, 'Payment')}: {paymentLabel}</div>
+                        <div className="rounded-xl bg-slate-50 px-3 py-2">{freightCopy(copy, 'Seller handoff')}: {deliveryLabel}</div>
+                        <div className="rounded-xl bg-slate-50 px-3 py-2">{freightCopy(copy, 'Total')}: {orderSummary?.total_paid ? `TZS ${Number(orderSummary.total_paid).toLocaleString()}` : freightCopy(copy, 'No provider payment recorded')}</div>
+                        {destinationAddress.name && <div className="rounded-xl bg-slate-50 px-3 py-2">{freightCopy(copy, 'Destination')}: {destinationAddress.name}</div>}
                     </div>
                 </div>
             )}
 
             {shipment.source_type === 'external_purchase' && (
                 <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600 md:grid-cols-4">
-                    <span className="rounded-xl bg-white px-3 py-2">Order ref: {shipment.external_order_ref || 'Not provided'}</span>
-                    <span className="rounded-xl bg-white px-3 py-2">Packages: {shipment.package_count || 'Not set'}</span>
-                    <span className="rounded-xl bg-white px-3 py-2">Weight: {shipment.weight_estimate || 'Not set'}</span>
-                    <span className="rounded-xl bg-white px-3 py-2">Declared: {[shipment.metadata?.declared_currency, shipment.metadata?.declared_value].filter(Boolean).join(' ') || 'Not set'}</span>
+                    <span className="rounded-xl bg-white px-3 py-2">{freightCopy(copy, 'Order ref')}: {shipment.external_order_ref || freightCopy(copy, 'Not provided')}</span>
+                    <span className="rounded-xl bg-white px-3 py-2">{freightCopy(copy, 'Packages')}: {shipment.package_count || freightCopy(copy, 'Not set')}</span>
+                    <span className="rounded-xl bg-white px-3 py-2">{freightCopy(copy, 'Weight')}: {shipment.weight_estimate || freightCopy(copy, 'Not set')}</span>
+                    <span className="rounded-xl bg-white px-3 py-2">{freightCopy(copy, 'Declared')}: {[shipment.metadata?.declared_currency, shipment.metadata?.declared_value].filter(Boolean).join(' ') || freightCopy(copy, 'Not set')}</span>
                 </div>
             )}
 
             {paymentText && (
                 <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900">
-                    Payment terms: {paymentText}
+                    {freightCopy(copy, 'Payment terms')}: {paymentText}
                 </div>
             )}
 
@@ -854,7 +917,7 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
 
             {shipment.metadata?.customer_notes && (
                 <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600">
-                    Customer note: {shipment.metadata.customer_notes}
+                    {freightCopy(copy, 'Customer note')}: {shipment.metadata.customer_notes}
                 </div>
             )}
 
@@ -868,7 +931,7 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
                             rel="noreferrer"
                             className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-700 hover:bg-brand-50"
                         >
-                            {attachment.type || 'Attachment'}
+                            {attachment.type || freightCopy(copy, 'Attachment')}
                         </a>
                     ))}
                 </div>
@@ -876,27 +939,27 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
 
             {shipment.source_type === 'external_purchase' && (
                 <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
-                    External purchase: Takeer helps track this shipment, but refunds and seller disputes are handled where the customer paid.
+                    {freightCopy(copy, 'External purchase: Takeer helps track this shipment, but refunds and seller disputes are handled where the customer paid.')}
                 </div>
             )}
 
             <div className="mt-4 grid gap-3 md:grid-cols-4">
                 <Field label="New status">
                     <select className={inputClass} value={status} onChange={(event) => setStatus(event.target.value)}>
-                        {shipmentStatuses.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                        {shipmentStatuses.map(([key, label]) => <option key={key} value={key}>{copy(label, FREIGHT_STATUS_TRANSLATIONS[label] || label)}</option>)}
                     </select>
                 </Field>
                 <Field label="Location">
                     <select className={inputClass} value={locationId} onChange={(event) => setLocationId(event.target.value)}>
-                        <option value="">No location</option>
+                        <option value="">{freightCopy(copy, 'No location')}</option>
                         {(locations || []).map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
                     </select>
                 </Field>
                 <Field label="Tracking number">
-                    <Input className={inputClass} value={trackingNumber} onChange={(event) => setTrackingNumber(event.target.value)} placeholder="Forwarder tracking code" />
+                    <Input className={inputClass} value={trackingNumber} onChange={(event) => setTrackingNumber(event.target.value)} placeholder={freightCopy(copy, 'Forwarder tracking code')} />
                 </Field>
                 <Field label="Note">
-                    <Input className={inputClass} value={note} onChange={(event) => setNote(event.target.value)} placeholder="E.g. Received at Foshan warehouse" />
+                    <Input className={inputClass} value={note} onChange={(event) => setNote(event.target.value)} placeholder={freightCopy(copy, 'E.g. Received at Foshan warehouse')} />
                 </Field>
                 <Field label="Carrier / cargo company">
                     <Input className={inputClass} value={carrierName} onChange={(event) => setCarrierName(event.target.value)} placeholder="DHL, Silent Ocean, SF Express" />
@@ -905,10 +968,10 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
                     <Input className={inputClass} value={trackingUrl} onChange={(event) => setTrackingUrl(event.target.value)} placeholder="https://..." />
                 </Field>
                 <Field label="Flight / ship / container / batch">
-                    <Input className={inputClass} value={transportReference} onChange={(event) => setTransportReference(event.target.value)} placeholder="Flight, vessel, container, batch" />
+                    <Input className={inputClass} value={transportReference} onChange={(event) => setTransportReference(event.target.value)} placeholder={freightCopy(copy, 'Flight, vessel, container, batch', 'Ndege, meli, kontena, batch')} />
                 </Field>
                 <Field label="ETA / next movement">
-                    <Input className={inputClass} value={etaText} onChange={(event) => setEtaText(event.target.value)} placeholder="E.g. Departs Friday, ETA 14 days" />
+                    <Input className={inputClass} value={etaText} onChange={(event) => setEtaText(event.target.value)} placeholder={freightCopy(copy, 'E.g. Departs Friday, ETA 14 days')} />
                 </Field>
             </div>
             <div className="mt-3 flex justify-end">
@@ -924,21 +987,21 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
                         forwarder_location_id: locationId || null,
                     });
                     setNote('');
-                }}>Update status</Button>
+                }}>{freightCopy(copy, 'Update status')}</Button>
             </div>
             {latestEvent && (
-                <p className="mt-3 text-xs font-semibold text-slate-500">Latest: {statusLabel(latestEvent.status)} {latestEvent.note ? `- ${latestEvent.note}` : ''}</p>
+                <p className="mt-3 text-xs font-semibold text-slate-500">{freightCopy(copy, 'Latest')}: {statusLabel(latestEvent.status, copy)} {latestEvent.note ? `- ${latestEvent.note}` : ''}</p>
             )}
             {events.length > 0 && (
                 <div className="mt-4 space-y-2 rounded-2xl border border-slate-200 bg-white p-3">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tracking history</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{freightCopy(copy, 'Tracking history')}</p>
                     <div className="space-y-2">
                         {events.slice(-5).reverse().map((event) => (
                             <div key={event.id} className="flex gap-3 text-xs">
                                 <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-500" />
                                 <div>
-                                    <p className="font-black text-slate-800">{statusLabel(event.status)} {event.location?.name ? `· ${event.location.name}` : ''}</p>
-                                    <p className="font-semibold text-slate-500">{event.note || 'Status updated.'}</p>
+                                    <p className="font-black text-slate-800">{statusLabel(event.status, copy)} {event.location?.name ? `· ${event.location.name}` : ''}</p>
+                                    <p className="font-semibold text-slate-500">{event.note || freightCopy(copy, 'Status updated.')}</p>
                                     <FreightTrackingSummary className="mt-2" trackingNumber={event.metadata?.tracking_number} metadata={event.metadata} compact />
                                 </div>
                             </div>
@@ -951,6 +1014,7 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
 }
 
 function FreightTrackingSummary({ metadata = {}, trackingNumber = '', compact = false, className = '' }) {
+    const { copy } = useLocale();
     const rows = [
         ['Carrier/cargo', metadata.carrier_name],
         ['Tracking', trackingNumber || metadata.tracking_number],
@@ -965,7 +1029,7 @@ function FreightTrackingSummary({ metadata = {}, trackingNumber = '', compact = 
             <div className={`grid gap-2 ${compact ? 'md:grid-cols-2' : 'md:grid-cols-4'}`}>
                 {rows.map(([label, value]) => (
                     <span key={label} className={`${compact ? 'text-[11px]' : 'rounded-xl bg-white px-3 py-2 text-xs'} font-bold text-slate-700`}>
-                        <span className="block text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</span>
+                        <span className="block text-[9px] font-black uppercase tracking-widest text-slate-400">{freightCopy(copy, label)}</span>
                         {value}
                     </span>
                 ))}
@@ -977,7 +1041,7 @@ function FreightTrackingSummary({ metadata = {}, trackingNumber = '', compact = 
                         className={`${compact ? 'text-[11px]' : 'rounded-xl bg-white px-3 py-2 text-xs'} inline-flex items-center gap-1 font-black text-brand-700 underline decoration-brand-200 underline-offset-4`}
                     >
                         <ExternalLink className="h-3 w-3" />
-                        Tracking link
+                        {freightCopy(copy, 'Tracking link')}
                     </a>
                 )}
             </div>
@@ -1003,16 +1067,17 @@ function RoutesPanel({
     onEdit,
     onCancel,
 }) {
+    const { copy } = useLocale();
     const editingIndex = routes.findIndex((route, index) => routeKey(route, index) === editingRouteId);
     const editingRoute = editingIndex >= 0 ? routes[editingIndex] : null;
     const handleRouteRemove = (route, index) => {
         if (route.has_customer_usage) {
-            if (!confirm('Archive this route? It will be hidden from new customers, but existing imported addresses and shipments will remain.')) return;
+            if (!confirm(copy('Archive this route? It will be hidden from new customers, but existing imported addresses and shipments will remain.', 'Uweke njia hii kwenye archive? Itafichwa kwa wateja wapya, lakini anuani na mizigo iliyopo itaendelea.'))) return;
             onUpdate('destinations', index, { is_active: false });
             return;
         }
 
-        if (!confirm('Delete this unsaved route?')) return;
+        if (!confirm(copy('Delete this unsaved route?', 'Futa njia hii ambayo haijahifadhiwa?'))) return;
         onRemove('destinations', index);
     };
 
@@ -1021,17 +1086,17 @@ function RoutesPanel({
             <CardContent className="space-y-5 p-5">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
-                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">Routes</h2>
-                        <p className="text-xs font-semibold text-slate-500">Create customer-ready route cards, then open any route to edit pricing and rules.</p>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">{copy('Routes', 'Njia')}</h2>
+                        <p className="text-xs font-semibold text-slate-500">{copy('Create customer-ready route cards, then open any route to edit pricing and rules.', 'Unda cards za njia kwa wateja, kisha fungua njia kuhariri bei na sheria.')}</p>
                     </div>
                     <div className="flex gap-2">
-                        <Button type="button" variant="outline" onClick={() => onAdd('destinations')}><Plus className="mr-2 h-4 w-4" /> Add route</Button>
-                        <Button type="button" disabled={saving} onClick={() => onSave('destinations')}><Save className="mr-2 h-4 w-4" /> Save</Button>
+                        <Button type="button" variant="outline" onClick={() => onAdd('destinations')}><Plus className="mr-2 h-4 w-4" /> {copy('Add route', 'Ongeza njia')}</Button>
+                        <Button type="button" disabled={saving} onClick={() => onSave('destinations')}><Save className="mr-2 h-4 w-4" /> {copy('Save', 'Hifadhi')}</Button>
                     </div>
                 </div>
 
                 {routes.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">No routes yet.</div>
+                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">{copy('No routes yet.', 'Hakuna njia bado.')}</div>
                 ) : (
                     <div className="grid gap-3 lg:grid-cols-2">
                         {routes.map((route, index) => (
@@ -1053,10 +1118,10 @@ function RoutesPanel({
                     <div className="rounded-3xl border border-brand-100 bg-slate-50 p-4">
                         <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                             <div>
-                                <p className="text-xs font-black uppercase tracking-widest text-brand-700">Editing route</p>
+                                <p className="text-xs font-black uppercase tracking-widest text-brand-700">{copy('Editing route', 'Inahariri njia')}</p>
                                 <h3 className="text-xl font-black text-slate-950">{routeLabel(editingRoute, locations, editingIndex)}</h3>
                             </div>
-                            <Button type="button" variant="outline" onClick={onCancel}>Close editor</Button>
+                            <Button type="button" variant="outline" onClick={onCancel}>{copy('Close editor', 'Funga editor')}</Button>
                         </div>
                         <RouteForm
                             route={editingRoute}
@@ -1078,21 +1143,22 @@ function RoutesPanel({
 }
 
 function RouteSummaryCard({ route, index, locations, active, onEdit, onRemove, onToggleActive }) {
+    const { copy } = useLocale();
     const locationById = new Map((locations || []).map((location) => [String(location.id), location]));
     const origins = (route.origin_location_ids || []).map((id) => locationById.get(String(id))).filter(Boolean);
     const destinations = (route.destination_location_ids || []).map((id) => locationById.get(String(id))).filter(Boolean);
     const label = routeLabel(route, locations, index);
     const originCount = (route.origin_location_ids || []).length;
     const destinationCount = (route.destination_location_ids || []).length;
-    const modeLabels = (route.transport_modes || []).map((mode) => transportLabel(mode));
+    const modeLabels = (route.transport_modes || []).map((mode) => transportLabel(mode, copy));
     const routeIsActive = route.is_active !== false;
     const [originFallback = 'Origin', destinationFallback = 'Destination'] = label.split(' to ');
-    const originName = routePlaceNames(origins) || originFallback || 'Origin';
-    const destinationName = routePlaceNames(destinations) || destinationFallback || 'Destination';
+    const originName = routePlaceNames(origins) || originFallback || copy('Origin', 'Chanzo');
+    const destinationName = routePlaceNames(destinations) || destinationFallback || copy('Destination', 'Lengwa');
     const modeSummaries = (route.transport_modes || [])
         .map((mode) => ({
             mode,
-            label: transportLabel(mode),
+            label: transportLabel(mode, copy),
             detail: normalizeTransportDetail(mode, route.transport_details?.[mode]),
         }))
         .filter((item) => item.detail?.price_amount || item.detail?.estimate || item.detail?.pricing_model === 'quote')
@@ -1117,29 +1183,29 @@ function RouteSummaryCard({ route, index, locations, active, onEdit, onRemove, o
                     <div className="min-w-0 flex-1">
                         <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-sky-100">
                             <Ship className="h-3 w-3" />
-                            Route {index + 1}
+                            {copy('Route', 'Njia')} {index + 1}
                         </div>
                         {!routeIsActive && (
                             <span className="ml-2 inline-flex rounded-full border border-amber-300/30 bg-amber-300/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-amber-100">
-                                Inactive
+                                {copy('Inactive', 'Haifanyi kazi')}
                             </span>
                         )}
                         <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
                             <div className="min-w-0">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-white/45">From</p>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-white/45">{copy('From', 'Kutoka')}</p>
                                 <p className="mt-1 truncate text-xl font-black leading-none">{originName}</p>
                             </div>
                             <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10">
                                 <Route className="h-4 w-4 text-sky-200" />
                             </div>
                             <div className="min-w-0 text-right">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-white/45">To</p>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-white/45">{copy('To', 'Kwenda')}</p>
                                 <p className="mt-1 truncate text-xl font-black leading-none">{destinationName}</p>
                             </div>
                         </div>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-center shadow-inner">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-white/45">Offices</p>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-white/45">{copy('Offices', 'Ofisi')}</p>
                         <p className="text-lg font-black">{originCount} → {destinationCount}</p>
                     </div>
                 </div>
@@ -1151,8 +1217,8 @@ function RouteSummaryCard({ route, index, locations, active, onEdit, onRemove, o
                         {modeSummaries.map(({ mode, label: labelText, detail }) => {
                             const ModeIcon = mode === 'air_cargo' ? Plane : Ship;
                             const price = detail.price_amount
-                                ? `${detail.currency || ''} ${detail.price_amount}${detail.pricing_model && detail.pricing_model !== 'quote' ? ` ${pricingModelLabel(detail.pricing_model)}` : ''}`.trim()
-                                : (detail.pricing_model === 'quote' ? 'Quote' : '');
+                                ? `${detail.currency || ''} ${detail.price_amount}${detail.pricing_model && detail.pricing_model !== 'quote' ? ` ${pricingModelLabel(detail.pricing_model, copy)}` : ''}`.trim()
+                                : (detail.pricing_model === 'quote' ? freightCopy(copy, 'Quote') : '');
                             return (
                                 <div key={mode} className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
                                     <div className="flex items-start justify-between gap-2">
@@ -1175,7 +1241,7 @@ function RouteSummaryCard({ route, index, locations, active, onEdit, onRemove, o
                             <span key={labelText} className="rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700">{labelText}</span>
                         ))}
                         {modeLabels.length === 0 && (
-                            <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">Add air or sea cargo</span>
+                            <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">{copy('Add air or sea cargo', 'Ongeza cargo ya ndege au baharini')}</span>
                         )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -1184,7 +1250,7 @@ function RouteSummaryCard({ route, index, locations, active, onEdit, onRemove, o
                                 type="button"
                                 onClick={(event) => { event.stopPropagation(); onRemove(); }}
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 transition hover:bg-red-100"
-                                aria-label="Delete inactive route"
+                                aria-label={copy('Delete inactive route', 'Futa njia isiyofanya kazi')}
                             >
                                 <Trash2 className="h-4 w-4" />
                             </button>
@@ -1194,9 +1260,9 @@ function RouteSummaryCard({ route, index, locations, active, onEdit, onRemove, o
                             onClick={(event) => { event.stopPropagation(); onToggleActive?.(); }}
                             className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-widest transition ${routeIsActive ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
                         >
-                            {routeIsActive ? 'Archive' : 'Activate'}
+                            {routeIsActive ? copy('Archive', 'Weka archive') : copy('Activate', 'Washa')}
                         </button>
-                        <span className="text-xs font-black text-slate-400 transition group-hover:text-brand-600">Open to edit</span>
+                        <span className="text-xs font-black text-slate-400 transition group-hover:text-brand-600">{copy('Open to edit', 'Fungua kuhariri')}</span>
                     </div>
                 </div>
             </div>
@@ -1216,6 +1282,7 @@ function RouteForm({
     currencies = [],
     onChange,
 }) {
+    const { copy } = useLocale();
     const selectedModes = (route.transport_modes || []).filter((mode) => approvedTransportModes.some(([key]) => key === mode));
     const updateTransportModes = (modes) => {
         onChange({
@@ -1241,7 +1308,7 @@ function RouteForm({
                 />
             </Field>
             <div className="rounded-2xl border border-brand-100 bg-brand-50/60 px-4 py-3 md:col-span-2">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-700">Route name</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-700">{copy('Route name', 'Jina la njia')}</p>
                 <p className="mt-1 text-base font-black text-slate-950">{routeLabel(route, locations, index)}</p>
             </div>
             <div className="md:col-span-2">
@@ -1250,7 +1317,7 @@ function RouteForm({
                         locations={locationsInApprovedCountry(originLocations, route.origin_country_id, approvedCountryIds)}
                         value={route.origin_location_ids || []}
                         onChange={(value) => onChange({ origin_location_ids: value })}
-                        emptyText={route.origin_country_id ? 'No origin-role locations in this country yet.' : 'Select origin country first.'}
+                        emptyText={route.origin_country_id ? copy('No origin-role locations in this country yet.', 'Bado hakuna maeneo ya chanzo katika nchi hii.') : copy('Select origin country first.', 'Chagua nchi ya chanzo kwanza.')}
                     />
                 </Field>
             </div>
@@ -1260,7 +1327,7 @@ function RouteForm({
                         locations={locationsInApprovedCountry(destinationLocations, route.destination_country_id, approvedCountryIds)}
                         value={route.destination_location_ids || []}
                         onChange={(value) => onChange({ destination_location_ids: value })}
-                        emptyText={route.destination_country_id ? 'No destination-role locations in this country yet.' : 'Select destination country first.'}
+                        emptyText={route.destination_country_id ? copy('No destination-role locations in this country yet.', 'Bado hakuna maeneo ya lengwa katika nchi hii.') : copy('Select destination country first.', 'Chagua nchi lengwa kwanza.')}
                     />
                 </Field>
             </div>
@@ -1287,21 +1354,22 @@ function RouteForm({
                         className={textAreaClass}
                         value={route.customer_instructions || ''}
                         onChange={(event) => onChange({ customer_instructions: event.target.value })}
-                        placeholder="E.g. Cargo is consolidated weekly. Customer chooses preferred pickup office after arrival."
+                        placeholder={copy('E.g. Cargo is consolidated weekly. Customers choose a pickup office after arrival.', 'Mf. Cargo inaunganishwa kila wiki. Mteja anachagua ofisi ya pickup baada ya kufika.')}
                     />
                 </Field>
             </div>
             <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 md:col-span-2">
                 <input type="checkbox" checked={Boolean(route.post_to_feed)} onChange={(event) => onChange({ post_to_feed: event.target.checked })} />
-                Post this route to feed after saving
+                {copy('Post this route to feed after saving', 'Post njia hii kwenye feed baada ya kuhifadhi')}
             </label>
         </div>
     );
 }
 
 function TransportDetails({ modes, details = {}, currencies = [], onChange }) {
+    const { copy } = useLocale();
     if (modes.length === 0) {
-        return <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm font-bold text-slate-400">Select at least one shipping type to add pricing and restrictions.</div>;
+        return <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm font-bold text-slate-400">{freightCopy(copy, 'Select at least one shipping type to add pricing and restrictions.')}</div>;
     }
 
     const updateMode = (mode, patch) => {
@@ -1321,8 +1389,8 @@ function TransportDetails({ modes, details = {}, currencies = [], onChange }) {
                 return (
                     <div key={mode} className="rounded-2xl border border-slate-200 bg-white p-4">
                         <div>
-                            <h4 className="text-sm font-black text-slate-950">{transportLabel(mode)}</h4>
-                            <p className="mt-1 text-xs font-semibold text-slate-500">{serviceCardDescription(mode)}</p>
+                            <h4 className="text-sm font-black text-slate-950">{transportLabel(mode, copy)}</h4>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">{serviceCardDescription(mode, copy)}</p>
                         </div>
                         <ServiceSpecificFields
                             mode={mode}
@@ -1338,6 +1406,7 @@ function TransportDetails({ modes, details = {}, currencies = [], onChange }) {
 }
 
 function ServiceSpecificFields({ mode, detail, currencies = [], onChange }) {
+    const { copy } = useLocale();
     const updateDetail = (key, value) => onChange({
         details: {
             ...(detail.details || {}),
@@ -1349,11 +1418,11 @@ function ServiceSpecificFields({ mode, detail, currencies = [], onChange }) {
         return (
             <div className="mt-4 grid gap-4 lg:grid-cols-12">
                 <CommonServicePricing detail={detail} mode={mode} currencies={currencies} onChange={onChange} labels={{ estimate: 'Processing time', price: 'Service fee', notes: 'Duties / taxes note' }} />
-                <Field className="lg:col-span-6" label="Documents required" hint="Examples: invoice, packing list, ID, TIN, permit, HS code."><textarea className={textAreaClass} value={detail.details?.documents_required || ''} onChange={(event) => updateDetail('documents_required', event.target.value)} placeholder="Commercial invoice, packing list, ID/TIN, import permit where required." /></Field>
-                <Field className="lg:col-span-6" label="Government charges note" hint="Tell customers what is estimated versus confirmed by customs."><textarea className={textAreaClass} value={detail.details?.government_charges_note || ''} onChange={(event) => updateDetail('government_charges_note', event.target.value)} placeholder="Duties, VAT, inspection, storage, and port charges are confirmed after document review." /></Field>
-                <Field className="lg:col-span-6" label="HS code support"><Input className={inputClass} value={detail.details?.hs_code_support || ''} onChange={(event) => updateDetail('hs_code_support', event.target.value)} placeholder="We help classify / customer provides" /></Field>
-                <Field className="lg:col-span-6" label="Permit support"><Input className={inputClass} value={detail.details?.permit_support || ''} onChange={(event) => updateDetail('permit_support', event.target.value)} placeholder="TFDA/TBS/TRA permits if needed" /></Field>
-                <Field className="lg:col-span-12" label="Restricted items note"><Input className={inputClass} value={detail.details?.restricted_items_note || ''} onChange={(event) => updateDetail('restricted_items_note', event.target.value)} placeholder="Medicine, batteries, cosmetics, food, counterfeit goods require review." /></Field>
+                <Field className="lg:col-span-6" label="Documents required" hint={copy('Examples: invoice, packing list, ID, TIN, permit, HS code.', 'Mfano: invoice, packing list, ID, TIN, permit, HS code.')}><textarea className={textAreaClass} value={detail.details?.documents_required || ''} onChange={(event) => updateDetail('documents_required', event.target.value)} placeholder={copy('Commercial invoice, packing list, ID/TIN, import permit where required.', 'Commercial invoice, packing list, ID/TIN, import permit inapohitajika.')} /></Field>
+                <Field className="lg:col-span-6" label="Government charges note" hint={copy('Tell customers what is estimated versus confirmed by customs.', 'Waeleze wateja kipi ni makadirio na kipi kimethibitishwa na forodha.')}><textarea className={textAreaClass} value={detail.details?.government_charges_note || ''} onChange={(event) => updateDetail('government_charges_note', event.target.value)} placeholder={copy('Duties, VAT, inspection, storage, and port charges are confirmed after document review.', 'Ushuru, VAT, ukaguzi, storage na gharama za bandari huthibitishwa baada ya kukagua nyaraka.')} /></Field>
+                <Field className="lg:col-span-6" label="HS code support"><Input className={inputClass} value={detail.details?.hs_code_support || ''} onChange={(event) => updateDetail('hs_code_support', event.target.value)} placeholder={copy('We help classify / customer provides', 'Tunasaidia kuainisha / mteja hutoa')} /></Field>
+                <Field className="lg:col-span-6" label="Permit support"><Input className={inputClass} value={detail.details?.permit_support || ''} onChange={(event) => updateDetail('permit_support', event.target.value)} placeholder={copy('TFDA/TBS/TRA permits if needed', 'Permits za TFDA/TBS/TRA inapohitajika')} /></Field>
+                <Field className="lg:col-span-12" label="Restricted items note"><Input className={inputClass} value={detail.details?.restricted_items_note || ''} onChange={(event) => updateDetail('restricted_items_note', event.target.value)} placeholder={copy('Medicine, batteries, cosmetics, food, counterfeit goods require review.', 'Dawa, betri, vipodozi, chakula na bidhaa bandia zinahitaji ukaguzi.')} /></Field>
             </div>
         );
     }
@@ -1362,12 +1431,12 @@ function ServiceSpecificFields({ mode, detail, currencies = [], onChange }) {
         return (
             <div className="mt-4 grid gap-4 lg:grid-cols-12">
                 <CommonServicePricing detail={detail} mode={mode} currencies={currencies} onChange={onChange} labels={{ estimate: 'Storage availability', price: 'Storage fee', notes: 'Storage notes' }} />
-                <Field className="lg:col-span-6" label="Free storage days"><Input className={inputClass} value={detail.details?.free_storage_days || ''} onChange={(event) => updateDetail('free_storage_days', event.target.value)} placeholder="E.g. 7 days" /></Field>
-                <Field className="lg:col-span-6" label="Receiving fee"><Input className={inputClass} value={detail.details?.receiving_fee || ''} onChange={(event) => updateDetail('receiving_fee', event.target.value)} placeholder="E.g. 2 USD/package" /></Field>
-                <Field className="lg:col-span-6" label="Handling fee"><Input className={inputClass} value={detail.details?.handling_fee || ''} onChange={(event) => updateDetail('handling_fee', event.target.value)} placeholder="E.g. repack fee" /></Field>
-                <Field className="lg:col-span-6" label="Max dimensions"><Input className={inputClass} value={detail.details?.max_dimensions || ''} onChange={(event) => updateDetail('max_dimensions', event.target.value)} placeholder="E.g. pallet / CBM limit" /></Field>
-                <Field className="lg:col-span-6" label="Storage rules"><textarea className={textAreaClass} value={detail.details?.storage_rules || ''} onChange={(event) => updateDetail('storage_rules', event.target.value)} placeholder="Storage period, abandoned cargo policy, repacking rules." /></Field>
-                <Field className="lg:col-span-6" label="Insurance note"><textarea className={textAreaClass} value={detail.details?.insurance_note || ''} onChange={(event) => updateDetail('insurance_note', event.target.value)} placeholder="Insurance included, optional, or customer-provided." /></Field>
+                <Field className="lg:col-span-6" label="Free storage days"><Input className={inputClass} value={detail.details?.free_storage_days || ''} onChange={(event) => updateDetail('free_storage_days', event.target.value)} placeholder={copy('E.g. 7 days', 'Mf. siku 7')} /></Field>
+                <Field className="lg:col-span-6" label="Receiving fee"><Input className={inputClass} value={detail.details?.receiving_fee || ''} onChange={(event) => updateDetail('receiving_fee', event.target.value)} placeholder={copy('E.g. 2 USD/package', 'Mf. USD 2/kifurushi')} /></Field>
+                <Field className="lg:col-span-6" label="Handling fee"><Input className={inputClass} value={detail.details?.handling_fee || ''} onChange={(event) => updateDetail('handling_fee', event.target.value)} placeholder={copy('E.g. repack fee', 'Mf. gharama ya kufunga upya')} /></Field>
+                <Field className="lg:col-span-6" label="Max dimensions"><Input className={inputClass} value={detail.details?.max_dimensions || ''} onChange={(event) => updateDetail('max_dimensions', event.target.value)} placeholder={copy('E.g. pallet / CBM limit', 'Mf. kikomo cha pallet / CBM')} /></Field>
+                <Field className="lg:col-span-6" label="Storage rules"><textarea className={textAreaClass} value={detail.details?.storage_rules || ''} onChange={(event) => updateDetail('storage_rules', event.target.value)} placeholder={copy('Storage period, abandoned cargo policy, repacking rules.', 'Muda wa storage, sera ya cargo iliyoachwa, sheria za kufunga upya.')} /></Field>
+                <Field className="lg:col-span-6" label="Insurance note"><textarea className={textAreaClass} value={detail.details?.insurance_note || ''} onChange={(event) => updateDetail('insurance_note', event.target.value)} placeholder={copy('Insurance included, optional, or customer-provided.', 'Bima imejumuishwa, ni hiari, au hutolewa na mteja.')} /></Field>
             </div>
         );
     }
@@ -1376,11 +1445,11 @@ function ServiceSpecificFields({ mode, detail, currencies = [], onChange }) {
         return (
             <div className="mt-4 grid gap-4 lg:grid-cols-12">
                 <CommonServicePricing detail={detail} mode={mode} currencies={currencies} onChange={onChange} labels={{ estimate: 'Delivery window', price: 'Delivery fee', notes: 'Delivery notes' }} />
-                <Field className="lg:col-span-6" label="Coverage area"><Input className={inputClass} value={detail.details?.coverage_area || ''} onChange={(event) => updateDetail('coverage_area', event.target.value)} placeholder="Dar, Nairobi CBD, upcountry quote first" /></Field>
-                <Field className="lg:col-span-6" label="Max weight"><Input className={inputClass} value={detail.details?.max_weight || ''} onChange={(event) => updateDetail('max_weight', event.target.value)} placeholder="E.g. up to 30kg" /></Field>
-                <Field className="lg:col-span-6" label="Proof of delivery"><Input className={inputClass} value={detail.details?.proof_of_delivery || ''} onChange={(event) => updateDetail('proof_of_delivery', event.target.value)} placeholder="Photo/signature/OTP" /></Field>
-                <Field className="lg:col-span-6" label="COD support"><Input className={inputClass} value={detail.details?.cod_support || ''} onChange={(event) => updateDetail('cod_support', event.target.value)} placeholder="No / yes with fee" /></Field>
-                <Field className="lg:col-span-6" label="Return handling"><textarea className={textAreaClass} value={detail.details?.return_handling || ''} onChange={(event) => updateDetail('return_handling', event.target.value)} placeholder="How failed delivery, re-delivery, and returns are handled." /></Field>
+                <Field className="lg:col-span-6" label="Coverage area"><Input className={inputClass} value={detail.details?.coverage_area || ''} onChange={(event) => updateDetail('coverage_area', event.target.value)} placeholder={copy('Dar, Nairobi CBD, upcountry quote first', 'Dar, Nairobi CBD, maeneo ya mikoani quote kwanza')} /></Field>
+                <Field className="lg:col-span-6" label="Max weight"><Input className={inputClass} value={detail.details?.max_weight || ''} onChange={(event) => updateDetail('max_weight', event.target.value)} placeholder={copy('E.g. up to 30kg', 'Mf. hadi 30kg')} /></Field>
+                <Field className="lg:col-span-6" label="Proof of delivery"><Input className={inputClass} value={detail.details?.proof_of_delivery || ''} onChange={(event) => updateDetail('proof_of_delivery', event.target.value)} placeholder={copy('Photo/signature/OTP', 'Picha/sahihi/OTP')} /></Field>
+                <Field className="lg:col-span-6" label="COD support"><Input className={inputClass} value={detail.details?.cod_support || ''} onChange={(event) => updateDetail('cod_support', event.target.value)} placeholder={copy('No / yes with fee', 'Hapana / ndiyo yenye gharama')} /></Field>
+                <Field className="lg:col-span-6" label="Return handling"><textarea className={textAreaClass} value={detail.details?.return_handling || ''} onChange={(event) => updateDetail('return_handling', event.target.value)} placeholder={copy('How failed delivery, re-delivery, and returns are handled.', 'Jinsi delivery iliyoshindikana, delivery ya pili na returns zinavyoshughulikiwa.')} /></Field>
             </div>
         );
     }
@@ -1389,11 +1458,11 @@ function ServiceSpecificFields({ mode, detail, currencies = [], onChange }) {
         return (
             <div className="mt-4 grid gap-4 lg:grid-cols-12">
                 <CommonServicePricing detail={detail} mode={mode} currencies={currencies} onChange={onChange} labels={{ estimate: 'Handling time', price: 'Forwarding fee', notes: 'Forwarding notes' }} />
-                <Field className="lg:col-span-6" label="Service scope"><textarea className={textAreaClass} value={detail.details?.service_scope || ''} onChange={(event) => updateDetail('service_scope', event.target.value)} placeholder="Buying support, seller coordination, consolidation, export docs, clearing support." /></Field>
-                <Field className="lg:col-span-6" label="Customer steps"><textarea className={textAreaClass} value={detail.details?.customer_steps || ''} onChange={(event) => updateDetail('customer_steps', event.target.value)} placeholder="Customer sends invoice/tracking, waits for cargo receipt, pays duties when confirmed." /></Field>
-                <Field className="lg:col-span-6" label="Origin handling"><Input className={inputClass} value={detail.details?.origin_handling || ''} onChange={(event) => updateDetail('origin_handling', event.target.value)} placeholder="China warehouse receives/consolidates" /></Field>
-                <Field className="lg:col-span-6" label="Destination handling"><Input className={inputClass} value={detail.details?.destination_handling || ''} onChange={(event) => updateDetail('destination_handling', event.target.value)} placeholder="Tanzania clearing + pickup" /></Field>
-                <Field className="lg:col-span-12" label="Required documents"><Input className={inputClass} value={detail.details?.required_documents || ''} onChange={(event) => updateDetail('required_documents', event.target.value)} placeholder="Invoice, packing list, supplier tracking, customer ID." /></Field>
+                <Field className="lg:col-span-6" label="Service scope"><textarea className={textAreaClass} value={detail.details?.service_scope || ''} onChange={(event) => updateDetail('service_scope', event.target.value)} placeholder={copy('Buying support, seller coordination, consolidation, export docs, clearing support.', 'Msaada wa kununua, uratibu wa seller, consolidation, nyaraka za export na msaada wa clearing.')} /></Field>
+                <Field className="lg:col-span-6" label="Customer steps"><textarea className={textAreaClass} value={detail.details?.customer_steps || ''} onChange={(event) => updateDetail('customer_steps', event.target.value)} placeholder={copy('Customer sends invoice/tracking, waits for cargo receipt, pays duties when confirmed.', 'Mteja anatuma invoice/tracking, anasubiri cargo ipokelewe na analipa ushuru ukithibitishwa.')} /></Field>
+                <Field className="lg:col-span-6" label="Origin handling"><Input className={inputClass} value={detail.details?.origin_handling || ''} onChange={(event) => updateDetail('origin_handling', event.target.value)} placeholder={copy('China warehouse receives/consolidates', 'Ghala la China linapokea/kuunganisha')} /></Field>
+                <Field className="lg:col-span-6" label="Destination handling"><Input className={inputClass} value={detail.details?.destination_handling || ''} onChange={(event) => updateDetail('destination_handling', event.target.value)} placeholder={copy('Tanzania clearing + pickup', 'Clearing ya Tanzania + pickup')} /></Field>
+                <Field className="lg:col-span-12" label="Required documents"><Input className={inputClass} value={detail.details?.required_documents || ''} onChange={(event) => updateDetail('required_documents', event.target.value)} placeholder={copy('Invoice, packing list, supplier tracking, customer ID.', 'Invoice, packing list, tracking ya supplier, ID ya mteja.')} /></Field>
             </div>
         );
     }
@@ -1401,31 +1470,32 @@ function ServiceSpecificFields({ mode, detail, currencies = [], onChange }) {
     return (
         <div className="mt-4 grid gap-4 lg:grid-cols-12">
             <CommonServicePricing detail={detail} mode={mode} currencies={currencies} onChange={onChange} labels={{ estimate: 'Transit estimate', price: 'Freight price', notes: 'Cargo notes' }} />
-            <Field className="lg:col-span-6" label="Allowed items"><textarea className={textAreaClass} value={detail.allowed_items || ''} onChange={(event) => onChange({ allowed_items: event.target.value })} placeholder="E.g. clothes, electronics, spare parts." /></Field>
-            <Field className="lg:col-span-6" label="Disallowed items"><textarea className={textAreaClass} value={detail.disallowed_items || ''} onChange={(event) => onChange({ disallowed_items: event.target.value })} placeholder="E.g. liquids, batteries, medicine, counterfeit goods." /></Field>
-            <Field className="lg:col-span-6" label="Billing weight note"><Input className={inputClass} value={detail.details?.billing_weight_note || ''} onChange={(event) => updateDetail('billing_weight_note', event.target.value)} placeholder="Actual vs volumetric weight." /></Field>
-            <Field className="lg:col-span-6" label="Consolidation schedule"><Input className={inputClass} value={detail.details?.consolidation_schedule || ''} onChange={(event) => updateDetail('consolidation_schedule', event.target.value)} placeholder="Weekly / twice monthly" /></Field>
-            <Field className="lg:col-span-6" label="Cutoff note"><Input className={inputClass} value={detail.details?.cutoff_note || ''} onChange={(event) => updateDetail('cutoff_note', event.target.value)} placeholder="Cargo must arrive before Friday." /></Field>
-            <Field className="lg:col-span-6" label="Insurance note"><Input className={inputClass} value={detail.details?.insurance_note || ''} onChange={(event) => updateDetail('insurance_note', event.target.value)} placeholder="Optional / included / not included" /></Field>
+            <Field className="lg:col-span-6" label="Allowed items"><textarea className={textAreaClass} value={detail.allowed_items || ''} onChange={(event) => onChange({ allowed_items: event.target.value })} placeholder={copy('E.g. clothes, electronics, spare parts.', 'Mf. nguo, vifaa vya kielektroniki, spare parts.')} /></Field>
+            <Field className="lg:col-span-6" label="Disallowed items"><textarea className={textAreaClass} value={detail.disallowed_items || ''} onChange={(event) => onChange({ disallowed_items: event.target.value })} placeholder={copy('E.g. liquids, batteries, medicine, counterfeit goods.', 'Mf. vimiminika, betri, dawa, bidhaa bandia.')} /></Field>
+            <Field className="lg:col-span-6" label="Billing weight note"><Input className={inputClass} value={detail.details?.billing_weight_note || ''} onChange={(event) => updateDetail('billing_weight_note', event.target.value)} placeholder={copy('Actual vs volumetric weight.', 'Uzito halisi dhidi ya uzito wa ujazo.')} /></Field>
+            <Field className="lg:col-span-6" label="Consolidation schedule"><Input className={inputClass} value={detail.details?.consolidation_schedule || ''} onChange={(event) => updateDetail('consolidation_schedule', event.target.value)} placeholder={copy('Weekly / twice monthly', 'Kila wiki / mara mbili kwa mwezi')} /></Field>
+            <Field className="lg:col-span-6" label="Cutoff note"><Input className={inputClass} value={detail.details?.cutoff_note || ''} onChange={(event) => updateDetail('cutoff_note', event.target.value)} placeholder={copy('Cargo must arrive before Friday.', 'Cargo lazima ifike kabla ya Ijumaa.')} /></Field>
+            <Field className="lg:col-span-6" label="Insurance note"><Input className={inputClass} value={detail.details?.insurance_note || ''} onChange={(event) => updateDetail('insurance_note', event.target.value)} placeholder={copy('Optional / included / not included', 'Hiari / imejumuishwa / haijajumuishwa')} /></Field>
         </div>
     );
 }
 
 function CommonServicePricing({ detail, mode, currencies = [], onChange, labels }) {
+    const { copy } = useLocale();
     const currencyOptions = currencySelectOptions(currencies, detail.currency);
 
     return (
         <>
             <Field className="lg:col-span-4" label={labels.estimate || 'Estimate'}>
-                <Input className={inputClass} value={detail.estimate || ''} onChange={(event) => onChange({ estimate: event.target.value })} placeholder={estimatePlaceholder(mode)} />
+                <Input className={inputClass} value={detail.estimate || ''} onChange={(event) => onChange({ estimate: event.target.value })} placeholder={freightPlaceholder(copy, estimatePlaceholder(mode))} />
             </Field>
             <Field className="lg:col-span-4" label="Pricing model">
                 <select className={inputClass} value={detail.pricing_model || defaultPricingModel(mode)} onChange={(event) => onChange({ pricing_model: event.target.value })}>
-                    {pricingOptionsForMode(mode).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    {pricingOptionsForMode(mode).map(([value, label]) => <option key={value} value={value}>{freightCopy(copy, label, FREIGHT_OPTION_TRANSLATIONS[label] || label)}</option>)}
                 </select>
             </Field>
             <Field className="lg:col-span-3" label={labels.price || 'Price'}>
-                <Input className={inputClass} value={detail.price_amount || ''} onChange={(event) => onChange({ price_amount: event.target.value })} placeholder={pricePlaceholder(mode)} />
+                <Input className={inputClass} value={detail.price_amount || ''} onChange={(event) => onChange({ price_amount: event.target.value })} placeholder={freightPlaceholder(copy, pricePlaceholder(mode))} />
             </Field>
             <Field className="lg:col-span-1" label="Currency">
                 <select className={inputClass} value={detail.currency || defaultCurrencyCode(currencies)} onChange={(event) => onChange({ currency: event.target.value })}>
@@ -1437,34 +1507,34 @@ function CommonServicePricing({ detail, mode, currencies = [], onChange, labels 
                 </select>
             </Field>
             <Field className="lg:col-span-4" label="Minimum charge">
-                <Input className={inputClass} value={detail.minimum_charge || ''} onChange={(event) => onChange({ minimum_charge: event.target.value })} placeholder={minimumChargePlaceholder(mode)} />
+                <Input className={inputClass} value={detail.minimum_charge || ''} onChange={(event) => onChange({ minimum_charge: event.target.value })} placeholder={freightPlaceholder(copy, minimumChargePlaceholder(mode))} />
             </Field>
-            <Field className="lg:col-span-4" label="Payment terms" hint="How customers pay this freight service.">
+            <Field className="lg:col-span-4" label="Payment terms" hint={copy('How customers pay this freight service.', 'Jinsi wateja wanavyolipa huduma hii ya freight.')}>
                 <select className={inputClass} value={detail.payment_term || 'pay_on_pickup'} onChange={(event) => onChange({ payment_term: event.target.value })}>
-                    {paymentTermOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    {paymentTermOptions.map(([value, label]) => <option key={value} value={value}>{freightCopy(copy, label, FREIGHT_OPTION_TRANSLATIONS[label] || label)}</option>)}
                 </select>
             </Field>
             {detail.payment_term === 'deposit_balance' && (
                 <>
                     <Field className="lg:col-span-2" label="Deposit type">
                         <select className={inputClass} value={detail.deposit_type || 'percent'} onChange={(event) => onChange({ deposit_type: event.target.value })}>
-                            <option value="percent">Percent</option>
-                            <option value="fixed">Fixed</option>
+                            <option value="percent">{freightCopy(copy, 'Percent', 'Asilimia')}</option>
+                            <option value="fixed">{freightCopy(copy, 'Fixed', 'Kiasi maalum')}</option>
                         </select>
                     </Field>
                     <Field className="lg:col-span-2" label="Deposit value">
-                        <Input className={inputClass} value={detail.deposit_value || ''} onChange={(event) => onChange({ deposit_value: event.target.value })} placeholder={detail.deposit_type === 'fixed' ? 'E.g. 20 USD' : 'E.g. 30'} />
+                        <Input className={inputClass} value={detail.deposit_value || ''} onChange={(event) => onChange({ deposit_value: event.target.value })} placeholder={copy(detail.deposit_type === 'fixed' ? 'E.g. 20 USD' : 'E.g. 30', detail.deposit_type === 'fixed' ? 'Mf. USD 20' : 'Mf. 30')} />
                     </Field>
                 </>
             )}
             <Field className={detail.payment_term === 'deposit_balance' ? 'lg:col-span-4' : 'lg:col-span-4'} label="Balance due">
-                <Input className={inputClass} value={detail.balance_due || ''} onChange={(event) => onChange({ balance_due: event.target.value })} placeholder="E.g. On pickup / before dispatch" />
+                <Input className={inputClass} value={detail.balance_due || ''} onChange={(event) => onChange({ balance_due: event.target.value })} placeholder={copy('E.g. On pickup / before dispatch', 'Mf. Wakati wa pickup / kabla ya kutuma')} />
             </Field>
             <Field className="lg:col-span-8" label="Payment notes">
-                <Input className={inputClass} value={detail.payment_notes || ''} onChange={(event) => onChange({ payment_notes: event.target.value })} placeholder="E.g. Pay after warehouse receives and weighs the package." />
+                <Input className={inputClass} value={detail.payment_notes || ''} onChange={(event) => onChange({ payment_notes: event.target.value })} placeholder={copy('E.g. Pay after warehouse receives and weighs the package.', 'Mf. Lipa baada ya ghala kupokea na kupima kifurushi.')} />
             </Field>
             <Field className="lg:col-span-12" label={labels.notes || 'Notes'}>
-                <Input className={inputClass} value={detail.notes || ''} onChange={(event) => onChange({ notes: event.target.value })} placeholder={notesPlaceholder(mode)} />
+                <Input className={inputClass} value={detail.notes || ''} onChange={(event) => onChange({ notes: event.target.value })} placeholder={freightPlaceholder(copy, notesPlaceholder(mode))} />
             </Field>
         </>
     );
@@ -1475,18 +1545,20 @@ function WarehouseIcon() {
 }
 
 function CountrySelect({ countries, value, onChange }) {
+    const { copy } = useLocale();
     return (
         <select className={inputClass} value={value || ''} onChange={(e) => onChange(e.target.value)}>
-            <option value="">Select country</option>
+            <option value="">{copy('Select country', 'Chagua nchi')}</option>
             {countries.map((country) => <option key={country.id} value={country.id}>{country.name}</option>)}
         </select>
     );
 }
 
 function RouteSelect({ routes, value, onChange }) {
+    const { copy } = useLocale();
     return (
         <select className={inputClass} value={value || ''} onChange={(e) => onChange(e.target.value)}>
-            <option value="">Select route</option>
+            <option value="">{copy('Select route', 'Chagua njia')}</option>
             {routes.map((route) => <option key={route.id} value={route.id}>{route.label}</option>)}
         </select>
     );
@@ -1539,8 +1611,9 @@ function uniqueNames(items, getter) {
     return [...new Set(items.map(getter).filter(Boolean))];
 }
 
-function transportLabel(mode) {
-    return transportOptions.find(([key]) => key === mode)?.[1] || String(mode || '').replace(/_/g, ' ');
+function transportLabel(mode, translate = (english) => english) {
+    const english = transportOptions.find(([key]) => key === mode)?.[1] || String(mode || '').replace(/_/g, ' ');
+    return freightCopy(translate, english, FREIGHT_OPTION_TRANSLATIONS[english] || english);
 }
 
 function syncTransportDetails(details = {}, modes = []) {
@@ -1582,8 +1655,8 @@ function defaultServiceDetails(mode) {
     return keys.reduce((all, key) => ({ ...all, [key]: '' }), {});
 }
 
-function serviceCardDescription(mode) {
-    return {
+function serviceCardDescription(mode, translate = (english) => english) {
+    const english = {
         customs_clearing: 'Clearing fees, government charge notes, documents, HS code, permits, and restricted goods.',
         warehousing: 'Storage fee, free days, receiving/handling charges, storage rules, dimensions, and insurance.',
         last_mile_delivery: 'Coverage, delivery fee, delivery window, proof of delivery, weight limit, and returns.',
@@ -1593,6 +1666,9 @@ function serviceCardDescription(mode) {
         road_cargo: 'Road cargo rates, transit timing, cargo rules, and handling notes.',
         bus_parcel: 'Bus/parcel route pricing, terminal handling, cutoff, and allowed cargo.',
     }[mode] || 'Pricing and operational rules for this freight service.';
+    return translate(english, {
+        'Clearing fees, government charge notes, documents, HS code, permits, and restricted goods.': 'Gharama za clearing, maelezo ya gharama za serikali, nyaraka, HS code, permits na vitu vilivyopigwa marufuku.', 'Storage fee, free days, receiving/handling charges, storage rules, dimensions, and insurance.': 'Gharama ya storage, siku za bure, gharama za kupokea/handling, sheria za storage, vipimo na bima.', 'Coverage, delivery fee, delivery window, proof of delivery, weight limit, and returns.': 'Eneo la huduma, gharama ya delivery, muda wa delivery, uthibitisho wa delivery, kikomo cha uzito na returns.', 'Forwarding scope, origin/destination handling, customer steps, and required documents.': 'Wigo wa forwarding, handling ya chanzo/lengwa, hatua za mteja na nyaraka zinazohitajika.', 'Air freight by kg/volume weight with transit estimate, cutoffs, and restricted cargo rules.': 'Usafirishaji wa ndege kwa kg/uzito wa ujazo pamoja na makadirio ya safari, cutoff na sheria za cargo iliyozuiwa.', 'Sea freight by kg/CBM with consolidation schedule, cutoffs, and cargo rules.': 'Usafirishaji wa baharini kwa kg/CBM pamoja na ratiba ya consolidation, cutoff na sheria za cargo.', 'Road cargo rates, transit timing, cargo rules, and handling notes.': 'Bei za cargo ya barabara, muda wa safari, sheria za cargo na maelezo ya handling.', 'Bus/parcel route pricing, terminal handling, cutoff, and allowed cargo.': 'Bei za njia za basi/parcel, handling ya terminal, cutoff na cargo inayoruhusiwa.', 'Pricing and operational rules for this freight service.': 'Bei na sheria za uendeshaji za huduma hii ya freight.',
+    }[english] || english);
 }
 
 function pricingOptionsForMode(mode) {
@@ -1722,8 +1798,8 @@ function routePricingSummary(route) {
         .join(' / ');
 }
 
-function pricingModelLabel(model) {
-    return {
+function pricingModelLabel(model, translate = (english) => english) {
+    const english = {
         per_kg: '/kg',
         per_cbm: '/CBM',
         per_day: '/day',
@@ -1739,29 +1815,36 @@ function pricingModelLabel(model) {
         fixed: 'fixed',
         quote: 'quote',
     }[model] || model;
+    return translate(english, {
+        '/kg': '/kg', '/CBM': '/CBM', '/day': '/siku', '/week': '/wiki', '/CBM/day': '/CBM/siku', '/pallet': '/pallet', '/km': '/km', '/zone': '/eneo', '% value': '% ya thamani', '% duty/tax': '% ya ushuru/kodi', '+ govt charges': '+ gharama za serikali', retainer: 'retainer', fixed: 'maalum', quote: 'quote',
+    }[english] || english);
 }
 
-function statusLabel(status) {
-    return shipmentStatuses.find(([key]) => key === status)?.[1] || String(status || '').replace(/_/g, ' ');
+function statusLabel(status, translate = (english) => english) {
+    const english = shipmentStatuses.find(([key]) => key === status)?.[1] || String(status || '').replace(/_/g, ' ');
+    return translate(english, FREIGHT_STATUS_TRANSLATIONS[english] || english);
 }
 
-function shipmentPaymentStatusLabel(status, sourceType) {
-    if (sourceType === 'external_purchase') return 'Tracking only';
+function shipmentPaymentStatusLabel(status, sourceType, translate = (english) => english) {
+    if (sourceType === 'external_purchase') return freightCopy(translate, 'Tracking only', 'Ufuatiliaji tu');
 
-    return {
+    const english = {
         pending: 'Payment not completed',
-        awaiting_merchant_confirmation: 'Paid, waiting for seller to accept',
-        escrow_locked: 'SafePay held',
-        shipped: 'SafePay held, shipment active',
-        resolved_merchant_paid: 'Released to seller',
+        pending_fulfillment: 'Paid, waiting for seller fulfilment',
+        release_eligible: 'Ready for PSP payout',
+        payout_processing: 'PSP payout in progress',
+        paid_out: 'PSP payout confirmed',
         disputed: 'Held for review',
     }[status] || String(status || 'Not available').replace(/_/g, ' ');
+    return translate(english, {
+        'Payment not completed': 'Malipo hayajakamilika', 'Paid, waiting for seller fulfilment': 'Imelipwa, inasubiri seller kutimiza order', 'Ready for PSP payout': 'Tayari kwa malipo ya PSP', 'PSP payout in progress': 'Malipo ya PSP yanaendelea', 'PSP payout confirmed': 'Malipo ya PSP yamethibitishwa', 'Held for review': 'Imeshikiliwa kwa ukaguzi', 'Not available': 'Haipatikani',
+    }[english] || english);
 }
 
-function shipmentDeliveryStatusLabel(status, sourceType) {
-    if (sourceType === 'external_purchase') return 'External seller';
+function shipmentDeliveryStatusLabel(status, sourceType, translate = (english) => english) {
+    if (sourceType === 'external_purchase') return freightCopy(translate, 'External seller', 'Seller wa nje');
 
-    return {
+    const english = {
         inquiry: 'Waiting for seller',
         packing: 'Seller packing',
         with_boda: 'Sent toward forwarder',
@@ -1770,6 +1853,9 @@ function shipmentDeliveryStatusLabel(status, sourceType) {
         issue_reported: 'Issue reported',
         disputed: 'Issue under review',
     }[status] || String(status || 'Not synced').replace(/_/g, ' ');
+    return translate(english, {
+        'Waiting for seller': 'Inasubiri seller', 'Seller packing': 'Seller anapakia', 'Sent toward forwarder': 'Imetumwa kwa forwarder', 'Received by forwarder': 'Imepokelewa na forwarder', 'Buyer confirmed handoff': 'Buyer amethibitisha makabidhiano', 'Issue reported': 'Tatizo limeripotiwa', 'Issue under review': 'Tatizo linakaguliwa', 'Not synced': 'Haijasawazishwa',
+    }[english] || english);
 }
 
 function routeDisplayName(shipment) {
@@ -1832,6 +1918,7 @@ function LocationChecklist({ locations, value = [], onChange, emptyText }) {
 }
 
 function TransportChecklist({ options = transportOptions, value = [], onChange }) {
+    const { copy } = useLocale();
     const selected = new Set(value || []);
 
     const toggle = (key) => {
@@ -1842,7 +1929,7 @@ function TransportChecklist({ options = transportOptions, value = [], onChange }
     };
 
     if (options.length === 0) {
-        return <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-400">No approved shipping service type yet.</div>;
+        return <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-400">{copy('No approved shipping service type yet.', 'Bado hakuna aina ya huduma ya usafirishaji iliyoidhinishwa.')}</div>;
     }
 
     return (
@@ -1856,7 +1943,7 @@ function TransportChecklist({ options = transportOptions, value = [], onChange }
                         onClick={() => toggle(key)}
                         className={`h-12 rounded-xl border px-3 text-sm font-black transition ${active ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
                     >
-                        {label}
+                        {copy(label, FREIGHT_OPTION_TRANSLATIONS[label] || label)}
                     </button>
                 );
             })}
@@ -1865,10 +1952,11 @@ function TransportChecklist({ options = transportOptions, value = [], onChange }
 }
 
 function TransportSelect({ value, onChange }) {
+    const { copy } = useLocale();
     return (
         <select className={inputClass} value={value || 'sea_cargo'} onChange={(e) => onChange(e.target.value)}>
-            <option value="sea_cargo">Sea cargo</option>
-            <option value="air_cargo">Air cargo</option>
+            <option value="sea_cargo">{copy('Sea cargo', 'Cargo ya baharini')}</option>
+            <option value="air_cargo">{copy('Air cargo', 'Cargo ya ndege')}</option>
             {/* Re-enable later when supported in production. */}
             {/* <option value="road_cargo">Road cargo</option> */}
             {/* <option value="bus_parcel">Bus parcel</option> */}
@@ -1881,26 +1969,29 @@ function TransportSelect({ value, onChange }) {
 }
 
 function JsonList({ title, kind, items, addLabel, onAdd, onSave, onRemove, renderItem }) {
+    const { copy } = useLocale();
+    const titleTranslations = { 'Shipping schedules': 'Ratiba za usafirishaji', 'Logistics updates': 'Updates za logistics' };
+    const addTranslations = { 'Add schedule': 'Ongeza ratiba', 'Add update': 'Ongeza update' };
     return (
         <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
             <CardContent className="space-y-4 p-5">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
-                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">{title}</h2>
-                        <p className="text-xs font-semibold text-slate-500">Saved to the verified forwarder profile.</p>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">{copy(title, titleTranslations[title] || title)}</h2>
+                        <p className="text-xs font-semibold text-slate-500">{copy('Saved to the verified forwarder profile.', 'Imehifadhiwa kwenye profile ya forwarder iliyothibitishwa.')}</p>
                     </div>
                     <div className="flex gap-2">
-                        <Button type="button" variant="outline" onClick={() => onAdd(kind)}><Plus className="mr-2 h-4 w-4" /> {addLabel}</Button>
-                        <Button type="button" disabled={false} onClick={() => onSave(kind)}><Save className="mr-2 h-4 w-4" /> Save</Button>
+                        <Button type="button" variant="outline" onClick={() => onAdd(kind)}><Plus className="mr-2 h-4 w-4" /> {copy(addLabel, addTranslations[addLabel] || addLabel)}</Button>
+                        <Button type="button" disabled={false} onClick={() => onSave(kind)}><Save className="mr-2 h-4 w-4" /> {copy('Save', 'Hifadhi')}</Button>
                     </div>
                 </div>
 
                 {items.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">Nothing added yet.</div>
+                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">{copy('Nothing added yet.', 'Bado hakuna kilichoongezwa.')}</div>
                 ) : items.map((item, index) => (
                     <div key={item.id || index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                         <div className="mb-3 flex items-center justify-between">
-                            <span className="text-xs font-black uppercase tracking-widest text-slate-500">Entry {index + 1}</span>
+                            <span className="text-xs font-black uppercase tracking-widest text-slate-500">{copy('Entry', 'Ingizo')} {index + 1}</span>
                             <Button type="button" variant="ghost" className="text-red-600" onClick={() => onRemove(kind, index)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                         {renderItem(item, index)}

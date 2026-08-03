@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useLocale } from '@/lib/i18n';
 
 const complianceTypeOptions = [
     ['annual_return', 'Annual return / registry filing'],
@@ -48,6 +49,7 @@ const parseTags = (value) => value
 const currencyLabel = (currency) => [currency.code, currency.symbol, currency.name].filter(Boolean).join(' • ');
 
 export default function CountrySettings({ country, currencies = [], complianceSuggestions = [] }) {
+    const { copy } = useLocale();
     const [activeTab, setActiveTab] = useState('general');
     const currencyOptions = currencies.length ? currencies : [{
         code: country.currency?.code || 'TZS',
@@ -75,7 +77,7 @@ export default function CountrySettings({ country, currencies = [], complianceSu
     const handleSubmit = (e) => {
         e.preventDefault();
         patch(`/admin/countries/${country.id}`, {
-            onSuccess: () => toast.success('Settings saved successfully'),
+            onSuccess: () => toast.success(copy('Settings saved successfully', 'Mipangilio imehifadhiwa kikamilifu')),
         });
     };
 
@@ -161,12 +163,12 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                 }
             ]
         });
-        toast.success('Suggestion added to defaults. Save settings to publish it.');
+        toast.success(copy('Suggestion added to defaults. Save settings to publish it.', 'Pendekezo limeongezwa kwenye chaguo-msingi. Hifadhi mipangilio kulichapisha.'));
     };
 
     return (
-        <AdminLayout title={`${country.name} Settings`}>
-            <Head title={`${country.name} Settings | Takeer Admin`} />
+        <AdminLayout title={`${country.name} ${copy('Settings', 'Mipangilio')}`}>
+            <Head title={`${country.name} ${copy('Settings', 'Mipangilio')} | Takeer Admin`} />
 
             <div className="max-w-5xl mx-auto space-y-6">
                 <div className="flex items-center justify-between">
@@ -176,13 +178,13 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                         </Link>
                         <div>
                             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                                <span className="text-3xl">{country.flag}</span> {country.name} Settings
+                                <span className="text-3xl">{country.flag}</span> {country.name} {copy('Settings', 'Mipangilio')}
                             </h1>
-                            <p className="text-slate-500 text-sm font-medium">Configure regional rules, KYC and payments.</p>
+                            <p className="text-slate-500 text-sm font-medium">{copy('Configure regional rules, KYC and payments.', 'Sanidi sheria za eneo, KYC na malipo.')}</p>
                         </div>
                     </div>
                     <Button onClick={handleSubmit} disabled={processing} className="h-12 px-6 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold gap-2 shadow-lg shadow-brand-600/20">
-                        <Save className="h-4 w-4" /> {processing ? 'Saving...' : 'Save Settings'}
+                        <Save className="h-4 w-4" /> {processing ? copy('Saving...', 'Inahifadhi...') : copy('Save Settings', 'Hifadhi Mipangilio')}
                     </Button>
                 </div>
 
@@ -192,31 +194,31 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                         active={activeTab === 'general'} 
                         onClick={() => setActiveTab('general')} 
                         icon={LayoutGrid} 
-                        label="General" 
+                        label={copy('General', 'Jumla')}
                     />
                     <TabButton 
                         active={activeTab === 'kyc'} 
                         onClick={() => setActiveTab('kyc')} 
                         icon={ShieldCheck} 
-                        label="KYC Rules" 
+                        label={copy('KYC Rules', 'Sheria za KYC')}
                     />
                     <TabButton 
                         active={activeTab === 'gateways'} 
                         onClick={() => setActiveTab('gateways')} 
                         icon={CreditCard} 
-                        label="Gateways" 
+                        label={copy('Gateways', 'Njia za Malipo')}
                     />
                     <TabButton
                         active={activeTab === 'tax_calendar'}
                         onClick={() => setActiveTab('tax_calendar')}
                         icon={Globe}
-                        label="Compliance"
+                        label={copy('Compliance', 'Uzingatiaji')}
                     />
                     <TabButton 
                         active={activeTab === 'payouts'} 
                         onClick={() => setActiveTab('payouts')} 
                         icon={ArrowLeft} 
-                        label="Payout Methods" 
+                        label={copy('Payout Methods', 'Njia za Malipo ya Kutoka')}
                     />
                 </div>
 
@@ -225,11 +227,11 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                         <CardContent className="p-8 space-y-8">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <div className="space-y-4">
-                                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Availability</h3>
+                                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">{copy('Availability', 'Upatikanaji')}</h3>
                                     <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50/50">
                                         <div>
-                                            <p className="text-sm font-bold text-slate-900">Enable Merchant Verification</p>
-                                            <p className="text-xs text-slate-500">Allow users from this country to verify as sellers.</p>
+                                            <p className="text-sm font-bold text-slate-900">{copy('Enable merchant verification', 'Washa uthibitishaji wa wauzaji')}</p>
+                                            <p className="text-xs text-slate-500">{copy('Allow users from this country to verify as sellers.', 'Ruhusu watumiaji kutoka nchi hii kuthibitisha akaunti zao kama wauzaji.')}</p>
                                         </div>
                                         <button 
                                             onClick={() => setData('is_active', !data.is_active)}
@@ -247,16 +249,16 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                     <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-start gap-3">
                                         <AlertCircle className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
                                         <p className="text-[10px] text-slate-500 leading-normal">
-                                            If disabled, users can still browse and buy, but cannot complete identity verification to start selling.
+                                            {copy('If disabled, users can still browse and buy, but cannot complete identity verification to start selling.', 'Ikizimwa, watumiaji bado wanaweza kuvinjari na kununua, lakini hawawezi kukamilisha uthibitishaji wa utambulisho ili kuanza kuuza.')}
                                         </p>
                                     </div>
                                 </div>
 
                                 <div className="space-y-4">
-                                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Tax Configuration</h3>
+                                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">{copy('Tax configuration', 'Mipangilio ya kodi')}</h3>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-slate-500 ml-1">Tax Label</label>
+                                            <label className="text-xs font-bold text-slate-500 ml-1">{copy('Tax label', 'Lebo ya kodi')}</label>
                                             <Input 
                                                 value={data.tax_label} 
                                                 onChange={e => setData('tax_label', e.target.value)}
@@ -264,7 +266,7 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-slate-500 ml-1">Tax Rate (%)</label>
+                                            <label className="text-xs font-bold text-slate-500 ml-1">{copy('Tax rate (%)', 'Kiwango cha kodi (%)')}</label>
                                             <Input 
                                                 type="number"
                                                 step="0.01"
@@ -285,21 +287,21 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                         {['personal', 'sole_proprietor', 'business', 'ngo'].map(type => (
                             <Card key={type} className="rounded-3xl border-slate-200 shadow-sm overflow-hidden">
                                 <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
-                                    <h3 className="font-bold text-slate-900 capitalize">{type.replace('_', ' ')} KYC Documents</h3>
+                                    <h3 className="font-bold text-slate-900 capitalize">{type.replace('_', ' ')} {copy('KYC documents', 'nyaraka za KYC')}</h3>
                                     <Button 
                                         variant="outline" 
                                         size="sm" 
                                         onClick={() => addKycDoc(type)}
                                         className="h-9 px-4 rounded-xl border-slate-200 text-slate-600 gap-2 hover:bg-white"
                                     >
-                                        <Plus className="h-4 w-4" /> Add Document
+                                        <Plus className="h-4 w-4" /> {copy('Add document', 'Ongeza nyaraka')}
                                     </Button>
                                 </div>
                                 <CardContent className="p-6">
                                     {(!data.settings.kyc[type] || data.settings.kyc[type].length === 0) ? (
                                         <div className="text-center py-10 text-slate-400">
                                             <ShieldCheck className="h-10 w-10 mx-auto opacity-20 mb-3" />
-                                            <p className="text-sm font-medium">No documents defined for this type.</p>
+                                            <p className="text-sm font-medium">{copy('No documents defined for this type.', 'Hakuna nyaraka zilizoainishwa kwa aina hii.')}</p>
                                         </div>
                                     ) : (
                                         <div className="space-y-4">
@@ -308,16 +310,16 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                                     <div className="flex-1 space-y-4">
                                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                             <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Document Name</label>
+                                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">{copy('Document name', 'Jina la nyaraka')}</label>
                                                                 <Input 
-                                                                    placeholder="e.g. NIDA, National ID, TIN"
+                                                                    placeholder={copy('e.g. NIDA, National ID, TIN', 'mf. NIDA, kitambulisho, TIN')}
                                                                     value={doc.name}
                                                                     onChange={e => updateKycDoc(type, doc.id, { name: e.target.value })}
                                                                     className="h-11 rounded-xl border-slate-200"
                                                                 />
                                                             </div>
                                                             <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Required Fields</label>
+                                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">{copy('Required fields', 'Sehemu zinazohitajika')}</label>
                                                                 <div className="flex flex-wrap gap-2 pt-1">
                                                                     {['number', 'front', 'back', 'file'].map(field => (
                                                                         <button
@@ -359,7 +361,7 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                                                 "h-10 w-10 rounded-xl border flex items-center justify-center transition-colors",
                                                                 doc.is_required ? "border-amber-100 bg-amber-50 text-amber-600" : "border-slate-100 bg-slate-50 text-slate-400"
                                                             )}
-                                                            title={doc.is_required ? "Required" : "Optional"}
+                                                            title={doc.is_required ? copy('Required', 'Inahitajika') : copy('Optional', 'Si lazima')}
                                                         >
                                                             <CheckCircle2 className="h-4 w-4" />
                                                         </button>
@@ -378,44 +380,44 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                     <Card className="rounded-3xl border-slate-200 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
                             <div>
-                                <h3 className="font-bold text-slate-900">Regulatory Compliance & Certification Defaults</h3>
-                                <p className="text-xs text-slate-500 mt-1">These appear in bookkeeping as country-specific setup suggestions businesses can choose from.</p>
+                                <h3 className="font-bold text-slate-900">{copy('Regulatory compliance & certification defaults', 'Misingi ya uzingatiaji wa kanuni na vyeti')}</h3>
+                                <p className="text-xs text-slate-500 mt-1">{copy('These appear in bookkeeping as country-specific setup suggestions businesses can choose from.', 'Hizi huonekana kwenye bookkeeping kama mapendekezo ya mipangilio ya nchi ambayo biashara zinaweza kuchagua.')}</p>
                             </div>
                             <Button variant="outline" size="sm" onClick={addTaxDefault} className="h-9 px-4 rounded-xl border-slate-200 text-slate-600 gap-2 hover:bg-white">
-                                <Plus className="h-4 w-4" /> Add Default
+                                <Plus className="h-4 w-4" /> {copy('Add default', 'Ongeza msingi')}
                             </Button>
                         </div>
                         <CardContent className="p-6 space-y-4">
                             {taxDefaults.length === 0 ? (
                                 <div className="text-center py-10 text-slate-400">
                                     <Globe className="h-10 w-10 mx-auto opacity-20 mb-3" />
-                                    <p className="text-sm font-medium">No country reminder defaults set.</p>
+                                    <p className="text-sm font-medium">{copy('No country reminder defaults set.', 'Hakuna misingi ya vikumbusho vya nchi iliyowekwa.')}</p>
                                 </div>
                             ) : taxDefaults.map((item, index) => (
                                 <div key={item.key || index} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <Input value={item.title || ''} onChange={(e) => updateTaxDefault(index, { title: e.target.value })} placeholder="Title e.g. Annual return estimate" className="h-11 rounded-xl border-slate-200" />
-                                        <Input value={item.authority || ''} onChange={(e) => updateTaxDefault(index, { authority: e.target.value })} placeholder="Authority e.g. TRA, PDPC, TCRA" className="h-11 rounded-xl border-slate-200" />
+                                        <Input value={item.title || ''} onChange={(e) => updateTaxDefault(index, { title: e.target.value })} placeholder={copy('Title, e.g. Annual return estimate', 'Kichwa, mf. Makadirio ya marejesho ya mwaka')} className="h-11 rounded-xl border-slate-200" />
+                                        <Input value={item.authority || ''} onChange={(e) => updateTaxDefault(index, { authority: e.target.value })} placeholder={copy('Authority, e.g. TRA, PDPC, TCRA', 'Mamlaka, mf. TRA, PDPC, TCRA')} className="h-11 rounded-xl border-slate-200" />
                                         <select value={item.type || 'custom'} onChange={(e) => updateTaxDefault(index, { type: e.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white">
                                             {complianceTypeOptions.map(([value, label]) => (
                                                 <option key={value} value={value}>{label}</option>
                                             ))}
                                         </select>
-                                        <Input type="number" min="0" max="365" value={item.remind_days_before ?? 30} onChange={(e) => updateTaxDefault(index, { remind_days_before: e.target.value })} placeholder="Remind days before" className="h-11 rounded-xl border-slate-200" />
-                                        <Input value={item.suggested_frequency || ''} onChange={(e) => updateTaxDefault(index, { suggested_frequency: e.target.value })} placeholder="Suggested frequency" className="h-11 rounded-xl border-slate-200" />
+                                        <Input type="number" min="0" max="365" value={item.remind_days_before ?? 30} onChange={(e) => updateTaxDefault(index, { remind_days_before: e.target.value })} placeholder={copy('Remind days before', 'Kumbusha siku kabla')} className="h-11 rounded-xl border-slate-200" />
+                                        <Input value={item.suggested_frequency || ''} onChange={(e) => updateTaxDefault(index, { suggested_frequency: e.target.value })} placeholder={copy('Suggested frequency', 'Marudio yanayopendekezwa')} className="h-11 rounded-xl border-slate-200" />
                                         <select value={item.recurrence_frequency || 'none'} onChange={(e) => updateTaxDefault(index, { recurrence_frequency: e.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white">
                                             {recurrenceOptions.map(([value, label]) => (
                                                 <option key={value} value={value}>{label}</option>
                                             ))}
                                         </select>
-                                        <Input type="number" min="1" max="120" value={item.recurrence_interval ?? 1} onChange={(e) => updateTaxDefault(index, { recurrence_interval: e.target.value })} placeholder="Repeat interval" className="h-11 rounded-xl border-slate-200" disabled={(item.recurrence_frequency || 'none') === 'none'} />
+                                        <Input type="number" min="1" max="120" value={item.recurrence_interval ?? 1} onChange={(e) => updateTaxDefault(index, { recurrence_interval: e.target.value })} placeholder={copy('Repeat interval', 'Kipindi cha kurudia')} className="h-11 rounded-xl border-slate-200" disabled={(item.recurrence_frequency || 'none') === 'none'} />
                                         <div className="grid grid-cols-[1fr_96px] gap-2">
-                                            <Input type="number" min="0" step="0.01" value={item.estimated_amount ?? ''} onChange={(e) => updateTaxDefault(index, { estimated_amount: e.target.value, currency_code: item.currency_code || country.currency?.code || 'TZS' })} placeholder="Estimated amount" className="h-11 rounded-xl border-slate-200" />
+                                            <Input type="number" min="0" step="0.01" value={item.estimated_amount ?? ''} onChange={(e) => updateTaxDefault(index, { estimated_amount: e.target.value, currency_code: item.currency_code || country.currency?.code || 'TZS' })} placeholder={copy('Estimated amount', 'Kiasi kinachokadiriwa')} className="h-11 rounded-xl border-slate-200" />
                                             <select
                                                 value={item.currency_code || country.currency?.code || 'TZS'}
                                                 onChange={(e) => updateTaxDefault(index, { currency_code: e.target.value })}
                                                 className="h-11 rounded-xl border border-slate-200 bg-white px-2 text-center text-sm font-black uppercase"
-                                                aria-label="Currency"
+                                                aria-label={copy('Currency', 'Sarafu')}
                                             >
                                                 {currencyOptions.map((currency) => (
                                                     <option key={currency.code} value={currency.code}>
@@ -424,13 +426,13 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                                 ))}
                                             </select>
                                         </div>
-                                        <Input value={(item.sector_tags || []).join(', ')} onChange={(e) => updateTaxDefault(index, { sector_tags: parseTags(e.target.value) })} placeholder="Sector tags e.g. pharmacy, employer, importer" className="h-11 rounded-xl border-slate-200" />
-                                        <Input value={item.applies_when || ''} onChange={(e) => updateTaxDefault(index, { applies_when: e.target.value })} placeholder="Applies when e.g. VAT registered, has employees" className="h-11 rounded-xl border-slate-200" />
-                                        <Input value={item.description || ''} onChange={(e) => updateTaxDefault(index, { description: e.target.value })} placeholder="Short guidance" className="h-11 rounded-xl border-slate-200" />
+                                        <Input value={(item.sector_tags || []).join(', ')} onChange={(e) => updateTaxDefault(index, { sector_tags: parseTags(e.target.value) })} placeholder={copy('Sector tags, e.g. pharmacy, employer, importer', 'Lebo za sekta, mf. famasi, mwajiri, mwagizaji')} className="h-11 rounded-xl border-slate-200" />
+                                        <Input value={item.applies_when || ''} onChange={(e) => updateTaxDefault(index, { applies_when: e.target.value })} placeholder={copy('Applies when, e.g. VAT registered, has employees', 'Inatumika wakati, mf. amesajiliwa VAT, ana wafanyakazi')} className="h-11 rounded-xl border-slate-200" />
+                                        <Input value={item.description || ''} onChange={(e) => updateTaxDefault(index, { description: e.target.value })} placeholder={copy('Short guidance', 'Mwongozo mfupi')} className="h-11 rounded-xl border-slate-200" />
                                     </div>
                                     <div className="flex justify-end mt-3">
                                         <Button type="button" variant="outline" size="sm" onClick={() => removeTaxDefault(index)} className="rounded-xl text-red-600 border-red-100">
-                                            <Trash2 className="h-4 w-4 mr-1" /> Remove
+                                            <Trash2 className="h-4 w-4 mr-1" /> {copy('Remove', 'Ondoa')}
                                         </Button>
                                     </div>
                                 </div>
@@ -442,8 +444,8 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                 {activeTab === 'tax_calendar' && complianceSuggestions.length > 0 && (
                     <Card className="rounded-3xl border-slate-200 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100">
-                            <h3 className="font-bold text-slate-900">Merchant Custom Suggestions</h3>
-                            <p className="text-xs text-slate-500 mt-1">Custom reminders submitted by businesses in this country. Promote useful ones into the country defaults above.</p>
+                            <h3 className="font-bold text-slate-900">{copy('Merchant custom suggestions', 'Mapendekezo maalum ya wauzaji')}</h3>
+                            <p className="text-xs text-slate-500 mt-1">{copy('Custom reminders submitted by businesses in this country. Promote useful ones into the country defaults above.', 'Vikumbusho maalum vilivyowasilishwa na biashara katika nchi hii. Pandisha vinavyofaa kwenye misingi ya nchi hapo juu.')}</p>
                         </div>
                         <CardContent className="p-6 space-y-3">
                             {complianceSuggestions.map((suggestion, index) => (
@@ -451,14 +453,14 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                     <div className="min-w-0">
                                         <p className="text-sm font-black text-slate-900">{suggestion.title}</p>
                                         <p className="text-xs font-semibold text-slate-500 mt-1">
-                                            {suggestion.authority || 'Authority'} • {suggestion.type || 'custom'} • {suggestion.count} suggestion{suggestion.count === 1 ? '' : 's'}
+                                            {suggestion.authority || copy('Authority', 'Mamlaka')} • {suggestion.type || copy('custom', 'maalum')} • {suggestion.count} {copy(suggestion.count === 1 ? 'suggestion' : 'suggestions', suggestion.count === 1 ? 'pendekezo' : 'mapendekezo')}
                                         </p>
                                         <p className="text-[10px] font-semibold text-slate-400 mt-1">
-                                            Latest: {suggestion.latest_business || 'Business'} on {suggestion.latest_added_at || 'recently'}
+                                            {copy('Latest:', 'Mpya zaidi:')} {suggestion.latest_business || copy('Business', 'Biashara')} {copy('on', 'tarehe')} {suggestion.latest_added_at || copy('recently', 'hivi karibuni')}
                                         </p>
                                     </div>
                                     <Button type="button" variant="outline" size="sm" onClick={() => promoteSuggestion(suggestion)} className="rounded-xl shrink-0">
-                                        <Plus className="h-4 w-4 mr-1" /> Promote
+                                        <Plus className="h-4 w-4 mr-1" /> {copy('Promote', 'Pandisha')}
                                     </Button>
                                 </div>
                             ))}
@@ -472,8 +474,8 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                             <div className="h-20 w-20 rounded-3xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-6">
                                 <CreditCard className="h-10 w-10" />
                             </div>
-                            <h3 className="text-xl font-bold text-slate-900">Payment Gateways</h3>
-                            <p className="text-slate-500 max-w-sm mx-auto mt-2 font-medium">Coming soon: Route card payments via Global Drivers (Stripe/DPO) and Mobile Money via Local Drivers (Selcom).</p>
+                            <h3 className="text-xl font-bold text-slate-900">{copy('Payment gateways', 'Milango ya malipo')}</h3>
+                            <p className="text-slate-500 max-w-sm mx-auto mt-2 font-medium">{copy('Coming soon: Route card payments via Global Drivers (Stripe/DPO) and Mobile Money via Local Drivers (Selcom).', 'Inakuja: Elekeza malipo ya kadi kupitia Global Drivers (Stripe/DPO) na Mobile Money kupitia Local Drivers (Selcom).')}</p>
                         </CardContent>
                     </Card>
                 )}
@@ -482,7 +484,7 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <Card className="rounded-3xl border-slate-200 shadow-sm overflow-hidden">
                             <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
-                                <h3 className="font-bold text-slate-900">Supported Payout Methods</h3>
+                                <h3 className="font-bold text-slate-900">{copy('Supported payout methods', 'Njia za malipo ya kutoka zinazoungwa mkono')}</h3>
                                 <div className="flex gap-2">
                                     <Button 
                                         variant="outline" 
@@ -493,7 +495,7 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                             setData('settings', { ...data.settings, payouts: newPayouts });
                                         }}
                                         className="rounded-xl"
-                                    >+ Mobile Money</Button>
+                                    >+ {copy('Mobile Money', 'Mobile Money')}</Button>
                                     <Button 
                                         variant="outline" 
                                         size="sm" 
@@ -503,19 +505,19 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                             setData('settings', { ...data.settings, payouts: newPayouts });
                                         }}
                                         className="rounded-xl"
-                                    >+ Bank Account</Button>
+                                    >+ {copy('Bank Account', 'Akaunti ya benki')}</Button>
                                 </div>
                             </div>
                             <CardContent className="p-8 space-y-8">
                                 {data.settings.payouts?.mobile_money?.enabled && (
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between">
-                                            <h4 className="text-sm font-bold text-slate-900">Mobile Money Carriers</h4>
+                                            <h4 className="text-sm font-bold text-slate-900">{copy('Mobile Money carriers', 'Watoa huduma wa Mobile Money')}</h4>
                                             <Button variant="ghost" size="sm" onClick={() => {
                                                 const newPayouts = { ...data.settings.payouts };
                                                 delete newPayouts.mobile_money;
                                                 setData('settings', { ...data.settings, payouts: newPayouts });
-                                            }} className="text-red-500 h-8 px-2">Remove</Button>
+                                            }} className="text-red-500 h-8 px-2">{copy('Remove', 'Ondoa')}</Button>
                                         </div>
                                         <div className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50 space-y-4">
                                             <div className="flex flex-wrap gap-2">
@@ -534,7 +536,7 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                             <div className="flex gap-2">
                                                 <Input 
                                                     id="new-carrier" 
-                                                    placeholder="Add carrier (e.g. M-Pesa)" 
+                                                    placeholder={copy('Add carrier (e.g. M-Pesa)', 'Ongeza mtoa huduma (mf. M-Pesa)')}
                                                     className="h-10 rounded-xl"
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter') {
@@ -557,12 +559,12 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                 {data.settings.payouts?.bank?.enabled && (
                                     <div className="space-y-4 pt-4 border-t border-slate-100">
                                         <div className="flex items-center justify-between">
-                                            <h4 className="text-sm font-bold text-slate-900">Supported Banks</h4>
+                                            <h4 className="text-sm font-bold text-slate-900">{copy('Supported banks', 'Benki zinazoungwa mkono')}</h4>
                                             <Button variant="ghost" size="sm" onClick={() => {
                                                 const newPayouts = { ...data.settings.payouts };
                                                 delete newPayouts.bank;
                                                 setData('settings', { ...data.settings, payouts: newPayouts });
-                                            }} className="text-red-500 h-8 px-2">Remove</Button>
+                                            }} className="text-red-500 h-8 px-2">{copy('Remove', 'Ondoa')}</Button>
                                         </div>
                                         <div className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50 space-y-4">
                                             <div className="flex flex-wrap gap-2">
@@ -580,7 +582,7 @@ export default function CountrySettings({ country, currencies = [], complianceSu
                                             </div>
                                             <Input 
                                                 id="new-bank" 
-                                                placeholder="Add bank (e.g. CRDB Bank)" 
+                                                placeholder={copy('Add bank (e.g. CRDB Bank)', 'Ongeza benki (mf. CRDB Bank)')}
                                                 className="h-10 rounded-xl"
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') {

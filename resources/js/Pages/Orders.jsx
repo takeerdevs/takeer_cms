@@ -39,6 +39,7 @@ import { toast } from 'sonner';
 import ContentReportButton from '@/Components/ContentReportButton';
 import { orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
 import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
+import { useLocale } from '@/lib/i18n';
 
 const tabs = [
     { key: 'library', label: 'Library', icon: Library },
@@ -50,6 +51,7 @@ const tabs = [
 
 export default function Orders() {
     const { auth } = usePage().props;
+    const { t, copy } = useLocale();
     const isMerchant = !!auth?.user?.is_merchant;
 
     const [activeTab, setActiveTab] = useState('library');
@@ -128,8 +130,8 @@ export default function Orders() {
 
         const channel = window.Echo.private(`merchant.${auth.user.id}`);
         channel.listen('.order.paid', (e) => {
-            toast.success(`Oda Mpya: ${e.product_title}`, {
-                description: `Umelipwa TZS ${e.amount.toLocaleString()} (Escrow).`,
+            toast.success(`${copy('New order:', 'Oda Mpya:')} ${e.product_title}`, {
+                description: t('orders.paymentReceivedByPsp', { amount: e.amount.toLocaleString() }),
                 duration: 8000,
                 icon: <ShoppingBag className="text-brand-500" />,
             });
@@ -138,7 +140,7 @@ export default function Orders() {
                 id: e.order_id,
                 product_title: e.product_title,
                 amount: e.amount,
-                status: 'awaiting_merchant_confirmation',
+                status: 'pending_fulfillment',
                 buyer_phone: e.buyer_phone,
             }, ...prev]);
         });
@@ -146,7 +148,7 @@ export default function Orders() {
         return () => {
             window.Echo.leave(`merchant.${auth.user.id}`);
         };
-    }, [auth, isMerchant]);
+    }, [auth, isMerchant, t]);
 
     async function loadData() {
         setLoading(true);
@@ -198,7 +200,7 @@ export default function Orders() {
                 throw new Error('Failed to load buyer data');
             }
         } catch (error) {
-            toast.error('Imeshindwa kupakia library yako.');
+            toast.error(t('orders.loadLibraryFailed'));
         } finally {
             setLoading(false);
         }
@@ -215,7 +217,7 @@ export default function Orders() {
             setPulseItems(res.data?.events || []);
             setPulseMeta(res.data?.meta || { current_page: 1, last_page: 1, total: 0 });
         } catch (error) {
-            toast.error('Imeshindwa kupakia Pulse.');
+            toast.error(t('orders.loadPulseFailed'));
         } finally {
             setPulseLoading(false);
         }
@@ -242,7 +244,7 @@ export default function Orders() {
                 setLibrarySummary(meta.summary || { total: res.data?.entitlements?.length || 0, content: 0, bundles: 0, purchases: 0 });
             }
         } catch (error) {
-            toast.error('Imeshindwa kuchuja library.');
+            toast.error(t('orders.filterLibraryFailed'));
         } finally {
             setLibraryLoading(false);
         }
@@ -256,7 +258,7 @@ export default function Orders() {
             const res = await sessionApi.get('/api/me/forwarder-shipments');
             setCargoShipments(res.data?.shipments || []);
         } catch (error) {
-            toast.error('Imeshindwa kupakia cargo tracking.');
+            toast.error(t('orders.loadCargoFailed'));
         } finally {
             setCargoLoading(false);
         }
@@ -277,7 +279,7 @@ export default function Orders() {
                 total: res.data?.total || (res.data?.data || []).length,
             });
         } catch (error) {
-            toast.error('Imeshindwa kupakia memberships.');
+            toast.error(t('orders.loadMembershipsFailed'));
         } finally {
             setSubscriptionLoading(false);
         }
@@ -291,7 +293,7 @@ export default function Orders() {
             const res = await sessionApi.get('/orders/data/followed-stores');
             setFollowedStores(res.data?.data || []);
         } catch (error) {
-            toast.error('Imeshindwa kupakia stores unazofollow.');
+            toast.error(t('orders.loadFollowingFailed'));
         } finally {
             setFollowingLoading(false);
         }
@@ -313,7 +315,7 @@ export default function Orders() {
             });
         } catch (error) {
             setFollowedStores(current);
-            toast.error(error.response?.data?.message || 'Could not update preferences.');
+            toast.error(error.response?.data?.message || t('orders.updatePreferencesFailed'));
         }
     }
 
@@ -325,20 +327,20 @@ export default function Orders() {
             const sessionApi = axios.create();
             delete sessionApi.defaults.headers.common.Authorization;
             await sessionApi.delete(`/orders/data/followed-stores/${slug}`);
-            toast.success('Store unfollowed.');
+            toast.success(t('orders.storeUnfollowed'));
         } catch (error) {
             setFollowedStores(current);
-            toast.error(error.response?.data?.message || 'Could not unfollow store.');
+            toast.error(error.response?.data?.message || t('orders.unfollowFailed'));
         }
     }
 
     async function cancelSubscription(id) {
         try {
             await axios.post(`/api/me/subscriptions/${id}/cancel`);
-            toast.success('Subscription imeghairiwa.');
+            toast.success(t('orders.subscriptionCancelled'));
             await loadData();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kughairi subscription.');
+            toast.error(error.response?.data?.message || t('orders.cancelSubscriptionFailed'));
         }
     }
 
@@ -347,12 +349,12 @@ export default function Orders() {
         const activeSubs = subscriptions.filter((entry) => ['active', 'pending', 'past_due'].includes(entry.status)).length;
 
         return [
-            { label: 'Library Items', value: Number(summary.total || 0), icon: Library, tone: 'from-amber-500/15 to-orange-500/10 text-amber-700' },
-            { label: 'Content', value: Number(summary.content || 0), icon: BookOpenText, tone: 'from-sky-500/15 to-cyan-500/10 text-sky-700' },
-            { label: 'Purchases', value: Number(summary.purchases || 0), icon: ShoppingBag, tone: 'from-violet-500/15 to-indigo-500/10 text-violet-700' },
-            { label: 'Memberships', value: activeSubs, icon: Crown, tone: 'from-emerald-500/15 to-teal-500/10 text-emerald-700' },
+            { label: t('orders.stats.items'), value: Number(summary.total || 0), icon: Library, tone: 'from-amber-500/15 to-orange-500/10 text-amber-700' },
+            { label: t('orders.stats.content'), value: Number(summary.content || 0), icon: BookOpenText, tone: 'from-sky-500/15 to-cyan-500/10 text-sky-700' },
+            { label: t('orders.stats.purchases'), value: Number(summary.purchases || 0), icon: ShoppingBag, tone: 'from-violet-500/15 to-indigo-500/10 text-violet-700' },
+            { label: t('orders.stats.memberships'), value: activeSubs, icon: Crown, tone: 'from-emerald-500/15 to-teal-500/10 text-emerald-700' },
         ];
-    }, [librarySummary, subscriptions]);
+    }, [librarySummary, subscriptions, t]);
 
     const pulseLastPage = pulseMeta.last_page || 1;
     const safePulsePage = pulseMeta.current_page || 1;
@@ -364,23 +366,29 @@ export default function Orders() {
         }
     }, [pulsePage, pulseLastPage]);
 
-    const visibleTabs = tabs;
+    const visibleTabs = [
+        { key: 'library', label: t('orders.tabs.library'), icon: Library },
+        { key: 'cargo', label: t('orders.tabs.cargo'), icon: Truck },
+        { key: 'memberships', label: t('orders.tabs.memberships'), icon: Crown },
+        { key: 'following', label: t('orders.tabs.following'), icon: Bell },
+        { key: 'pulse', label: t('orders.tabs.pulse'), icon: Store },
+    ];
 
     const libraryTypeOptions = [
-        { key: 'all', label: 'All Types' },
-        { key: 'physical_product', label: 'Physical Product' },
-        { key: 'post_content', label: 'Post Content' },
-        { key: 'digital_file', label: 'Digital File' },
-        { key: 'service_booking', label: 'Service/Booking' },
+        { key: 'all', label: t('orders.types.all') },
+        { key: 'physical_product', label: t('orders.types.physical') },
+        { key: 'post_content', label: t('orders.types.post') },
+        { key: 'digital_file', label: t('orders.types.digital') },
+        { key: 'service_booking', label: t('orders.types.service') },
     ];
 
     if (loading) {
         return (
             <AppLayout>
-                <Head title="Library | Takeer" />
+                <Head title={`${t('orders.library')} | Takeer`} />
                 <div className="max-w-5xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
-                    <p className="text-sm text-muted-foreground">Inapakia library yako...</p>
+                    <p className="text-sm text-muted-foreground">{t('orders.loadingLibrary')}</p>
                 </div>
             </AppLayout>
         );
@@ -388,7 +396,7 @@ export default function Orders() {
 
     return (
         <AppLayout>
-            <Head title="Library | Takeer" />
+            <Head title={`${t('orders.library')} | Takeer`} />
 
             <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24 space-y-6">
                 <section className="relative overflow-hidden rounded-[30px] border border-border/70 bg-gradient-to-br from-[#f8fbff] via-[#fffdf7] to-[#f8fff8] shadow-sm">
@@ -397,10 +405,10 @@ export default function Orders() {
                         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
                             <div>
                                 <h1 className="mt-4 text-3xl md:text-4xl font-black tracking-tight text-slate-900">
-                                    Your purchases, premium access, and memberships in one clean space.
+                                    {t('orders.heroTitle')}
                                 </h1>
                                 <p className="mt-3 max-w-3xl text-sm md:text-base text-slate-600 leading-7">
-                                    Fungua articles ulizonunua, fuatilia bundles ulizomiliki, na simamia subscriptions zako bila kupotea kwenye interface nyingi tofauti.
+                                    {t('orders.heroDescription')}
                                 </p>
                             </div>
                         </div>
@@ -438,15 +446,15 @@ export default function Orders() {
                     <section className="space-y-3">
                         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                             <div>
-                                <h2 className="text-2xl font-black tracking-tight text-slate-900">Pulse</h2>
+                                <h2 className="text-2xl font-black tracking-tight text-slate-900">{t('orders.tabs.pulse')}</h2>
                                 <p className="text-sm text-muted-foreground">
-                                    Subscriptions, entitled content, and physical product sales in one notification stream.
+                                    {t('orders.pulseDescription')}
                                 </p>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                                 {isMerchant && (
                                     <span className={`w-fit text-xs font-black px-3 py-1 rounded-full ${window.Echo ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
-                                        {window.Echo ? 'Live connected' : 'Live offline'}
+                                        {window.Echo ? t('orders.liveConnected') : t('orders.liveOffline')}
                                     </span>
                                 )}
                                 <select
@@ -454,9 +462,9 @@ export default function Orders() {
                                     onChange={(e) => setPulsePerPage(Number(e.target.value))}
                                     className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
                                 >
-                                    <option value={8}>8 / page</option>
-                                    <option value={12}>12 / page</option>
-                                    <option value={24}>24 / page</option>
+                                    <option value={8}>{copy('8 / page', '8 / ukurasa')}</option>
+                                    <option value={12}>{copy('12 / page', '12 / ukurasa')}</option>
+                                    <option value={24}>{copy('24 / page', '24 / ukurasa')}</option>
                                 </select>
                             </div>
                         </div>
@@ -465,10 +473,10 @@ export default function Orders() {
                             {pulseLoading ? (
                                 <div className="flex items-center justify-center gap-3 p-8 text-sm font-semibold text-muted-foreground">
                                     <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
-                                    Inapakia Pulse...
+                                    {t('orders.loadingPulse')}
                                 </div>
                             ) : pulseItems.length === 0 ? (
-                                <EmptyPane icon={Library} title="No pulse yet" body="Payment confirmations, delivery updates, access usage, service bookings, and membership changes will appear here." compact />
+                                <EmptyPane icon={Library} title={t('orders.noPulse')} body={t('orders.noPulseDescription')} compact />
                             ) : (
                                 <div className="divide-y divide-border/70">
                                     {visiblePulseItems.map((item) => (
@@ -481,7 +489,7 @@ export default function Orders() {
                         {(pulseMeta.total || 0) > 0 && (
                             <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
                                 <p className="text-sm font-semibold text-muted-foreground">
-                                    Showing {visiblePulseItems.length} of {pulseMeta.total || 0} updates · Page {safePulsePage} / {pulseLastPage}
+                                    {t('orders.showingUpdates', { shown: visiblePulseItems.length, total: pulseMeta.total || 0, page: safePulsePage, pages: pulseLastPage })}
                                 </p>
                                 {pulseLastPage > 1 && (
                                     <div className="flex items-center gap-2">
@@ -491,7 +499,7 @@ export default function Orders() {
                                             onClick={() => setPulsePage((p) => Math.max(1, p - 1))}
                                             disabled={safePulsePage <= 1}
                                         >
-                                            Previous
+                                            {t('common.previous')}
                                         </Button>
                                         <Button
                                             variant="outline"
@@ -499,7 +507,7 @@ export default function Orders() {
                                             onClick={() => setPulsePage((p) => Math.min(pulseLastPage, p + 1))}
                                             disabled={safePulsePage >= pulseLastPage}
                                         >
-                                            Next
+                                            {t('common.next')}
                                         </Button>
                                     </div>
                                 )}
@@ -515,7 +523,7 @@ export default function Orders() {
                                 <input
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    placeholder="Search title, description, merchant..."
+                                    placeholder={t('orders.searchPlaceholder')}
                                     className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                 />
                                 <select
@@ -533,25 +541,25 @@ export default function Orders() {
                                         onChange={(e) => setDateFilter(e.target.value)}
                                         className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                     >
-                                        <option value="all">Any date</option>
-                                        <option value="7">Last 7 days</option>
-                                        <option value="30">Last 30 days</option>
-                                        <option value="90">Last 90 days</option>
-                                        <option value="365">Last 12 months</option>
+                                        <option value="all">{t('orders.date.any')}</option>
+                                        <option value="7">{t('orders.date.days7')}</option>
+                                        <option value="30">{t('orders.date.days30')}</option>
+                                        <option value="90">{t('orders.date.days90')}</option>
+                                        <option value="365">{t('orders.date.months12')}</option>
                                     </select>
                                     <select
                                         value={libraryPerPage}
                                         onChange={(e) => setLibraryPerPage(Number(e.target.value))}
                                         className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                     >
-                                        <option value={12}>12 / page</option>
-                                        <option value={24}>24 / page</option>
-                                        <option value={48}>48 / page</option>
+                                        <option value={12}>{copy('12 / page', '12 / ukurasa')}</option>
+                                        <option value={24}>{copy('24 / page', '24 / ukurasa')}</option>
+                                        <option value={48}>{copy('48 / page', '48 / ukurasa')}</option>
                                     </select>
                                 </div>
                             </div>
                             <p className="mt-2 text-xs text-muted-foreground">
-                                Showing {entitlements.length} of {libraryMeta.total || 0} filtered items (total library: {libraryMeta.unfiltered_total || 0}).
+                                {t('orders.showingLibrary', { shown: entitlements.length, total: libraryMeta.total || 0, all: libraryMeta.unfiltered_total || 0 })}
                             </p>
                         </div>
 
@@ -562,9 +570,9 @@ export default function Orders() {
                         ) : (
                             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                 {libraryMeta.unfiltered_total === 0 ? (
-                                    <EmptyPane icon={Library} title="Library yako iko tupu" body="Ukishanunua content, bundles, au bidhaa za kidigitali zitaonekana hapa." />
+                                    <EmptyPane icon={Library} title={t('orders.emptyLibrary')} body={t('orders.emptyLibraryDescription')} />
                                 ) : entitlements.length === 0 ? (
-                                    <EmptyPane icon={Library} title="No items match your filters" body="Jaribu kubadilisha search, type, au date filter uone matokeo zaidi." />
+                                    <EmptyPane icon={Library} title={t('orders.noLibraryMatches')} body={t('orders.noLibraryMatchesDescription')} />
                                 ) : (
                                     entitlements.map((entry) => (
                                         <OwnedCard key={entry.id} entry={entry} />
@@ -584,7 +592,7 @@ export default function Orders() {
                                     Previous
                                 </Button>
                                 <p className="text-sm font-semibold text-muted-foreground">
-                                    Page {libraryMeta.current_page} / {libraryMeta.last_page}
+                                    {t('common.pageOf', { page: libraryMeta.current_page, pages: libraryMeta.last_page })}
                                 </p>
                                 <Button
                                     variant="outline"
@@ -602,9 +610,9 @@ export default function Orders() {
                 {activeTab === 'following' && (
                     <section className="space-y-3">
                         <div>
-                            <h2 className="text-2xl font-black tracking-tight text-slate-900">Following</h2>
+                            <h2 className="text-2xl font-black tracking-tight text-slate-900">{t('orders.tabs.following')}</h2>
                             <p className="text-sm text-muted-foreground">
-                                Manage store updates you want to receive from merchants you follow.
+                                {t('orders.followingDescription')}
                             </p>
                         </div>
 
@@ -612,10 +620,10 @@ export default function Orders() {
                             {followingLoading ? (
                                 <div className="flex items-center justify-center gap-3 p-8 text-sm font-semibold text-muted-foreground">
                                     <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
-                                    Inapakia stores...
+                                    {t('orders.loadingFollowing')}
                                 </div>
                             ) : followedStores.length === 0 ? (
-                                <EmptyPane icon={BellOff} title="No followed stores yet" body="Follow stores from their profile or shop to get posts and offer updates here." compact />
+                                <EmptyPane icon={BellOff} title={t('orders.noFollowing')} body={t('orders.noFollowingDescription')} compact />
                             ) : (
                                 <div className="divide-y divide-border/70">
                                     {followedStores.map((row) => (
@@ -636,14 +644,14 @@ export default function Orders() {
                     <section className="space-y-4">
                         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                             <div>
-                                <h2 className="text-2xl font-black tracking-tight text-slate-900">Cargo Tracking</h2>
+                                <h2 className="text-2xl font-black tracking-tight text-slate-900">{t('orders.tabs.cargo')}</h2>
                                 <p className="text-sm text-muted-foreground">
-                                    Shipments created from imported forwarder addresses. Takeer orders are protected here; external purchases are tracking-only.
+                                    {t('orders.cargoDescription')}
                                 </p>
                             </div>
                             <Button type="button" variant="outline" className="rounded-xl" onClick={loadCargoShipments} disabled={cargoLoading}>
                                 {cargoLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
-                                Refresh
+                                {t('common.refresh')}
                             </Button>
                         </div>
 
@@ -652,7 +660,7 @@ export default function Orders() {
                                 <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
                             </div>
                         ) : cargoShipments.length === 0 ? (
-                            <EmptyPane icon={Truck} title="No cargo shipments yet" body="Imported forwarder addresses and paid Takeer orders will appear here once a shipment request is created." />
+                            <EmptyPane icon={Truck} title={t('orders.noCargo')} body={t('orders.noCargoDescription')} />
                         ) : (
                             <div className="grid gap-4">
                                 {cargoShipments.map((shipment) => (
@@ -671,9 +679,9 @@ export default function Orders() {
                                 onChange={(e) => setSubscriptionPerPage(Number(e.target.value))}
                                 className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
                             >
-                                <option value={12}>12 / page</option>
-                                <option value={24}>24 / page</option>
-                                <option value={48}>48 / page</option>
+                                <option value={12}>{copy('12 / page', '12 / ukurasa')}</option>
+                                <option value={24}>{copy('24 / page', '24 / ukurasa')}</option>
+                                <option value={48}>{copy('48 / page', '48 / ukurasa')}</option>
                             </select>
                         </div>
                         <div className="grid gap-4 md:grid-cols-2">
@@ -682,7 +690,7 @@ export default function Orders() {
                                     <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
                                 </div>
                             ) : subscriptions.length === 0 ? (
-                                <EmptyPane icon={Crown} title="Hakuna memberships bado" body="Jiunge na subscription plan ili upate access ya muda mrefu kwa bundles na premium content." />
+                                <EmptyPane icon={Crown} title={t('orders.noMemberships')} body={t('orders.noMembershipsDescription')} />
                             ) : (
                                 subscriptions.map((subscription) => (
                                     <MembershipCard key={subscription.id} subscription={subscription} onCancel={() => cancelSubscription(subscription.id)} />
@@ -696,10 +704,10 @@ export default function Orders() {
                                         onClick={() => setSubscriptionPage((p) => Math.max(1, p - 1))}
                                         disabled={subscriptionMeta.current_page <= 1}
                                     >
-                                        Previous
+                                        {t('common.previous')}
                                     </Button>
                                     <p className="text-sm font-semibold text-muted-foreground">
-                                        Page {subscriptionMeta.current_page} / {subscriptionMeta.last_page}
+                                        {t('common.pageOf', { page: subscriptionMeta.current_page, pages: subscriptionMeta.last_page })}
                                     </p>
                                     <Button
                                         variant="outline"
@@ -707,7 +715,7 @@ export default function Orders() {
                                         onClick={() => setSubscriptionPage((p) => Math.min(subscriptionMeta.last_page, p + 1))}
                                         disabled={subscriptionMeta.current_page >= subscriptionMeta.last_page}
                                     >
-                                        Next
+                                        {t('common.next')}
                                     </Button>
                                 </div>
                             )}
@@ -791,6 +799,7 @@ function PulseNotification({ item }) {
 }
 
 function FollowedStoreRow({ row, onPreferenceChange, onUnfollow }) {
+    const { t } = useLocale();
     const merchant = row.merchant || {};
     const preferences = row.notification_preferences || {};
     const avatarInitial = (merchant.name || merchant.slug || 'S').charAt(0).toUpperCase();
@@ -814,7 +823,7 @@ function FollowedStoreRow({ row, onPreferenceChange, onUnfollow }) {
                         {merchant.name || merchant.slug}
                     </Link>
                     <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                        {Number(merchant.followers_count || 0).toLocaleString()} followers
+                        {t('orders.followers', { count: Number(merchant.followers_count || 0).toLocaleString() })}
                     </span>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">@{merchant.slug}</p>
@@ -823,39 +832,39 @@ function FollowedStoreRow({ row, onPreferenceChange, onUnfollow }) {
                 )}
                 {isMuted && (
                     <p className="mt-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                        Muted
+                        {t('orders.muted')}
                     </p>
                 )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2 md:justify-end">
                 <PreferenceToggle
-                    label="Posts"
+                    label={t('orders.preference.posts')}
                     active={!isMuted && preferences.posts !== false}
                     onClick={() => onPreferenceChange(merchant.slug, { posts: preferences.posts === false })}
                 />
                 <PreferenceToggle
-                    label="Offers"
+                    label={t('orders.preference.offers')}
                     active={!isMuted && preferences.offers !== false}
                     onClick={() => onPreferenceChange(merchant.slug, { offers: preferences.offers === false })}
                 />
                 <PreferenceToggle
-                    label="SMS"
+                    label={t('orders.preference.sms')}
                     active={!isMuted && preferences.sms !== false}
                     onClick={() => onPreferenceChange(merchant.slug, { sms: preferences.sms === false })}
                 />
                 <PreferenceToggle
-                    label="WhatsApp"
+                    label={t('orders.preference.whatsapp')}
                     active={!isMuted && preferences.whatsapp !== false}
                     onClick={() => onPreferenceChange(merchant.slug, { whatsapp: preferences.whatsapp === false })}
                 />
                 <PreferenceToggle
-                    label={isMuted ? 'Unmute' : 'Mute'}
+                    label={isMuted ? t('orders.unmute') : t('orders.mute')}
                     active={isMuted}
                     onClick={() => onPreferenceChange(merchant.slug, { muted: !isMuted })}
                 />
                 <Button variant="outline" className="rounded-xl" onClick={() => onUnfollow(merchant.slug)}>
-                    Unfollow
+                    {t('orders.unfollow')}
                 </Button>
             </div>
         </div>
@@ -889,17 +898,26 @@ const cargoStatusLabels = {
     on_hold: 'On hold',
 };
 
-function cargoEventLabel(event, isTakeerOrder, orderSummary = {}) {
+function cargoEventLabel(event, isTakeerOrder, orderSummary = {}, labels = cargoStatusLabels) {
     if (!event) return '';
     if (event.metadata?.buyer_confirmed_handoff) return 'Handoff confirmed';
     if (isTakeerOrder && event.status === 'completed' && orderSummary.delivery_status === 'customer_confirmed') {
         return 'Handoff confirmed';
     }
 
-    return cargoStatusLabels[event.status] || event.status;
+    return labels[event.status] || event.status;
 }
 
-function cargoPaymentTermLabel(term) {
+function cargoPaymentTermLabel(term, t = null) {
+    if (t) {
+        return {
+            pay_on_pickup: t('orders.paymentTerms.payOnPickup'),
+            pay_before_shipping: t('orders.paymentTerms.payBeforeShipping'),
+            deposit_balance: t('orders.paymentTerms.depositBalance'),
+            quote_after_receiving: t('orders.paymentTerms.quoteAfterReceiving'),
+            included_or_seller_paid: t('orders.paymentTerms.includedSellerPaid'),
+        }[term] || '';
+    }
     return {
         pay_on_pickup: 'Pay on pickup',
         pay_before_shipping: 'Pay before shipping',
@@ -909,9 +927,9 @@ function cargoPaymentTermLabel(term) {
     }[term] || '';
 }
 
-function cargoPaymentTermText(shipment) {
+function cargoPaymentTermText(shipment, t = null) {
     const detail = shipment.route_snapshot?.payment_terms?.[shipment.transport_mode] || {};
-    const label = cargoPaymentTermLabel(detail.payment_term);
+    const label = cargoPaymentTermLabel(detail.payment_term, t);
     if (!label) return '';
     if (detail.payment_term === 'deposit_balance' && detail.deposit_value) {
         const deposit = detail.deposit_type === 'fixed' ? detail.deposit_value : `${detail.deposit_value}%`;
@@ -921,6 +939,7 @@ function cargoPaymentTermText(shipment) {
 }
 
 function CargoShipmentCard({ shipment, onChanged }) {
+    const { t } = useLocale();
     const [confirming, setConfirming] = useState(false);
     const events = [...(shipment.events || [])].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
     const latestEvent = events[events.length - 1];
@@ -933,24 +952,27 @@ function CargoShipmentCard({ shipment, onChanged }) {
     const canConfirmHandoff = isTakeerOrder
         && orderSummary.id
         && shipment.status === 'received_at_origin'
-        && !['resolved_merchant_paid', 'released'].includes(orderSummary.payment_status);
-    const paymentText = cargoPaymentTermText(shipment);
+        && !['paid_out', 'released'].includes(orderSummary.payment_status);
+    const localizedCargoStatusLabels = {
+        incoming: t('orders.cargoStatus.incoming'), received_at_origin: t('orders.cargoStatus.receivedAtOrigin'), in_transit: t('orders.cargoStatus.inTransit'), arrived_country: t('orders.cargoStatus.arrivedCountry'), customs_handling: t('orders.cargoStatus.customsHandling'), ready_for_pickup: t('orders.cargoStatus.readyForPickup'), handoff_confirmed: t('orders.cargoStatus.handoffConfirmed'), completed: t('orders.cargoStatus.completed'), on_hold: t('orders.cargoStatus.onHold'),
+    };
+    const paymentText = cargoPaymentTermText(shipment, t);
     const routeName = shipment.route_snapshot?.label || [
         shipment.route?.origin_country?.name || shipment.route?.originCountry?.name,
         shipment.route?.destination_country?.name || shipment.route?.destinationCountry?.name,
     ].filter(Boolean).join(' to ');
 
     const confirmForwarderHandoff = async () => {
-        const ok = window.confirm('Confirm that your forwarder warehouse has received this package? Takeer will release the seller-side payment.');
+        const ok = window.confirm(t('orders.confirmForwarderHandoff'));
         if (!ok) return;
 
         setConfirming(true);
         try {
             await axios.post(`/api/buyer/orders/${orderSummary.id}/confirm-receipt`);
-            toast.success('Forwarder handoff confirmed. Seller payment released.');
+            toast.success(t('orders.forwarderHandoffConfirmed'));
             await onChanged?.();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not confirm handoff.');
+            toast.error(error.response?.data?.message || t('orders.confirmHandoffFailed'));
         } finally {
             setConfirming(false);
         }
@@ -966,14 +988,14 @@ function CargoShipmentCard({ shipment, onChanged }) {
                         <p className="mt-1 text-sm font-semibold text-muted-foreground">{shipment.forwarder?.name || 'Forwarder'}{routeName ? ` · ${routeName}` : ''}</p>
                     </div>
                     <span className={`w-fit rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${isTakeerOrder ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                        {isTakeerOrder ? 'Takeer protected' : 'External tracking'}
+                        {isTakeerOrder ? t('orders.takeerProtected') : t('orders.externalTracking')}
                     </span>
                 </div>
 
                 <div className="mt-4 grid gap-2 text-xs font-bold text-slate-500 md:grid-cols-3">
-                    <span className="rounded-xl bg-slate-50 px-3 py-2">Status: {cargoStatusLabels[visibleStatus] || visibleStatus}</span>
-                    <span className="rounded-xl bg-slate-50 px-3 py-2">Tracking: {shipment.tracking_number || 'Not added yet'}</span>
-                    <span className="rounded-xl bg-slate-50 px-3 py-2">Seller: {shipment.seller_name || shipment.seller_platform || 'Not provided'}</span>
+                    <span className="rounded-xl bg-slate-50 px-3 py-2">{t('orders.status')}: {localizedCargoStatusLabels[visibleStatus] || visibleStatus}</span>
+                    <span className="rounded-xl bg-slate-50 px-3 py-2">{t('orders.tracking')}: {shipment.tracking_number || t('orders.notAdded')}</span>
+                    <span className="rounded-xl bg-slate-50 px-3 py-2">{t('orders.seller')}: {shipment.seller_name || shipment.seller_platform || t('orders.notProvided')}</span>
                 </div>
 
                 {(shipment.tracking_number || freightTracking.tracking_url || freightTracking.carrier_name || freightTracking.transport_reference || freightTracking.eta_text) && (
@@ -986,15 +1008,15 @@ function CargoShipmentCard({ shipment, onChanged }) {
 
                 {paymentText && (
                     <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900">
-                        Forwarder payment: {paymentText}
+                        {t('orders.forwarderPayment')}: {paymentText}
                     </div>
                 )}
 
                 {canConfirmHandoff && (
                     <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Forwarder handoff review</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">{t('orders.forwarderHandoffReview')}</p>
                         <p className="mt-1 text-sm font-bold leading-6 text-emerald-950">
-                            The forwarder marked this package received at origin. Confirm only after you verify the receipt/tracking or forwarder contact.
+                            {t('orders.forwarderHandoffHelp')}
                         </p>
                         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                             <Button
@@ -1004,13 +1026,13 @@ function CargoShipmentCard({ shipment, onChanged }) {
                                 className="h-11 rounded-xl bg-emerald-600 text-xs font-black uppercase tracking-widest hover:bg-emerald-700"
                             >
                                 {confirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                                Confirm Handoff
+                                {t('orders.confirmHandoff')}
                             </Button>
                             <ContentReportButton
                                 itemType="order"
                                 itemId={orderSummary.id}
                                 context="order"
-                                label="Report Issue"
+                                label={t('orders.reportIssue')}
                                 compact
                                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-red-700 hover:bg-red-50"
                             />
@@ -1020,16 +1042,16 @@ function CargoShipmentCard({ shipment, onChanged }) {
 
                 {!isTakeerOrder && (
                     <div className="mt-3 grid gap-2 text-xs font-bold text-slate-500 md:grid-cols-4">
-                        <span className="rounded-xl bg-slate-50 px-3 py-2">Order ref: {shipment.external_order_ref || 'Not provided'}</span>
-                        <span className="rounded-xl bg-slate-50 px-3 py-2">Packages: {shipment.package_count || 'Not set'}</span>
-                        <span className="rounded-xl bg-slate-50 px-3 py-2">Weight: {shipment.weight_estimate || 'Not set'}</span>
-                        <span className="rounded-xl bg-slate-50 px-3 py-2">Declared: {[shipment.metadata?.declared_currency, shipment.metadata?.declared_value].filter(Boolean).join(' ') || 'Not set'}</span>
+                        <span className="rounded-xl bg-slate-50 px-3 py-2">{t('orders.orderRef')}: {shipment.external_order_ref || t('orders.notProvided')}</span>
+                        <span className="rounded-xl bg-slate-50 px-3 py-2">{t('orders.packages')}: {shipment.package_count || t('orders.notSet')}</span>
+                        <span className="rounded-xl bg-slate-50 px-3 py-2">{t('orders.weight')}: {shipment.weight_estimate || t('orders.notSet')}</span>
+                        <span className="rounded-xl bg-slate-50 px-3 py-2">{t('orders.declared')}: {[shipment.metadata?.declared_currency, shipment.metadata?.declared_value].filter(Boolean).join(' ') || t('orders.notSet')}</span>
                     </div>
                 )}
 
                 {!isTakeerOrder && (
                     <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
-                        This purchase was paid outside Takeer. We show freight tracking, but refunds or seller disputes stay with the platform where you paid.
+                        {t('orders.externalPurchaseNotice')}
                     </div>
                 )}
 
@@ -1044,7 +1066,7 @@ function CargoShipmentCard({ shipment, onChanged }) {
                                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-700 hover:bg-brand-50"
                             >
                                 <ExternalLink className="h-3 w-3" />
-                                {attachment.type || 'Attachment'}
+                                {attachment.type || t('orders.attachment')}
                             </a>
                         ))}
                     </div>
@@ -1052,22 +1074,22 @@ function CargoShipmentCard({ shipment, onChanged }) {
 
                 {latestEvent && (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Latest update</p>
-                        <p className="mt-1 text-sm font-black text-slate-900">{cargoEventLabel(latestEvent, isTakeerOrder, orderSummary)}{latestEvent.location?.name ? ` · ${latestEvent.location.name}` : ''}</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-500">{latestEvent.note || 'Status updated.'}</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{t('orders.latestUpdate')}</p>
+                        <p className="mt-1 text-sm font-black text-slate-900">{cargoEventLabel(latestEvent, isTakeerOrder, orderSummary, localizedCargoStatusLabels)}{latestEvent.location?.name ? ` · ${latestEvent.location.name}` : ''}</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-500">{latestEvent.note || t('orders.statusUpdated')}</p>
                         <CargoTrackingSummary className="mt-2" trackingNumber={latestEvent.metadata?.tracking_number} metadata={latestEvent.metadata} compact />
                     </div>
                 )}
 
                 {events.length > 1 && (
                     <div className="mt-4 space-y-2">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">History</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{t('orders.history')}</p>
                         {events.slice().reverse().map((event) => (
                             <div key={event.id} className="flex gap-3 text-xs">
                                 <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-500" />
                                 <div>
-                                    <p className="font-black text-slate-800">{cargoEventLabel(event, isTakeerOrder, orderSummary)}{event.location?.name ? ` · ${event.location.name}` : ''}</p>
-                                    <p className="font-semibold text-slate-500">{event.note || 'Status updated.'}</p>
+                                    <p className="font-black text-slate-800">{cargoEventLabel(event, isTakeerOrder, orderSummary, localizedCargoStatusLabels)}{event.location?.name ? ` · ${event.location.name}` : ''}</p>
+                                    <p className="font-semibold text-slate-500">{event.note || t('orders.statusUpdated')}</p>
                                     <CargoTrackingSummary className="mt-2" trackingNumber={event.metadata?.tracking_number} metadata={event.metadata} compact />
                                 </div>
                             </div>
@@ -1080,11 +1102,12 @@ function CargoShipmentCard({ shipment, onChanged }) {
 }
 
 function CargoTrackingSummary({ metadata = {}, trackingNumber = '', compact = false, className = '' }) {
+    const { t } = useLocale();
     const rows = [
-        ['Carrier/cargo', metadata?.carrier_name],
-        ['Tracking', trackingNumber || metadata?.tracking_number],
-        ['Reference', metadata?.transport_reference],
-        ['ETA / next movement', metadata?.eta_text],
+        [t('orders.carrierCargo'), metadata?.carrier_name],
+        [t('orders.tracking'), trackingNumber || metadata?.tracking_number],
+        [t('orders.reference'), metadata?.transport_reference],
+        [t('orders.eta'), metadata?.eta_text],
     ].filter(([, value]) => value);
 
     if (rows.length === 0 && !metadata?.tracking_url) return null;
@@ -1106,7 +1129,7 @@ function CargoTrackingSummary({ metadata = {}, trackingNumber = '', compact = fa
                         className={`${compact ? 'text-[11px]' : 'rounded-xl bg-white px-3 py-2 text-xs'} inline-flex items-center gap-1 font-black text-brand-700 underline decoration-brand-200 underline-offset-4`}
                     >
                         <ExternalLink className="h-3 w-3" />
-                        Tracking link
+                        {t('orders.trackingLink')}
                     </a>
                 )}
             </div>
@@ -1151,109 +1174,109 @@ function orderStatusLabel(orderDetails) {
     if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending') return 'Waiting for the merchant to quote or confirm shipping.';
     if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && !(orderDetails.is_merchant_confirmed || orderDetails.merchant_confirmed_at)) return 'Waiting for the merchant to confirm availability.';
     if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted') return 'Shipping quote is ready for payment.';
-    if (orderDetails.payment_status === 'awaiting_merchant_confirmation') return 'Paid order is waiting for merchant confirmation.';
-    if (orderDetails.payment_status === 'escrow_locked') return 'Payment is protected while delivery is in progress.';
-    if (orderDetails.payment_status === 'resolved_merchant_paid') return 'Order completed and merchant has been paid.';
+    if (orderDetails.payment_status === 'pending_fulfillment') return 'Payment confirmed by the PSP; fulfillment is required.';
+    if (orderDetails.payment_status === 'release_eligible') return 'Order is eligible for a provider payout after the release check.';
+    if (orderDetails.payment_status === 'paid_out') return 'Order completed and the PSP confirmed seller payout.';
     if (orderDetails.payment_status === 'refund_pending') return 'Refund is waiting for admin approval.';
     if (orderDetails.payment_status === 'disputed') return 'A claim is open for this order.';
     return String(orderDetails.payment_status || 'Order update').replaceAll('_', ' ');
 }
 
-function deliveryStatusText(status) {
+function deliveryStatusText(status, translate = (_, swahili) => swahili) {
     const map = {
-        inquiry: 'Inasubiri taarifa',
-        packing: 'Inaandaliwa',
-        ready_for_pickup: 'Tayari kuchukuliwa',
-        awaiting_boda: 'Inasubiri usafirishaji',
-        awaiting_pickup: 'Inasubiri kuchukuliwa',
-        dispatched: 'Imetumwa',
-        with_boda: 'Ipo kwa dereva',
-        in_transit: 'Ipo njiani',
-        arrived: 'Imefika eneo la mteja',
-        ready_at_terminal: 'Ipo terminal',
-        delivered: 'Imekabidhiwa',
-        issue_reported: 'Kuna taarifa ya tatizo',
-        disputed: 'Mgogoro',
-        customer_confirmed: 'Mteja amethibitisha',
+        inquiry: ['Awaiting details', 'Inasubiri taarifa'],
+        packing: ['Being prepared', 'Inaandaliwa'],
+        ready_for_pickup: ['Ready for pickup', 'Tayari kuchukuliwa'],
+        awaiting_boda: ['Awaiting delivery', 'Inasubiri usafirishaji'],
+        awaiting_pickup: ['Awaiting pickup', 'Inasubiri kuchukuliwa'],
+        dispatched: ['Dispatched', 'Imetumwa'],
+        with_boda: ['With rider', 'Ipo kwa dereva'],
+        in_transit: ['In transit', 'Ipo njiani'],
+        arrived: ['Arrived in your area', 'Imefika eneo la mteja'],
+        ready_at_terminal: ['At terminal', 'Ipo terminal'],
+        delivered: ['Delivered', 'Imekabidhiwa'],
+        issue_reported: ['Issue reported', 'Kuna taarifa ya tatizo'],
+        disputed: ['Disputed', 'Mgogoro'],
+        customer_confirmed: ['Customer confirmed', 'Mteja amethibitisha'],
     };
 
-    return map[status] || (status ? String(status).replaceAll('_', ' ') : 'Inaendelea');
+    return map[status] ? translate(...map[status]) : (status ? String(status).replaceAll('_', ' ') : translate('In progress', 'Inaendelea'));
 }
 
 function isActiveDeliveryStatus(status) {
     return ['with_boda', 'in_transit', 'arrived', 'ready_at_terminal', 'issue_reported'].includes(status);
 }
 
-function compactDeliveryStatus(orderDetails) {
+function compactDeliveryStatus(orderDetails, translate = (_, swahili) => swahili) {
     const delivery = orderDetails?.delivery || null;
     const status = delivery?.status || delivery?.delivery_status;
     const type = delivery?.delivery_type || delivery?.type;
 
     if (!delivery) return null;
-    if (type === 'self_pickup') return 'Kuchukua dukani';
+    if (type === 'self_pickup') return translate('Store pickup', 'Kuchukua dukani');
     if (type === 'forwarder') {
-        if (status === 'ready_at_terminal' || status === 'customer_confirmed' || status === 'delivered') return 'Forwarder amepokea';
-        if (status === 'with_boda' || status === 'dispatched' || status === 'in_transit') return 'Inaenda kwa forwarder';
-        if (status === 'packing') return 'Inaandaliwa';
-        if (status === 'inquiry') return 'Inasubiri taarifa';
+        if (status === 'ready_at_terminal' || status === 'customer_confirmed' || status === 'delivered') return translate('Received by forwarder', 'Forwarder amepokea');
+        if (status === 'with_boda' || status === 'dispatched' || status === 'in_transit') return translate('On the way to forwarder', 'Inaenda kwa forwarder');
+        if (status === 'packing') return translate('Being prepared', 'Inaandaliwa');
+        if (status === 'inquiry') return translate('Awaiting details', 'Inasubiri taarifa');
     }
-    if (status === 'delivered' || orderDetails?.payment_status === 'resolved_merchant_paid') return 'Imekabidhiwa';
-    if (status === 'ready_at_terminal') return 'Ipo terminal';
-    if (status === 'arrived') return 'Imefika eneo la mteja';
-    if (status === 'in_transit') return 'Ipo njiani';
-    if (status === 'with_boda') return 'Ipo kwa dereva';
-    if (status === 'issue_reported') return 'Kuna tatizo kwenye delivery';
-    if (status === 'dispatched') return 'Imetumwa';
-    if (status === 'packing') return 'Inaandaliwa';
-    if (status) return deliveryStatusText(status);
+    if (status === 'delivered' || orderDetails?.payment_status === 'paid_out') return translate('Delivered', 'Imekabidhiwa');
+    if (status === 'ready_at_terminal') return translate('At terminal', 'Ipo terminal');
+    if (status === 'arrived') return translate('Arrived in your area', 'Imefika eneo la mteja');
+    if (status === 'in_transit') return translate('In transit', 'Ipo njiani');
+    if (status === 'with_boda') return translate('With rider', 'Ipo kwa dereva');
+    if (status === 'issue_reported') return translate('Delivery issue reported', 'Kuna tatizo kwenye delivery');
+    if (status === 'dispatched') return translate('Dispatched', 'Imetumwa');
+    if (status === 'packing') return translate('Being prepared', 'Inaandaliwa');
+    if (status) return deliveryStatusText(status, translate);
 
     return null;
 }
 
-function compactPickupStatus(orderDetails) {
+function compactPickupStatus(orderDetails, translate = (_, swahili) => swahili) {
     const status = orderDetails?.pickup_status;
     const paymentStatus = orderDetails?.payment_status;
     const deliveryStatus = orderDetails?.delivery?.status || orderDetails?.delivery?.delivery_status;
 
-    if (status === 'completed' || orderDetails?.pickup_completed_at || paymentStatus === 'resolved_merchant_paid') return 'Imekabidhiwa';
-    if (paymentStatus === 'refund_pending') return 'Refund inasubiri admin';
-    if (status === 'buyer_no_show') return 'Mteja hakufika';
-    if (status === 'cancelled_after_grace') return 'Imefutwa baada ya deadline';
-    if (status === 'pickup_overdue') return 'Muda wa pickup umepita';
-    if (status === 'extension_requested') return 'Extension imeombwa';
-    if (status === 'delivery_conversion_requested') return 'Delivery imeombwa';
-    if (status === 'delivery_conversion_quoted') return 'Bei ya delivery imewekwa';
-    if (status === 'delivery_conversion_payment_pending') return 'Inasubiri malipo ya delivery';
-    if (status === 'converted_to_delivery') return 'Imebadilishwa kuwa delivery';
-    if (status === 'ready_for_pickup' || deliveryStatus === 'ready_for_pickup') return 'Tayari kuchukuliwa';
-    if (deliveryStatus === 'awaiting_pickup') return 'Inasubiri kuchukuliwa';
-    if (['awaiting_merchant_confirmation', 'escrow_locked'].includes(paymentStatus)) return 'Inasubiri kuchukuliwa';
+    if (status === 'completed' || orderDetails?.pickup_completed_at || paymentStatus === 'paid_out') return translate('Delivered', 'Imekabidhiwa');
+    if (paymentStatus === 'refund_pending') return translate('Refund awaiting admin review', 'Refund inasubiri admin');
+    if (status === 'buyer_no_show') return translate('Buyer did not arrive', 'Mteja hakufika');
+    if (status === 'cancelled_after_grace') return translate('Cancelled after deadline', 'Imefutwa baada ya deadline');
+    if (status === 'pickup_overdue') return translate('Pickup deadline passed', 'Muda wa pickup umepita');
+    if (status === 'extension_requested') return translate('Extension requested', 'Extension imeombwa');
+    if (status === 'delivery_conversion_requested') return translate('Delivery requested', 'Delivery imeombwa');
+    if (status === 'delivery_conversion_quoted') return translate('Delivery price set', 'Bei ya delivery imewekwa');
+    if (status === 'delivery_conversion_payment_pending') return translate('Awaiting delivery payment', 'Inasubiri malipo ya delivery');
+    if (status === 'converted_to_delivery') return translate('Converted to delivery', 'Imebadilishwa kuwa delivery');
+    if (status === 'ready_for_pickup' || deliveryStatus === 'ready_for_pickup') return translate('Ready for pickup', 'Tayari kuchukuliwa');
+    if (deliveryStatus === 'awaiting_pickup') return translate('Awaiting pickup', 'Inasubiri kuchukuliwa');
+    if (['pending_fulfillment', 'release_eligible', 'payout_processing'].includes(paymentStatus)) return translate('Awaiting pickup', 'Inasubiri kuchukuliwa');
 
-    return 'Kuchukua dukani';
+    return translate('Store pickup', 'Kuchukua dukani');
 }
 
-function deliveryEventStatusLabel(status, type) {
+function deliveryEventStatusLabel(status, type, translate = (_, swahili) => swahili) {
     if (type === 'self_pickup') {
         const map = {
-            ready_for_pickup: 'Tayari kuchukuliwa',
-            awaiting_pickup: 'Inasubiri kuchukuliwa',
-            buyer_no_show: 'Mteja hakufika',
-            pickup_overdue: 'Muda wa pickup umepita',
-            customer_confirmed: 'Mteja amethibitisha',
-            delivered: 'Imekabidhiwa',
-            issue_reported: 'Kuna taarifa ya tatizo',
+            ready_for_pickup: ['Ready for pickup', 'Tayari kuchukuliwa'],
+            awaiting_pickup: ['Awaiting pickup', 'Inasubiri kuchukuliwa'],
+            buyer_no_show: ['Buyer did not arrive', 'Mteja hakufika'],
+            pickup_overdue: ['Pickup deadline passed', 'Muda wa pickup umepita'],
+            customer_confirmed: ['Customer confirmed', 'Mteja amethibitisha'],
+            delivered: ['Delivered', 'Imekabidhiwa'],
+            issue_reported: ['Issue reported', 'Kuna taarifa ya tatizo'],
         };
 
-        return map[status] || deliveryStatusText(status);
+        return map[status] ? translate(...map[status]) : deliveryStatusText(status, translate);
     }
 
     if (type === 'forwarder') {
-        if (status === 'ready_at_terminal' || status === 'customer_confirmed' || status === 'delivered') return 'Forwarder amepokea';
-        if (status === 'with_boda' || status === 'dispatched' || status === 'in_transit') return 'Inaenda kwa forwarder';
-        if (status === 'packing') return 'Inaandaliwa';
+        if (status === 'ready_at_terminal' || status === 'customer_confirmed' || status === 'delivered') return translate('Received by forwarder', 'Forwarder amepokea');
+        if (status === 'with_boda' || status === 'dispatched' || status === 'in_transit') return translate('On the way to forwarder', 'Inaenda kwa forwarder');
+        if (status === 'packing') return translate('Being prepared', 'Inaandaliwa');
     }
 
-    return deliveryStatusText(status);
+    return deliveryStatusText(status, translate);
 }
 
 function serviceStatusLabel(orderDetails) {
@@ -1265,12 +1288,13 @@ function serviceStatusLabel(orderDetails) {
 }
 
 function MerchantProfileStrip({ merchant }) {
+    const { copy } = useLocale();
     const username = merchant?.slug || merchant?.username;
-    const displayName = merchant?.display_name || merchant?.name || username || 'Merchant';
+    const displayName = merchant?.display_name || merchant?.name || username || copy('Merchant', 'Muuzaji');
     const avatarUrl = merchant?.avatar_url;
     const category = merchant?.business_category || merchant?.business_subcategory;
     const shopHref = username ? `/u/${username}/shop/all` : null;
-    const initial = String(displayName || 'M').trim().charAt(0).toUpperCase();
+    const initial = String(displayName || copy('M', 'M')).trim().charAt(0).toUpperCase();
 
     const content = (
         <div className={`group flex items-center justify-between gap-2.5 rounded-2xl border border-slate-200/80 bg-white px-2.5 py-2 text-left shadow-sm transition ${shopHref ? 'hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md hover:shadow-slate-900/5 focus:outline-none focus:ring-4 focus:ring-brand-100' : ''}`}>
@@ -1288,7 +1312,7 @@ function MerchantProfileStrip({ merchant }) {
                         {merchant?.is_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-sky-500" />}
                     </div>
                     <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
-                        {username ? `@${username}` : 'Takeer merchant'}
+                        {username ? `@${username}` : copy('Takeer merchant', 'Muuzaji wa Takeer')}
                         {category ? ` · ${category}` : ''}
                     </p>
                 </div>
@@ -1304,13 +1328,14 @@ function MerchantProfileStrip({ merchant }) {
     }
 
     return (
-        <Link href={shopHref} className="block" aria-label={`Open ${displayName} shop`}>
+        <Link href={shopHref} className="block" aria-label={copy(`Open ${displayName} shop`, `Fungua duka la ${displayName}`)}>
             {content}
         </Link>
     );
 }
 
 function OwnedCard({ entry }) {
+    const { t, copy } = useLocale();
     const item = entry.item || {};
     const merchant = entry.merchant || item.merchant || {};
     const orderDetails = entry.order_details;
@@ -1348,7 +1373,7 @@ function OwnedCard({ entry }) {
     const customDeliveryIsOverdue = customDeliveryDueDate && !customDelivery?.delivered_at && customDeliveryDueDate.getTime() < Date.now();
     const deliveryEvents = Array.isArray(orderDetails?.delivery?.events) ? orderDetails.delivery.events : [];
     const latestDeliveryEvent = deliveryEvents.length ? deliveryEvents[deliveryEvents.length - 1] : null;
-    const activeDeliveryLabel = compactDeliveryStatus(orderDetails);
+    const activeDeliveryLabel = compactDeliveryStatus(orderDetails, copy);
     const deliveryType = orderDetails?.delivery?.delivery_type || orderDetails?.delivery?.type || '';
     const isSelfPickupOrder = deliveryType === 'self_pickup';
     const isLocalDeliveryOrder = deliveryType === 'local_boda';
@@ -1356,9 +1381,9 @@ function OwnedCard({ entry }) {
     const isForwarderOrder = deliveryType === 'forwarder';
     const forwarderHandoffReady = isForwarderOrder
         && ['ready_at_terminal', 'customer_confirmed'].includes(orderDetails?.delivery?.delivery_status || orderDetails?.delivery?.status);
-    const showEscrowReceiptActions = (isForwarderOrder
-        ? ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status)
-        : ['escrow_locked', 'shipped'].includes(orderDetails.payment_status))
+    const showProviderReceiptActions = (isForwarderOrder
+        ? ['pending_fulfillment', 'release_eligible', 'payout_processing'].includes(orderDetails.payment_status)
+        : ['release_eligible', 'payout_processing'].includes(orderDetails.payment_status))
         && (!isForwarderOrder || forwarderHandoffReady);
     const isDeliveryActive = isActiveDeliveryStatus(orderDetails?.delivery?.status || orderDetails?.delivery?.delivery_status);
     const hasReview = Boolean(orderDetails?.review?.id);
@@ -1367,7 +1392,7 @@ function OwnedCard({ entry }) {
     const canOpenRefundClaim = !refundPolicy || refundPolicy.status === 'eligible';
     const canOpenReturnRequest = isPhysicalProduct && canOpenRefundClaim && !returnRequest;
     const claimButtonDisabled = isPhysicalProduct ? !canOpenReturnRequest : !canOpenRefundClaim;
-    const shouldShowRefundPolicy = refundPolicy && (canOpenRefundClaim || (!isDeliveryActive && orderDetails?.payment_status !== 'escrow_locked'));
+    const shouldShowRefundPolicy = refundPolicy && (canOpenRefundClaim || (!isDeliveryActive && orderDetails?.payment_status !== 'release_eligible'));
     const refundPolicyTone = canOpenRefundClaim
         ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
         : 'border-amber-100 bg-amber-50 text-amber-900';
@@ -1396,7 +1421,7 @@ function OwnedCard({ entry }) {
             return;
         }
 
-        toast.error('Fungua order chat ili kukamilisha malipo.');
+        toast.error(t('orders.openOrderChatToPay'));
     };
     const orderId = entry.source_type === 'order' ? entry.source_id : null;
     const merchantConfirmed = Boolean(orderDetails?.is_merchant_confirmed || orderDetails?.merchant_confirmed_at);
@@ -1434,42 +1459,42 @@ function OwnedCard({ entry }) {
     const confirmReceiptCopy = (() => {
         if (isCustomDeliveryProduct) {
             return {
-                title: 'Accept Custom Work?',
-                body: 'Confirm only if you are happy with this custom delivery. Takeer will release the held payment to the creator.',
-                cancel: 'Keep Reviewing',
-                confirm: 'Accept Custom Work',
+                title: t('orders.confirm.customTitle'),
+                body: t('orders.confirm.customBody'),
+                cancel: t('orders.confirm.keepReviewing'),
+                confirm: t('orders.confirm.acceptCustom'),
             };
         }
         if (isServiceProduct) {
             return {
-                title: 'Confirm Service Complete?',
-                body: 'Confirm only if the service was delivered as agreed. Takeer will release the held payment to the provider.',
-                cancel: 'Not Yet',
-                confirm: 'Release Payment',
+                title: t('orders.confirm.serviceTitle'),
+                body: t('orders.confirm.serviceBody'),
+                cancel: t('orders.confirm.notYet'),
+                confirm: t('orders.confirm.releasePayment'),
             };
         }
         if (isIntercityOrder) {
             return {
-                title: 'Confirm Terminal Pickup?',
-                body: 'Confirm only after you have collected the package from the terminal or cargo office and checked that it is okay. Takeer will release the held payment to the seller.',
-                cancel: 'Not Yet',
-                confirm: 'Nimepokea Mzigo',
+                title: t('orders.confirm.terminalTitle'),
+                body: t('orders.confirm.terminalBody'),
+                cancel: t('orders.confirm.notYet'),
+                confirm: t('orders.confirm.receivedPackage'),
             };
         }
         if (isForwarderOrder) {
             return {
-                title: 'Confirm Forwarder Handoff?',
-                body: 'Confirm only after you verify the receipt, tracking, or forwarder contact and agree the package has reached your forwarder warehouse. Takeer will release the seller-side payment.',
-                cancel: 'Keep Verifying',
-                confirm: 'Confirm Handoff',
+                title: t('orders.confirm.forwarderTitle'),
+                body: t('orders.confirm.forwarderBody'),
+                cancel: t('orders.confirm.keepVerifying'),
+                confirm: t('orders.confirm.handoff'),
             };
         }
 
         return {
-            title: 'Confirm Receipt?',
-            body: 'Confirm only if you received the item and it is in good condition. Takeer will release the held payment to the seller.',
-            cancel: 'Keep Checking',
-            confirm: 'Confirm Receipt',
+            title: t('orders.confirm.receiptTitle'),
+            body: t('orders.confirm.receiptBody'),
+            cancel: t('orders.confirm.keepChecking'),
+            confirm: t('orders.confirm.receipt'),
         };
     })();
 
@@ -1481,11 +1506,11 @@ function OwnedCard({ entry }) {
         setConfirmingReceipt(true);
         try {
             await axios.post(`/api/buyer/orders/${orderDetails.id}/confirm-receipt`);
-            toast.success('Hifadhi imethibitishwa! Asante.');
+            toast.success(t('orders.receiptConfirmed'));
             setShowReceiptConfirmModal(false);
             window.location.reload(); // Refresh to update status
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kudhibitisha.');
+            toast.error(error.response?.data?.message || t('orders.confirmReceiptFailed'));
         } finally {
             setConfirmingReceipt(false);
         }
@@ -1505,11 +1530,11 @@ function OwnedCard({ entry }) {
             await axios.post(endpoint, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            toast.success(isPhysicalProduct ? 'Return request sent to the merchant.' : 'Mgogoro umefunguliwa. Tutawasiliana nawe.');
+            toast.success(isPhysicalProduct ? t('orders.returnSent') : t('orders.claimOpened'));
             setShowDisputeModal(false);
             window.location.reload();
         } catch (error) {
-            toast.error(error.response?.data?.message || (isPhysicalProduct ? 'Imeshindikana kutuma return request.' : 'Imeshindwa kufungua mgogoro.'));
+            toast.error(error.response?.data?.message || (isPhysicalProduct ? t('orders.returnFailed') : t('orders.claimFailed')));
         } finally {
             setDisputeSubmitting(false);
         }
@@ -1522,10 +1547,10 @@ function OwnedCard({ entry }) {
             await axios.post(`/api/buyer/return-requests/${returnRequest.id}/escalate`, {
                 reason: 'Customer escalated the return request from orders.',
             });
-            toast.success('Return request escalated to Takeer.');
+            toast.success(t('orders.returnEscalated'));
             window.location.reload();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindikana ku-escalate return request.');
+            toast.error(error.response?.data?.message || t('orders.returnEscalateFailed'));
         } finally {
             setDisputeSubmitting(false);
         }
@@ -1538,40 +1563,40 @@ function OwnedCard({ entry }) {
             await axios.post(`/api/buyer/orders/${orderDetails.id}/request-revision`, {
                 message: revisionMessage.trim(),
             });
-            toast.success('Revision request sent.');
+            toast.success(t('orders.revisionSent'));
             window.location.reload();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kutuma revision request.');
+            toast.error(error.response?.data?.message || t('orders.revisionFailed'));
         } finally {
             setRevisionSubmitting(false);
         }
     };
 
     const labelMap = {
-        content_item: { icon: BookOpenText, label: 'Post Content', href: item.slug ? route('content.show', item.slug) : null },
-        post: { icon: BookOpenText, label: 'Post Content', href: postRouteKey ? route('post.show', postRouteKey) : null },
+        content_item: { icon: BookOpenText, label: t('orders.itemTypes.postContent'), href: item.slug ? route('content.show', item.slug) : null },
+        post: { icon: BookOpenText, label: t('orders.itemTypes.postContent'), href: postRouteKey ? route('post.show', postRouteKey) : null },
         bundle: {
             icon: item.is_course ? BookOpenText : Boxes,
-            label: item.is_course ? 'Course' : 'Bundle',
+            label: item.is_course ? t('orders.itemTypes.course') : t('orders.itemTypes.bundle'),
             href: item.is_course && item.slug ? `/learn/bundles/${item.slug}` : (item.slug ? route('bundle.show', item.slug) : null),
         },
-        subscription_plan: { icon: Crown, label: 'Membership', href: item.slug || item.id ? `/plan/${item.slug || item.id}` : null },
-        product: { icon: ShoppingBag, label: 'Physical Product', href: item.slug ? route('product.show', item.slug) : null },
-        offering_group: { icon: ShoppingBag, label: 'Menu Order', href: item.slug ? `/offerings/${item.id}` : null },
+        subscription_plan: { icon: Crown, label: t('orders.itemTypes.membership'), href: item.slug || item.id ? `/plan/${item.slug || item.id}` : null },
+        product: { icon: ShoppingBag, label: t('orders.itemTypes.physical'), href: item.slug ? route('product.show', item.slug) : null },
+        offering_group: { icon: ShoppingBag, label: t('orders.itemTypes.menuOrder'), href: item.slug ? `/offerings/${item.id}` : null },
     };
 
     let config = labelMap[entry.item_type] || { icon: Library, label: entry.item_type, href: null };
     if (entry.item_type === 'product') {
         if (item.type === 'service') {
-            config = { ...config, icon: CalendarClock, label: 'Service/Booking' };
+            config = { ...config, icon: CalendarClock, label: t('orders.itemTypes.service') };
         } else if (isCustomDeliveryProduct) {
-            config = { ...config, icon: Sparkles, label: 'Custom Work' };
+            config = { ...config, icon: Sparkles, label: t('orders.itemTypes.custom') };
         } else if (isDigitalProduct && !isLinkDigital) {
-            config = { ...config, icon: Download, label: 'Digital File' };
+            config = { ...config, icon: Download, label: t('orders.itemTypes.digital') };
         } else if (isLinkDigital) {
-            config = { ...config, icon: ExternalLink, label: 'Digital File' };
+            config = { ...config, icon: ExternalLink, label: t('orders.itemTypes.digital') };
         } else {
-            config = { ...config, icon: ShoppingBag, label: 'Physical Product' };
+            config = { ...config, icon: ShoppingBag, label: t('orders.itemTypes.physical') };
         }
     }
     const Icon = config.icon;
@@ -1599,19 +1624,19 @@ function OwnedCard({ entry }) {
 
             const res = await sessionApi.get(`/orders/${orderId}/download`);
             if (res.status === 202 || res.data?.type === 'custom_pending') {
-                toast.info(res.data?.message || 'Merchant bado anaandaa custom delivery yako.');
+                toast.info(res.data?.message || copy('The merchant is still preparing your custom delivery.', 'Merchant bado anaandaa custom delivery yako.'));
                 return;
             }
             const targetUrl = res.data?.url;
 
             if (!targetUrl) {
-                throw new Error('Hakuna kiungo cha kupakua kilichopatikana.');
+                throw new Error(copy('No download link was found.', 'Hakuna kiungo cha kupakua kilichopatikana.'));
             }
 
             window.open(targetUrl, '_blank', 'noopener,noreferrer');
-            toast.success(res.data?.message || 'Kiungo cha kupakua kiko tayari.');
+                toast.success(res.data?.message || copy('Your download link is ready.', 'Kiungo cha kupakua kiko tayari.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || error.message || 'Imeshindwa kuandaa upakuaji.');
+            toast.error(error.response?.data?.message || error.message || copy('Could not prepare the download.', 'Imeshindwa kuandaa upakuaji.'));
         } finally {
             setIsDownloading(false);
         }
@@ -1641,8 +1666,8 @@ function OwnedCard({ entry }) {
                     type="button"
                     onClick={() => router.visit(orderChatUrl)}
                     className="absolute right-4 top-4 z-20 flex h-12 w-12 items-center justify-center rounded-full border-4 border-white bg-white/90 text-brand-700 shadow-lg shadow-slate-900/10 backdrop-blur transition hover:-translate-y-0.5 hover:bg-brand-600 hover:text-white focus:outline-none focus:ring-4 focus:ring-brand-200"
-                    title="Fungua order chat"
-                    aria-label="Fungua order chat"
+                    title={copy('Open order chat', 'Fungua order chat')}
+                    aria-label={copy('Open order chat', 'Fungua order chat')}
                 >
                     <MessageSquare className="h-5 w-5" strokeWidth={2.8} />
                 </button>
@@ -1665,7 +1690,7 @@ function OwnedCard({ entry }) {
                         className="mt-2 block w-full text-left disabled:cursor-default"
                     >
                         <h3 className="text-lg font-black leading-tight transition-colors hover:text-brand-700">
-                            {item.title || item.name || 'Owned item'}
+                            {item.title || item.name || copy('Owned item', 'Bidhaa uliyo nayo')}
                         </h3>
                         {canShowDescription && (
                             <p className="mt-2 text-sm text-muted-foreground leading-6 line-clamp-2">
@@ -1674,17 +1699,17 @@ function OwnedCard({ entry }) {
                         )}
                     </button>
                     <p className="mt-2 text-xs font-semibold text-muted-foreground">
-                        Added {formatDate(entry.granted_at || entry.starts_at)}
+                        {copy('Added', 'Imeongezwa')} {formatDate(entry.granted_at || entry.starts_at)}
                     </p>
                     {!isPhysicalProduct && (
                         <div className={`mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${isTemporaryAccess ? 'border-emerald-100 bg-emerald-50 text-emerald-800' : 'border-sky-100 bg-sky-50 text-sky-800'}`}>
                             <p className="shrink-0 font-black uppercase tracking-widest">
-                                {isTemporaryAccess ? 'Membership item' : 'Owned item'}
+                                {isTemporaryAccess ? copy('Membership item', 'Bidhaa ya uanachama') : copy('Owned item', 'Bidhaa uliyo nayo')}
                             </p>
                             <p className="min-w-0 truncate font-semibold">
                                 {isTemporaryAccess
                                     ? `Active${accessTimeLeft ? ` · ${accessTimeLeft}` : ''}${accessExpiresLabel ? ` · ends ${accessExpiresLabel}` : ''}`
-                                    : 'Saved in your library.'}
+                                    : copy('Saved in your library.', 'Imehifadhiwa kwenye maktaba yako.')}
                             </p>
                         </div>
                     )}
@@ -1696,8 +1721,8 @@ function OwnedCard({ entry }) {
 
                 {isSelfPickupOrder && pickupDeadlineLabel && !orderDetails?.pickup_completed_at && (
                     <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
-                        <p className="font-black uppercase tracking-widest">Pickup deadline</p>
-                        <p className="mt-1 font-bold">Collect before {pickupDeadlineLabel}</p>
+                        <p className="font-black uppercase tracking-widest">{copy('Pickup deadline', 'Mwisho wa kuchukua')}</p>
+                        <p className="mt-1 font-bold">{copy('Collect before', 'Chukua kabla ya')} {pickupDeadlineLabel}</p>
                     </div>
                 )}
 
@@ -1707,15 +1732,15 @@ function OwnedCard({ entry }) {
                             <div className={`rounded-2xl border p-3 ${customDelivery?.delivered_at ? 'border-emerald-100 bg-emerald-50' : 'border-amber-100 bg-amber-50'}`}>
                                 <p className={`text-[10px] font-black uppercase tracking-widest ${customDelivery?.delivered_at ? 'text-emerald-700' : 'text-amber-700'}`}>
                                     {customDelivery?.status === 'revision_requested'
-                                        ? 'Revision requested'
+                                        ? copy('Revision requested', 'Marekebisho yameombwa')
                                         : customDelivery?.status === 'accepted'
-                                            ? 'Accepted'
+                                            ? copy('Accepted', 'Imekubaliwa')
                                             : customDelivery?.delivered_at
-                                                ? 'Delivered for review'
-                                                : 'In production'}
+                                                ? copy('Delivered for review', 'Imewasilishwa kwa ukaguzi')
+                                                : copy('In production', 'Inaandaliwa')}
                                 </p>
                                 <p className="mt-1 min-w-0 truncate text-sm font-bold" title={customDelivery?.file_name || undefined}>
-                                    {customDelivery?.file_name || 'Merchant is preparing your custom delivery.'}
+                                    {customDelivery?.file_name || copy('Merchant is preparing your custom delivery.', 'Muuzaji anaandaa faili lako maalum.')}
                                 </p>
                                 {customDelivery?.message && (
                                     <p className="mt-2 text-xs leading-5 text-muted-foreground whitespace-pre-line">{customDelivery.message}</p>
@@ -1723,12 +1748,12 @@ function OwnedCard({ entry }) {
                                 {customDeliveryDueLabel && (
                                     <p className={`mt-2 flex items-center gap-1.5 text-[11px] font-bold ${customDeliveryIsOverdue ? 'text-red-700' : 'text-muted-foreground'}`}>
                                         <CalendarClock className="h-3.5 w-3.5" />
-                                        Due {customDeliveryDueLabel}
+                                        {copy('Due', 'Mwisho')} {customDeliveryDueLabel}
                                     </p>
                                 )}
                                 {customDelivery?.revision_message && (
                                     <p className="mt-2 rounded-xl bg-white/80 px-3 py-2 text-xs leading-5 text-amber-900">
-                                        Revision note: {customDelivery.revision_message}
+                                        {copy('Revision note', 'Maelezo ya marekebisho')}: {customDelivery.revision_message}
                                     </p>
                                 )}
                             </div>
@@ -1736,40 +1761,40 @@ function OwnedCard({ entry }) {
                             {customDelivery?.delivered_at && (
                                 <Button className="w-full rounded-2xl" onClick={handleDownload} disabled={isDownloading}>
                                     {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                                    Download Delivery
+                                    {copy('Download Delivery', 'Pakua faili la delivery')}
                                 </Button>
                             )}
 
-                            {orderDetails?.payment_status === 'escrow_locked' && !customDelivery?.delivered_at && customDeliveryIsOverdue && (
+                            {orderDetails?.payment_status === 'release_eligible' && !customDelivery?.delivered_at && customDeliveryIsOverdue && (
                                 <Button variant="outline" className="w-full rounded-xl text-red-600 border-red-200" onClick={() => setShowDisputeModal(true)} disabled={claimButtonDisabled}>
-                                    Dispute missed deadline
+                                    {copy('Dispute missed deadline', 'Fungua mgogoro wa kuchelewa')}
                                 </Button>
                             )}
 
-                            {orderDetails?.payment_status === 'escrow_locked' && customDelivery?.delivered_at && customDelivery?.status !== 'accepted' && (
+                            {orderDetails?.payment_status === 'release_eligible' && customDelivery?.delivered_at && customDelivery?.status !== 'accepted' && (
                                 <div className="space-y-2">
                                     <div className="grid grid-cols-2 gap-2">
                                         <Button variant="outline" className="rounded-xl text-red-600 border-red-200" onClick={() => setShowDisputeModal(true)} disabled={claimButtonDisabled}>
                                             Dispute
                                         </Button>
                                         <Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleConfirmReceipt} disabled={confirmingReceipt}>
-                                            {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept Work'}
+                                            {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin" /> : copy('Accept Work', 'Kubali kazi')}
                                         </Button>
                                     </div>
                                     <textarea
                                         value={revisionMessage}
                                         onChange={(e) => setRevisionMessage(e.target.value)}
                                         rows={3}
-                                        placeholder={customRevisionLimitReached ? 'Revision limit reached. Accept the work or open a dispute.' : 'Need changes? Tell the creator what to revise...'}
+                                        placeholder={customRevisionLimitReached ? copy('Revision limit reached. Accept the work or open a dispute.', 'Kikomo cha marekebisho kimefikiwa. Kubali kazi au fungua mgogoro.') : copy('Need changes? Tell the creator what to revise...', 'Unahitaji mabadiliko? Mwambie mtayarishaji cha kurekebisha...')}
                                         disabled={customRevisionLimitReached}
                                         className="w-full rounded-2xl border border-input bg-background p-3 text-sm"
                                     />
                                     <p className="text-[11px] font-semibold text-muted-foreground">
-                                        {customRevisionRemaining} of {customRevisionLimit} revision requests remaining
+                                        {customRevisionRemaining} {copy('of', 'kati ya')} {customRevisionLimit} {copy('revision requests remaining', 'maombi ya marekebisho yaliyobaki')}
                                     </p>
                                     <Button variant="outline" className="w-full rounded-xl" onClick={handleRequestRevision} disabled={customRevisionLimitReached || revisionSubmitting || revisionMessage.trim().length < 10}>
                                         {revisionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
-                                        Request Revision
+                                        {copy('Request Revision', 'Omba marekebisho')}
                                     </Button>
                                 </div>
                             )}
@@ -1779,27 +1804,27 @@ function OwnedCard({ entry }) {
                             {isDownloading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Preparing...
+                                    {copy('Preparing...', 'Inaandaliwa...')}
                                 </>
                             ) : isSubscriptionDigitalAccess ? (
                                 <>
                                     <ExternalLink className="mr-2 h-4 w-4" />
-                                    Open Access
+                                    {copy('Open Access', 'Fungua ufikiaji')}
                                 </>
                             ) : isLinkDigital ? (
                                 <>
                                     <ExternalLink className="mr-2 h-4 w-4" />
-                                    Open Link
+                                    {copy('Open Link', 'Fungua kiungo')}
                                 </>
                             ) : shouldOpenProtectedStreamInModal ? (
                                 <>
                                     <BookOpenText className="mr-2 h-4 w-4" />
-                                    Open
+                                    {copy('Open', 'Fungua')}
                                 </>
                             ) : (
                                 <>
                                     <Download className="mr-2 h-4 w-4" />
-                                    Download
+                                    {copy('Download', 'Pakua')}
                                 </>
                             )}
                         </Button>
@@ -1807,50 +1832,50 @@ function OwnedCard({ entry }) {
                         <div className="space-y-3">
                             <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
                                 <div className="flex items-center justify-between gap-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-sky-800">Miadi</p>
-                                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${serviceRequest?.payment_status === 'released' || orderDetails?.payment_status === 'resolved_merchant_paid'
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-sky-800">{copy('Booking', 'Miadi')}</p>
+                                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${serviceRequest?.payment_status === 'released' || orderDetails?.payment_status === 'paid_out'
                                         ? 'bg-emerald-100 text-emerald-700'
                                         : serviceRequest?.payment_status === 'disputed' || orderDetails?.payment_status === 'disputed'
                                             ? 'bg-red-100 text-red-700'
                                             : 'bg-amber-100 text-amber-700'
                                         }`}>
-                                        {serviceRequest?.payment_status === 'released' || orderDetails?.payment_status === 'resolved_merchant_paid'
-                                            ? 'Imekamilika'
+                                        {serviceRequest?.payment_status === 'released' || orderDetails?.payment_status === 'paid_out'
+                                            ? copy('Completed', 'Imekamilika')
                                             : serviceRequest?.payment_status === 'held'
-                                                ? 'SafePay'
+                                                ? copy('PSP payment confirmed', 'Malipo ya PSP yamethibitishwa')
                                                 : serviceRequest?.payment_status === 'disputed'
-                                                    ? 'Mgogoro'
+                                                    ? copy('Disputed', 'Mgogoro')
                                                     : (serviceRequest?.payment_status || orderDetails?.payment_status || 'Pending').replaceAll('_', ' ')}
                                     </span>
                                 </div>
                                 <div className="mt-3 grid gap-2 text-sm">
                                     <div className="flex items-center justify-between gap-3">
-                                        <span className="text-muted-foreground">Muda</span>
+                                        <span className="text-muted-foreground">{copy('Time', 'Muda')}</span>
                                         <span className="font-black text-right">
                                             {serviceRequest?.scheduled_at
                                                 ? new Date(serviceRequest.scheduled_at).toLocaleString([], { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
-                                                : [serviceRequest?.preferred_date, serviceRequest?.preferred_time].filter(Boolean).join(' ') || 'Mtoa huduma atathibitisha'}
+                                                : [serviceRequest?.preferred_date, serviceRequest?.preferred_time].filter(Boolean).join(' ') || copy('Provider will confirm', 'Mtoa huduma atathibitisha')}
                                         </span>
                                     </div>
                                     {serviceRequest?.service_option?.name && (
                                         <div className="flex items-center justify-between gap-3">
-                                            <span className="text-muted-foreground">Option</span>
+                                            <span className="text-muted-foreground">{copy('Option', 'Chaguo')}</span>
                                             <span className="font-black text-right">{serviceRequest.service_option.name}</span>
                                         </div>
                                     )}
                                     {serviceRequest?.location_text && (
                                         <div className="flex items-center justify-between gap-3">
-                                            <span className="text-muted-foreground">Mahali</span>
+                                            <span className="text-muted-foreground">{copy('Location', 'Mahali')}</span>
                                             <span className="font-black text-right">{serviceRequest.location_text}</span>
                                         </div>
                                     )}
                                     <div className="flex items-center justify-between gap-3">
-                                        <span className="text-muted-foreground">Malipo</span>
+                                        <span className="text-muted-foreground">{copy('Payment', 'Malipo')}</span>
                                         <span className="font-black text-right">TZS {Number(orderDetails?.total_paid || serviceRequest?.quoted_amount || 0).toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>
-                            {serviceRequest?.delivery_status === 'provider_marked_delivered' && orderDetails?.payment_status === 'escrow_locked' ? (
+                            {serviceRequest?.delivery_status === 'provider_marked_delivered' && orderDetails?.payment_status === 'release_eligible' ? (
                                 <div className="grid grid-cols-2 gap-2">
                                     <Button
                                         variant="outline"
@@ -1858,33 +1883,33 @@ function OwnedCard({ entry }) {
                                         onClick={() => setShowDisputeModal(true)}
                                         disabled={claimButtonDisabled}
                                     >
-                                        Fungua Mgogoro
+                                        {copy('Open dispute', 'Fungua Mgogoro')}
                                     </Button>
                                     <Button
                                         className="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white"
                                         onClick={handleConfirmReceipt}
                                         disabled={confirmingReceipt}
                                     >
-                                        {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Nimepata Huduma'}
+                                        {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin" /> : copy('I received the service', 'Nimepata Huduma')}
                                     </Button>
                                 </div>
                             ) : serviceRequest?.payment_status === 'held' ? (
                                 <p className="text-xs text-muted-foreground text-center">
-                                    Malipo yako yako SafePay hadi uthibitishe huduma.
+                                    {copy('Your payment is held by the PSP until you confirm the service.', 'Malipo yako yako chini ya mchakato wa PSP hadi uthibitishe huduma.')}
                                 </p>
                             ) : (
                                 <p className="text-xs text-muted-foreground text-center">
-                                    Umeweka miadi. Mtoa huduma atakujulisha mabadiliko.
+                                    {copy('Your booking is placed. The provider will notify you of changes.', 'Umeweka miadi. Mtoa huduma atakujulisha mabadiliko.')}
                                 </p>
                             )}
                             {['held', 'disputed'].includes(serviceRequest?.payment_status) && (
                                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
                                     <p className="font-black flex items-center gap-1.5">
                                         <ShieldCheck className="h-3.5 w-3.5" />
-                                        Ulinzi wa SafePay
+                                        {copy('Order and PSP protection', 'Ulinzi wa order na PSP')}
                                     </p>
                                     <p className="mt-1">
-                                        Takeer hushikilia malipo hadi uthibitishe huduma. Ukiweka mgogoro, malipo yatasimama hadi timu yetu ikague ushahidi.
+                                        {copy('Takeer holds the payment until you confirm the service. If you open a dispute, the payment remains held while our team reviews the evidence.', 'Takeer hushikilia malipo hadi uthibitishe huduma. Ukiweka mgogoro, malipo yatasimama hadi timu yetu ikague ushahidi.')}
                                     </p>
                                 </div>
                             )}
@@ -1894,11 +1919,11 @@ function OwnedCard({ entry }) {
                             {orderDetails.unit_snapshot && (
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="rounded-2xl border border-brand-100 bg-brand-50/70 p-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Kiasi</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">{copy('Quantity', 'Kiasi')}</p>
                                         <p className="mt-1 text-sm font-black text-brand-900">{orderQuantityLabel(orderDetails)}</p>
                                     </div>
                                     <div className="rounded-2xl border border-brand-100 bg-white p-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Bei</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">{copy('Price', 'Bei')}</p>
                                         <p className="mt-1 text-sm font-black text-brand-900">{orderUnitPriceLabel(orderDetails)}</p>
                                     </div>
                                 </div>
@@ -1906,39 +1931,38 @@ function OwnedCard({ entry }) {
                             {/* Fulfillment Status Badge */}
                             <div className="flex items-center justify-between p-2 rounded-xl bg-muted/30 border border-muted-foreground/10">
                                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                    {isSelfPickupOrder ? 'Pickup:' : (activeDeliveryLabel ? 'Delivery:' : 'Shipping:')}
+                                    {isSelfPickupOrder ? copy('Pickup:', 'Pickup:') : (activeDeliveryLabel ? copy('Delivery:', 'Delivery:') : copy('Shipping:', 'Usafirishaji:'))}
                                 </span>
-                                <span className={`text-[10px] font-black uppercase tracking-widest ${orderDetails.payment_status === 'resolved_merchant_paid' ? 'text-green-600' :
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${orderDetails.payment_status === 'paid_out' ? 'text-green-600' :
                                     orderDetails.payment_status === 'disputed' ? 'text-red-600' :
                                         orderDetails.payment_status === 'failed' ? 'text-red-600' :
                                             'text-amber-600'
                                     }`}>
                                     {(() => {
                                         const delivType = orderDetails.delivery?.delivery_type || orderDetails.delivery?.type;
-                                        const deliveryLabel = compactDeliveryStatus(orderDetails);
-                                        if (delivType === 'self_pickup') return compactPickupStatus(orderDetails);
+                                        const deliveryLabel = compactDeliveryStatus(orderDetails, copy);
+                                        if (delivType === 'self_pickup') return compactPickupStatus(orderDetails, copy);
                                         // Final status takes precedence
-                                        if (orderDetails.payment_status === 'resolved_merchant_paid') return 'Imekamilika';
-                                        if (orderDetails.payment_status === 'failed') return 'Imesitishwa';
-                                        if (orderDetails.payment_status === 'confirmed') return 'Imepokelewa';
-                                        if (orderDetails.payment_status === 'disputed') return 'Mgogoro';
+                                        if (orderDetails.payment_status === 'paid_out') return copy('Completed', 'Imekamilika');
+                                        if (orderDetails.payment_status === 'failed') return copy('Failed', 'Imesitishwa');
+                                        if (orderDetails.payment_status === 'confirmed') return copy('Received', 'Imepokelewa');
+                                        if (orderDetails.payment_status === 'disputed') return copy('Disputed', 'Mgogoro');
                                         if (deliveryLabel && delivType !== 'self_pickup') return deliveryLabel;
 
                                         // Inquiry pending — merchant hasn't set shipping yet
-                                        if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending') return 'Inasubiri Bei ya Usafiri';
+                                        if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending') return copy('Waiting for shipping quote', 'Inasubiri Bei ya Usafiri');
                                         // Inquiry quoted — shipping fee provided, waiting for buyer to pay
-                                        if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && !merchantConfirmed) return 'Inasubiri Uthibitisho';
+                                        if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && !merchantConfirmed) return copy('Waiting for confirmation', 'Inasubiri Uthibitisho');
                                         if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted') {
-                                            if (['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status)) return 'Imelipwa — Inasubiri Utumaji';
-                                            return 'Bei Imewekwa — Lipia Sasa';
+                                            if (['pending_fulfillment', 'release_eligible', 'payout_processing'].includes(orderDetails.payment_status)) return copy('Paid — awaiting dispatch', 'Imelipwa — Inasubiri Utumaji');
+                                            return copy('Quote ready — pay now', 'Bei Imewekwa — Lipia Sasa');
                                         }
                                         // Shipping statuses
-                                        if (orderDetails.payment_status === 'awaiting_merchant_confirmation') return 'Inasubiri Utumaji';
-                                        if (orderDetails.payment_status === 'escrow_locked') return deliveryStatusText(orderDetails.delivery?.status);
-                                        if (orderDetails.payment_status === 'shipped') return 'Imetumwa';
+                                        if (orderDetails.payment_status === 'pending_fulfillment') return copy('Awaiting dispatch', 'Inasubiri Utumaji');
+                                        if (['release_eligible', 'payout_processing'].includes(orderDetails.payment_status)) return deliveryStatusText(orderDetails.delivery?.status, copy);
                                         // Fallback: show delivery type if known
-                                        if (delivType) return delivType.replace(/_/g, ' ');
-                                        return orderDetails.payment_status?.replace(/_/g, ' ') || 'Inaendelea';
+                                        if (delivType) return delivType === 'intercity_bus' ? copy('Intercity bus', 'Basi la mikoani') : delivType.replace(/_/g, ' ');
+                                        return orderDetails.payment_status?.replace(/_/g, ' ') || copy('In progress', 'Inaendelea');
                                     })()}
                                 </span>
                             </div>
@@ -1949,10 +1973,10 @@ function OwnedCard({ entry }) {
                                         <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand-600" />
                                         <div className="min-w-0 flex-1">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                                {isSelfPickupOrder ? 'Taarifa ya pickup' : 'Taarifa ya delivery'}
+                                                {isSelfPickupOrder ? copy('Pickup update', 'Taarifa ya pickup') : copy('Delivery update', 'Taarifa ya delivery')}
                                             </p>
                                             <p className="mt-0.5 truncate text-xs font-black text-slate-950">
-                                                {deliveryEventStatusLabel(latestDeliveryEvent.status, deliveryType)}
+                                                {deliveryEventStatusLabel(latestDeliveryEvent.status, deliveryType, copy)}
                                             </p>
                                             {latestDeliveryEvent.note && (
                                                 <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-muted-foreground">{latestDeliveryEvent.note}</p>
@@ -1970,12 +1994,12 @@ function OwnedCard({ entry }) {
                             {orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending' && orderDetails.payment_status === 'pending' && (
                                 <div className="p-3 rounded-2xl bg-brand-50 border border-brand-100 text-center">
                                     <p className="text-[10px] font-black uppercase text-brand-700 mb-1 leading-tight">
-                                        {isB2BOrder ? 'Muuzaji bado hajatuma proforma.' : 'Muuzaji bado hajakupa bei ya usafiri.'}
+                                        {isB2BOrder ? copy('The merchant has not sent the proforma yet.', 'Muuzaji bado hajatuma proforma.') : copy('The merchant has not provided the shipping cost yet.', 'Muuzaji bado hajakupa bei ya usafiri.')}
                                     </p>
                                     <p className="text-[10px] text-brand-800 leading-tight mb-3">
                                         {isB2BOrder
-                                            ? 'Tumia chat kukubaliana MOQ, customization, delivery, na masharti ya SafePay.'
-                                            : 'Tumia chat hapa chini kukubaliana naye bei ya usafiri.'}
+                                            ? copy('Use chat to agree on MOQ, customization, delivery, and PSP/provider payout terms.', 'Tumia chat kukubaliana MOQ, customization, delivery, na masharti ya PSP/provider payout.')
+                                            : copy('Use the chat below to agree on the shipping cost.', 'Tumia chat hapa chini kukubaliana naye bei ya usafiri.')}
                                     </p>
                                     <Button
                                         variant="outline"
@@ -1983,7 +2007,7 @@ function OwnedCard({ entry }) {
                                         onClick={() => router.visit(orderDetails?.public_id ? `/chat/${orderDetails.public_id}` : `/orders/${orderDetails.id}`)}
                                     >
                                         <MessageSquare className="h-4 w-4 mr-2" />
-                                        Fungua Chat
+                                        {copy('Open chat', 'Fungua chat')}
                                     </Button>
                                 </div>
                             )}
@@ -1991,12 +2015,12 @@ function OwnedCard({ entry }) {
                             {orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && !merchantConfirmed && orderDetails.payment_status === 'pending' && (
                                 <div className="p-3 rounded-2xl bg-amber-50 border border-amber-100 text-center">
                                     <p className="text-[10px] font-black uppercase text-amber-800 mb-1 leading-tight">
-                                        {isB2BOrder ? 'Proforma inasubiri uthibitisho.' : 'Muuzaji bado hajathibitisha oda.'}
+                                        {isB2BOrder ? copy('The proforma is awaiting confirmation.', 'Proforma inasubiri uthibitisho.') : copy('The merchant has not confirmed the order yet.', 'Muuzaji bado hajathibitisha oda.')}
                                     </p>
                                     <p className="text-[10px] text-amber-900 leading-tight mb-3">
                                         {isB2BOrder
-                                            ? 'Malipo ya SafePay yatafunguka baada ya muuzaji kuthibitisha proforma rasmi.'
-                                            : 'Malipo yatafunguka baada ya muuzaji kuthibitisha kuwa order ipo.'}
+                                            ? copy('PSP payment will start after the merchant confirms the official proforma.', 'Malipo ya PSP yataanza baada ya muuzaji kuthibitisha proforma rasmi.')
+                                            : copy('Payment will open after the merchant confirms the order is available.', 'Malipo yatafunguka baada ya muuzaji kuthibitisha kuwa order ipo.')}
                                     </p>
                                     <Button
                                         variant="outline"
@@ -2004,7 +2028,7 @@ function OwnedCard({ entry }) {
                                         onClick={() => router.visit(orderDetails?.public_id ? `/chat/${orderDetails.public_id}` : `/orders/${orderDetails.id}`)}
                                     >
                                         <MessageSquare className="h-4 w-4 mr-2" />
-                                        Fungua Chat
+                                        {copy('Open chat', 'Fungua chat')}
                                     </Button>
                                 </div>
                             )}
@@ -2016,61 +2040,61 @@ function OwnedCard({ entry }) {
                                             <div className="flex items-start gap-2 rounded-xl bg-white/70 border border-emerald-100 p-3">
                                                 <ShieldCheck className="h-4 w-4 mt-0.5 text-emerald-700" />
                                                 <div>
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Takeer SafePay Proforma</p>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">{copy('Takeer PSP payment pro forma', 'Proforma ya malipo ya Takeer PSP')}</p>
                                                     <p className="mt-1 text-[10px] leading-4 text-emerald-900">
-                                                        Pay only through Takeer. Funds stay protected until delivery, confirmation, or dispute resolution.
+                                                        {copy('Pay only through Takeer. Funds stay protected until delivery, confirmation, or dispute resolution.', 'Lipa kupitia Takeer pekee. Fedha zinalindwa hadi delivery, uthibitisho, au utatuzi wa mgogoro.')}
                                                     </p>
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2">
                                                 <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Quantity</p>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">{copy('Quantity', 'Kiasi')}</p>
                                                     <p className="text-xs font-black text-emerald-950">{orderQuantityLabel(orderDetails)}</p>
                                                 </div>
                                                 <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Unit price</p>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">{copy('Unit price', 'Bei kwa kipimo')}</p>
                                                     <p className="text-xs font-black text-emerald-950">{orderUnitPriceLabel(orderDetails)}</p>
                                                 </div>
                                                 {depositAmount > 0 && (
                                                     <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
-                                                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Deposit</p>
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">{copy('Deposit', 'Amana')}</p>
                                                         <p className="text-xs font-black text-emerald-950">TZS {depositAmount.toLocaleString()}</p>
                                                     </div>
                                                 )}
                                                 {balanceAmount > 0 && (
                                                     <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
-                                                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Balance</p>
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">{copy('Balance', 'Salio')}</p>
                                                         <p className="text-xs font-black text-emerald-950">TZS {balanceAmount.toLocaleString()}</p>
                                                     </div>
                                                 )}
                                                 {agreementSnapshot?.production_lead_time_days && (
                                                     <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
-                                                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Lead time</p>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">{copy('Lead time', 'Muda wa maandalizi')}</p>
                                                         <p className="text-xs font-black text-emerald-950">{agreementSnapshot.production_lead_time_days} days</p>
                                                     </div>
                                                 )}
                                                 <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Balance due</p>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">{copy('Balance due', 'Salio linadaiwa')}</p>
                                                     <p className="text-xs font-black text-emerald-950">{balanceDueLabel}</p>
                                                 </div>
                                             </div>
                                             {(agreementSnapshot?.payment_terms_note || agreementSnapshot?.customization_note) && (
                                                 <div className="rounded-xl bg-white/70 border border-emerald-100 p-2 text-[10px] leading-4 text-emerald-900">
-                                                    {agreementSnapshot?.payment_terms_note && <p><span className="font-black">Terms:</span> {agreementSnapshot.payment_terms_note}</p>}
-                                                    {agreementSnapshot?.customization_note && <p><span className="font-black">Customization:</span> {agreementSnapshot.customization_note}</p>}
+                                                    {agreementSnapshot?.payment_terms_note && <p><span className="font-black">{copy('Terms:', 'Masharti:')}</span> {agreementSnapshot.payment_terms_note}</p>}
+                                                    {agreementSnapshot?.customization_note && <p><span className="font-black">{copy('Customization:', 'Marekebisho:')}</span> {agreementSnapshot.customization_note}</p>}
                                                 </div>
                                             )}
                                         </div>
                                     ) : (
                                         <>
                                             <div className="flex justify-between items-center mb-2">
-                                                <p className="text-[10px] font-black uppercase text-emerald-700">Shipping Fee:</p>
+                                                <p className="text-[10px] font-black uppercase text-emerald-700">{copy('Shipping Fee:', 'Ada ya usafirishaji:')}</p>
                                                 <p className="text-sm font-black text-emerald-600">TZS {Number(orderDetails.shipping_fee || 0).toLocaleString()}</p>
                                             </div>
                                         </>
                                     )}
                                     <div className="flex justify-between items-center border-t border-emerald-200 pt-2 mb-3">
-                                        <p className="text-[10px] font-black uppercase text-emerald-800">{isB2BOrder ? 'SafePay Total:' : 'Total to Pay:'}</p>
+                                        <p className="text-[10px] font-black uppercase text-emerald-800">{isB2BOrder ? copy('PSP Payment Total:', 'Jumla ya malipo ya PSP:') : copy('Total to Pay:', 'Jumla ya kulipa:')}</p>
                                         <p className="text-lg font-black text-emerald-700">TZS {Number(orderDetails.order_total_with_additions ?? orderDetails.total_paid ?? 0).toLocaleString()}</p>
                                     </div>
                                     <Button
@@ -2079,7 +2103,7 @@ function OwnedCard({ entry }) {
                                         disabled={payingInquiry}
                                     >
                                         {payingInquiry ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Zap className="h-4 w-4 mr-2 fill-white" />}
-                                        {isB2BOrder ? 'Lipa SafePay' : 'Lipa Sasa (Pay Now)'}
+                                        {isB2BOrder ? copy('Pay through PSP', 'Lipa kupitia PSP') : copy('Pay now', 'Lipa Sasa')}
                                     </Button>
                                     <Button
                                         variant="ghost"
@@ -2087,41 +2111,41 @@ function OwnedCard({ entry }) {
                                         onClick={() => router.visit(orderDetails?.public_id ? `/chat/${orderDetails.public_id}` : `/orders/${orderDetails.id}`)}
                                     >
                                         <MessageSquare className="h-4 w-4 mr-2" />
-                                        Rudi kwenye Chat
+                                        {copy('Return to chat', 'Rudi kwenye Chat')}
                                     </Button>
                                 </div>
                             )}
 
-                            {/* PIN Display for Escrow */}
-                            {isForwarderOrder && ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status) && (
+                            {/* PIN Display for provider release eligibility */}
+                            {isForwarderOrder && ['pending_fulfillment', 'release_eligible', 'payout_processing'].includes(orderDetails.payment_status) && (
                                 <div className="p-3 rounded-2xl bg-violet-50 border border-violet-100">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-violet-700">
-                                        {forwarderHandoffReady ? 'Forwarder Handoff Review' : 'Forwarder Drop-off'}
+                                        {forwarderHandoffReady ? copy('Forwarder handoff review', 'Ukaguzi wa makabidhiano kwa forwarder') : copy('Forwarder drop-off', 'Kukabidhi kwa forwarder')}
                                     </p>
                                     <p className="mt-1 text-[10px] text-violet-900 leading-tight">
                                         {forwarderHandoffReady
-                                            ? 'Muuzaji ameweka ushahidi kuwa mzigo umefika kwa forwarder. Hakiki risiti, tracking, au wasiliana na forwarder. Ukiridhika, thibitisha handoff; ukiona tatizo, ripoti kabla escrow haijaachiliwa.'
-                                            : 'Muuzaji anatuma mzigo kwenda warehouse ya forwarder. Baada ya handoff proof kuwasilishwa, hakiki tracking/risiti au ripoti tatizo kabla escrow haijaachiliwa.'}
+                                            ? copy('The seller provided proof that the shipment reached the forwarder. Review the receipt or tracking, or contact the forwarder. If satisfied, confirm the handoff so a PSP payout can be requested.', 'Muuzaji ameweka ushahidi kuwa mzigo umefika kwa forwarder. Hakiki risiti, tracking, au wasiliana na forwarder. Ukiridhika, thibitisha handoff ili PSP payout iweze kuombwa.')
+                                            : copy('The seller is sending the shipment to the forwarder warehouse. After handoff proof is submitted, review the tracking or receipt, or report an issue before a payout request.', 'Muuzaji anatuma mzigo kwenda warehouse ya forwarder. Baada ya handoff proof kuwasilishwa, hakiki tracking/risiti au ripoti tatizo kabla ya payout request.')}
                                     </p>
                                 </div>
                             )}
 
-                            {isIntercityOrder && ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status) && (
+                            {isIntercityOrder && ['pending_fulfillment', 'release_eligible', 'payout_processing'].includes(orderDetails.payment_status) && (
                                 <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-100">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Intercity / Cargo Pickup</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700">{copy('Intercity / cargo pickup', 'Intercity / kuchukua mzigo')}</p>
                                     <p className="mt-1 text-[10px] text-indigo-900 leading-tight">
-                                        Tumia taarifa za waybill, simu, au utambulisho unaohitajika na transporter kuchukua mzigo. Ukishapokea na kukagua, thibitisha receipt.
+                                        {copy('Use the waybill, phone, or identification details required by the transporter to collect the shipment. After receiving and checking it, confirm receipt.', 'Tumia taarifa za waybill, simu, au utambulisho unaohitajika na transporter kuchukua mzigo. Ukishapokea na kukagua, thibitisha receipt.')}
                                     </p>
                                 </div>
                             )}
 
-                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(orderDetails.payment_status) && isSelfPickupOrder && (orderDetails.is_merchant_confirmed || orderDetails.merchant_confirmed_at) && orderDetails.pickup_status === 'ready_for_pickup' && orderDetails.delivery?.pickup_pin && (
+                            {['pending_fulfillment', 'release_eligible'].includes(orderDetails.payment_status) && isSelfPickupOrder && (orderDetails.is_merchant_confirmed || orderDetails.merchant_confirmed_at) && orderDetails.pickup_status === 'ready_for_pickup' && orderDetails.delivery?.pickup_pin && (
                                 <div className="overflow-hidden rounded-[2rem] border border-brand-100 bg-white text-center shadow-xl shadow-brand-100/50">
                                     <div className="bg-brand-50/80 px-4 py-4">
                                         <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
                                             <Lock className="h-5 w-5" />
                                         </div>
-                                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-brand-500">Pickup PIN</p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-brand-500">{copy('Pickup PIN', 'PIN ya pickup')}</p>
                                         <div className="mt-3 flex justify-center gap-1.5">
                                             {String(showPin ? orderDetails.delivery.pickup_pin : '****').padStart(4, '*').split('').map((digit, index) => (
                                                 <span key={`${digit}-${index}`} className="flex h-11 w-9 items-center justify-center rounded-xl border border-brand-100 bg-white text-xl font-black text-brand-900 shadow-sm">
@@ -2131,25 +2155,25 @@ function OwnedCard({ entry }) {
                                         </div>
                                     </div>
                                     <div className="p-3">
-                                        <p className="text-[10px] font-bold leading-tight text-brand-800">Onyesha PIN hii dukani au mpe mtu uliyemtuma kuchukua mzigo.</p>
+                                        <p className="text-[10px] font-bold leading-tight text-brand-800">{copy('Show this PIN at the store or give it to the person collecting the shipment for you.', 'Onyesha PIN hii dukani au mpe mtu uliyemtuma kuchukua mzigo.')}</p>
                                         <button
                                             type="button"
                                             onClick={() => setShowPin(!showPin)}
                                             className="mt-2 text-[10px] font-black uppercase tracking-widest text-brand-600 underline"
                                         >
-                                            {showPin ? 'Hide PIN' : 'Reveal PIN'}
+                                            {showPin ? copy('Hide PIN', 'Ficha PIN') : copy('Reveal PIN', 'Onyesha PIN')}
                                         </button>
                                     </div>
                                 </div>
                             )}
 
-                            {['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status) && isLocalDeliveryOrder && orderDetails.delivery?.buyer_release_pin && (
+                            {['pending_fulfillment', 'release_eligible', 'payout_processing'].includes(orderDetails.payment_status) && isLocalDeliveryOrder && orderDetails.delivery?.buyer_release_pin && (
                                 <div className="overflow-hidden rounded-[2rem] border border-sky-100 bg-white text-center shadow-xl shadow-sky-100/60">
                                     <div className="bg-sky-50/80 px-4 py-4">
                                         <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
                                             <Truck className="h-5 w-5" />
                                         </div>
-                                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-brand-500">Delivery PIN</p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-brand-500">{copy('Delivery PIN', 'PIN ya delivery')}</p>
                                         <div className="mt-3 flex justify-center gap-1.5">
                                             {String(showPin ? orderDetails.delivery.buyer_release_pin : '****').padStart(4, '*').split('').map((digit, index) => (
                                                 <span key={`${digit}-${index}`} className="flex h-11 w-9 items-center justify-center rounded-xl border border-sky-100 bg-white text-xl font-black text-brand-900 shadow-sm">
@@ -2159,20 +2183,20 @@ function OwnedCard({ entry }) {
                                         </div>
                                     </div>
                                     <div className="p-3">
-                                        <p className="text-[10px] font-bold leading-tight text-slate-600">Kagua mzigo kwanza. Mpe dereva PIN hii baada ya kuhakikisha ni order yako na iko salama.</p>
+                                        <p className="text-[10px] font-bold leading-tight text-slate-600">{copy('Check the shipment first. Give this PIN to the rider after confirming it is your order and is safe.', 'Kagua mzigo kwanza. Mpe dereva PIN hii baada ya kuhakikisha ni order yako na iko salama.')}</p>
                                         <button
                                             type="button"
                                             onClick={() => setShowPin(!showPin)}
                                             className="mt-2 text-[10px] font-black uppercase tracking-widest text-brand-600 underline"
                                         >
-                                            {showPin ? 'Hide PIN' : 'Reveal PIN'}
+                                            {showPin ? copy('Hide PIN', 'Ficha PIN') : copy('Reveal PIN', 'Onyesha PIN')}
                                         </button>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Escrow Actions */}
-                            {showEscrowReceiptActions && (
+                            {/* Provider settlement actions */}
+                            {showProviderReceiptActions && (
                                 <div className="flex gap-2">
                                     <Button
                                         variant="outline"
@@ -2180,42 +2204,42 @@ function OwnedCard({ entry }) {
                                         onClick={() => setShowDisputeModal(true)}
                                         disabled={isForwarderOrder ? false : claimButtonDisabled}
                                     >
-                                        {isForwarderOrder ? 'Report Issue' : (isPhysicalProduct ? 'Return Request' : 'File Claim')}
+                                        {isForwarderOrder ? copy('Report issue', 'Ripoti tatizo') : (isPhysicalProduct ? copy('Return request', 'Ombi la kurudisha') : copy('File claim', 'Fungua dai'))}
                                     </Button>
                                     <Button
                                         className="flex-1 rounded-xl h-10 text-xs font-bold bg-green-600 hover:bg-green-700 text-white"
                                         onClick={handleConfirmReceipt}
                                         disabled={confirmingReceipt}
                                     >
-                                        {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : (isForwarderOrder ? 'Confirm Handoff' : 'Confirm Receipt')}
+                                        {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : (isForwarderOrder ? copy('Confirm handoff', 'Thibitisha makabidhiano') : copy('Confirm receipt', 'Thibitisha kupokea'))}
                                     </Button>
                                 </div>
                             )}
 
-                            {!hasReview && (orderDetails.payment_status === 'confirmed' || orderDetails.payment_status === 'resolved_merchant_paid') && (
+                            {!hasReview && (orderDetails.payment_status === 'payment_confirmed' || orderDetails.payment_status === 'paid_out') && (
                                 <Button
                                     className="w-full h-11 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black uppercase tracking-widest text-[10px]"
                                     onClick={() => router.visit(orderDetails?.public_id ? `/chat/${orderDetails.public_id}` : `/orders/${orderDetails.id}`)}
                                 >
-                                    Leave Review
+                                    {copy('Leave review', 'Acha tathmini')}
                                 </Button>
                             )}
 
                             {orderDetails.payment_status === 'disputed' && (
                                 <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-center">
-                                    <p className="text-xs font-black text-red-700 uppercase">Mgogoro Unaendelea</p>
-                                    <p className="text-[10px] text-red-600 mt-1 leading-tight">Timu yetu inafanyia kazi ombi lako la kurejeshewa pesa au kubadilisha bidhaa.</p>
+                                    <p className="text-xs font-black text-red-700 uppercase">{copy('Dispute in progress', 'Mgogoro Unaendelea')}</p>
+                                    <p className="text-[10px] text-red-600 mt-1 leading-tight">{copy('Our team is reviewing your refund or replacement request.', 'Timu yetu inafanyia kazi ombi lako la kurejeshewa pesa au kubadilisha bidhaa.')}</p>
                                 </div>
                             )}
                         </div>
                     ) : config.href ? (
                         <Link href={config.href}>
                             <Button className="w-full rounded-2xl">
-                                Open
+                                {copy('Open', 'Fungua')}
                             </Button>
                         </Link>
                     ) : (
-                        <Button className="w-full rounded-2xl" disabled>Open</Button>
+                        <Button className="w-full rounded-2xl" disabled>{copy('Open', 'Fungua')}</Button>
                     )}
                 </div>
 
@@ -2225,7 +2249,7 @@ function OwnedCard({ entry }) {
                             {canOpenRefundClaim ? 'Refund review available' : 'Refund claim unavailable'}
                         </p>
                         <p className="mt-1 truncate font-semibold">
-                            {canOpenRefundClaim ? 'You can open a claim while SafePay holds funds.' : 'Claim is closed for this order.'}
+                            {canOpenRefundClaim ? 'You can open a claim while the provider settlement is unresolved.' : 'Claim is closed for this order.'}
                         </p>
                         {refundPolicy.window_ends_at && (
                             <p className="mt-1 font-bold">Ends {new Date(refundPolicy.window_ends_at).toLocaleDateString()}</p>
@@ -2258,7 +2282,7 @@ function OwnedCard({ entry }) {
                     </div>
                 )}
 
-                {reportTarget.itemId && !showEscrowReceiptActions && (
+                {reportTarget.itemId && !showProviderReceiptActions && (
                     <div className="mt-3">
                         <ContentReportButton
                             itemType={reportTarget.itemType}
@@ -2284,24 +2308,24 @@ function OwnedCard({ entry }) {
                                     </button>
                                 </div>
                                 <div className="space-y-2">
-                                    <h2 className="text-2xl font-black tracking-tight">{isPhysicalProduct ? 'Request a Return' : (isServiceProduct ? 'Fungua Mgogoro' : 'File a Claim')}</h2>
+                                    <h2 className="text-2xl font-black tracking-tight">{isPhysicalProduct ? copy('Request a return', 'Omba kurudisha') : (isServiceProduct ? copy('Open a dispute', 'Fungua mgogoro') : copy('File a claim', 'Wasilisha dai'))}</h2>
                                     <p className="text-sm text-muted-foreground">
                                         {isPhysicalProduct
-                                            ? 'Eleza tatizo na ombi lako. Muuzaji ataishughulikia kulingana na return policy ya bidhaa.'
+                                            ? copy('Explain the issue and your request. The merchant will handle it according to the product return policy.', 'Eleza tatizo na ombi lako. Muuzaji ataishughulikia kulingana na return policy ya bidhaa.')
                                             : disputeAllowsOptionalEvidence
                                                 ? 'Eleza kilichotokea. Unaweza kuongeza picha, video au PDF kama ushahidi.'
-                                                : 'Tafadhali pakia video ya unboxing na maelezo ya kwanini unataka kurudisha mzigo au kurudishiwa pesa.'}
+                                                : copy('Please upload an unboxing video and explain why you want to return the package or request a refund.', 'Tafadhali pakia video ya unboxing na maelezo ya kwanini unataka kurudisha mzigo au kurudishiwa pesa.')}
                                     </p>
                                 </div>
 
                                 <form onSubmit={handleFileDispute} className="space-y-4">
                                     <div className="space-y-2">
                                         <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                            {isPhysicalProduct || disputeAllowsOptionalEvidence ? 'Ushahidi (si lazima)' : 'Unboxing Video (Required)'}
+                                            {isPhysicalProduct || disputeAllowsOptionalEvidence ? copy('Evidence (optional)', 'Ushahidi (si lazima)') : copy('Unboxing video (required)', 'Video ya unboxing (inahitajika)')}
                                         </label>
                                         {(isPhysicalProduct || disputeAllowsOptionalEvidence) && (
                                             <p className="text-xs leading-5 text-muted-foreground">
-                                                Unaweza kuweka picha, video au PDF. {isPhysicalProduct ? 'Return iki-hitaji msaada, unaweza kui-escalate kwa Takeer.' : 'Mgogoro ukitumwa, Takeer itaendelea kushikilia malipo hadi ushahidi ukaguliwe.'}
+                                                {copy('You can add an image, video, or PDF.', 'Unaweza kuweka picha, video au PDF.')} {isPhysicalProduct ? copy('If the return needs help, you can escalate it to Takeer.', 'Return iki-hitaji msaada, unaweza kui-escalate kwa Takeer.') : copy('After the dispute is submitted, Takeer will continue holding the payment until the evidence is reviewed.', 'Mgogoro ukitumwa, Takeer itaendelea kushikilia malipo hadi ushahidi ukaguliwe.')}
                                             </p>
                                         )}
                                         <input
@@ -2314,13 +2338,17 @@ function OwnedCard({ entry }) {
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                            {isPhysicalProduct ? 'Sababu ya return' : (isServiceProduct ? 'Sababu ya mgogoro' : 'Reason for Dispute')}
+                                            {isPhysicalProduct ? copy('Reason for return', 'Sababu ya return') : (isServiceProduct ? copy('Reason for dispute', 'Sababu ya mgogoro') : copy('Reason for dispute', 'Sababu ya mgogoro'))}
                                         </label>
                                         <textarea
                                             required
                                             value={disputeReason}
                                             onChange={e => setDisputeReason(e.target.value)}
-                                            placeholder={isCustomDeliveryProduct ? 'Mf. Naomba ubadilishe sehemu hii, au faili si kama tulivyokubaliana...' : (isServiceProduct ? 'Mf. Huduma haikutolewa kama tulivyokubaliana...' : 'Mf. Bidhaa iliyofika imevunjika, si sahihi, au si kama ilivyoelezwa...')}
+                                            placeholder={isCustomDeliveryProduct
+                                                ? copy('E.g. Please change this part, or the file is not as agreed...', 'Mf. Naomba ubadilishe sehemu hii, au faili si kama tulivyokubaliana...')
+                                                : (isServiceProduct
+                                                    ? copy('E.g. The service was not delivered as agreed...', 'Mf. Huduma haikutolewa kama tulivyokubaliana...')
+                                                    : copy('E.g. The product arrived damaged, incorrect, or not as described...', 'Mf. Bidhaa iliyofika imevunjika, si sahihi, au si kama ilivyoelezwa...'))}
                                             className="w-full min-h-[100px] rounded-2xl border border-input bg-background p-3 text-sm focus:ring-2 focus:ring-brand-500/20 outline-none"
                                         />
                                     </div>
@@ -2381,6 +2409,7 @@ function OwnedCard({ entry }) {
 }
 
 function DescriptionModal({ open, onClose, title, label, description }) {
+    const { copy } = useLocale();
     if (!open) return null;
 
     return (
@@ -2401,7 +2430,7 @@ function DescriptionModal({ open, onClose, title, label, description }) {
                         type="button"
                         onClick={onClose}
                         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100"
-                        aria-label="Close description"
+                        aria-label={copy('Close description', 'Funga maelezo')}
                     >
                         <X className="h-5 w-5" />
                     </button>
@@ -2413,7 +2442,7 @@ function DescriptionModal({ open, onClose, title, label, description }) {
                 </div>
                 <div className="border-t border-slate-100 px-5 py-4">
                     <Button type="button" className="w-full rounded-2xl" onClick={onClose}>
-                        Okay
+                        {copy('Okay', 'Sawa')}
                     </Button>
                 </div>
             </div>
@@ -2422,6 +2451,7 @@ function DescriptionModal({ open, onClose, title, label, description }) {
 }
 
 function MembershipCard({ subscription, onCancel }) {
+    const { copy } = useLocale();
     const plan = subscription.plan || {};
     const merchant = subscription.merchant || {};
     const periodEnd = subscription.current_period_end ? new Date(subscription.current_period_end) : null;
@@ -2437,7 +2467,7 @@ function MembershipCard({ subscription, onCancel }) {
     const periodTone = isActiveStatus
         ? 'border-emerald-100 bg-emerald-50/80 text-emerald-900'
         : 'border-rose-100 bg-rose-50/80 text-rose-900';
-    const periodLabel = isExpiredByTime ? 'Membership expired' : 'Membership active';
+    const periodLabel = isExpiredByTime ? copy('Membership expired', 'Uanachama umeisha') : copy('Membership active', 'Uanachama unaendelea');
     const periodStartLabel = formatDateTime(subscription.current_period_start || subscription.started_at);
     const periodEndLabel = formatDateTime(subscription.current_period_end);
     const billingCadence = formatBillingCadence(plan.billing_interval, plan.interval_count);
@@ -2451,8 +2481,8 @@ function MembershipCard({ subscription, onCancel }) {
                         <span className={`inline-flex rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] ${statusTone}`}>
                             {displayStatus}
                         </span>
-                        <h3 className="mt-4 text-2xl font-black">{plan.name || 'Membership plan'}</h3>
-                        <p className="mt-2 text-sm text-muted-foreground leading-6">{plan.description || 'Recurring access to premium items.'}</p>
+                        <h3 className="mt-4 text-2xl font-black">{plan.name || copy('Membership plan', 'Mpango wa uanachama')}</h3>
+                        <p className="mt-2 text-sm text-muted-foreground leading-6">{plan.description || copy('Recurring access to premium items.', 'Ufikiaji unaorudiwa wa bidhaa maalum.')}</p>
                     </div>
                     <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border shadow-sm ${iconTone}`}>
                         <Crown className="h-6 w-6" strokeWidth={2.5} />
@@ -2462,8 +2492,8 @@ function MembershipCard({ subscription, onCancel }) {
 
             <CardContent className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                    <InfoChip icon={Store} label="Merchant" value={merchant.display_name || merchant.name || 'Takeer merchant'} />
-                    <InfoChip icon={CalendarClock} label="Duration" value={durationLabel} />
+                    <InfoChip icon={Store} label={copy('Merchant', 'Muuzaji')} value={merchant.display_name || merchant.name || copy('Takeer merchant', 'Muuzaji wa Takeer')} />
+                    <InfoChip icon={CalendarClock} label={copy('Duration', 'Muda')} value={durationLabel} />
                 </div>
 
                 <div className={`rounded-2xl border px-4 py-4 ${periodTone}`}>
@@ -2475,28 +2505,28 @@ function MembershipCard({ subscription, onCancel }) {
                     </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         <div>
-                            <p className="text-[11px] font-black uppercase tracking-widest opacity-70">Started</p>
+                            <p className="text-[11px] font-black uppercase tracking-widest opacity-70">{copy('Started', 'Ilianza')}</p>
                             <p className="mt-1 text-sm font-black">{periodStartLabel}</p>
                         </div>
                         <div>
-                            <p className="text-[11px] font-black uppercase tracking-widest opacity-70">{isExpiredByTime ? 'Expired' : 'Ends'}</p>
+                            <p className="text-[11px] font-black uppercase tracking-widest opacity-70">{isExpiredByTime ? copy('Expired', 'Imeisha') : copy('Ends', 'Inaisha')}</p>
                             <p className="mt-1 text-sm font-black">{periodEndLabel}</p>
                         </div>
                     </div>
                     <p className="mt-4 text-xs font-semibold leading-5 opacity-80">
                         {isActiveStatus
-                            ? 'Subscription items stay available in Orders until this period ends.'
-                            : 'Subscription access has ended. Direct purchases remain in your Library.'}
+                            ? copy('Subscription items stay available in Orders until this period ends.', 'Bidhaa za uanachama zitaendelea kupatikana kwenye Oda hadi muda huu uishe.')
+                            : copy('Subscription access has ended. Direct purchases remain in your Library.', 'Ufikiaji wa uanachama umeisha. Ununuzi wa moja kwa moja unabaki kwenye Maktaba yako.')}
                     </p>
                 </div>
 
                 <div className="flex gap-3">
                     <Button variant="outline" className="flex-1 rounded-2xl" onClick={() => router.visit(`/plan/${plan.slug || plan.id}`)}>
-                        View plan
+                        {copy('View plan', 'Tazama mpango')}
                     </Button>
                     {isActiveStatus && (
                         <Button className="rounded-2xl bg-red-600 hover:bg-red-700 text-white" onClick={onCancel}>
-                            Cancel
+                            {copy('Cancel', 'Ghairi')}
                         </Button>
                     )}
                 </div>
@@ -2507,7 +2537,7 @@ function MembershipCard({ subscription, onCancel }) {
                         itemId={plan.id}
                         merchantId={merchant.id || plan.merchant_id || null}
                         context="membership"
-                        label="Report Membership"
+                        label={copy('Report Membership', 'Ripoti uanachama')}
                     />
                 )}
             </CardContent>

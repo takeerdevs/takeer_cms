@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocale } from '@/lib/i18n';
 
 function parseEditorData(data) {
     if (!data) return { blocks: [] };
@@ -63,6 +64,7 @@ function renderListItems(items = []) {
 }
 
 export default function EditorJsRenderer({ data }) {
+    const { copy } = useLocale();
     const parsed = parseEditorData(data);
 
     return (
@@ -127,7 +129,7 @@ export default function EditorJsRenderer({ data }) {
 
                     return (
                         <figure key={key} className="space-y-2">
-                            <img src={imageUrl} alt={blockData.caption || 'Content image'} className="w-full rounded-2xl border object-cover" />
+                            <img src={imageUrl} alt={blockData.caption || copy('Content image', 'Picha ya maudhui')} className="w-full rounded-2xl border object-cover" />
                             {blockData.caption ? <figcaption className="text-xs text-muted-foreground">{blockData.caption}</figcaption> : null}
                         </figure>
                     );
@@ -154,4 +156,3 @@ export default function EditorJsRenderer({ data }) {
         </div>
     );
 }
-

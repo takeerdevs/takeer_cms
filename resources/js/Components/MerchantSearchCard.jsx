@@ -1,8 +1,10 @@
 import React from 'react';
 import { Link } from '@inertiajs/react';
 import { MapPin, Store, BadgeCheck } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 export default function MerchantSearchCard({ merchant }) {
+    const { copy } = useLocale();
     if (!merchant) return null;
 
     const success = Number(merchant.successful_sales || 0);
@@ -28,7 +30,7 @@ export default function MerchantSearchCard({ merchant }) {
                         <p className="font-black text-base text-foreground truncate">{merchant.name}</p>
                         {merchant.is_verified && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-bold">
-                                <BadgeCheck className="h-3 w-3" /> Verified
+                                <BadgeCheck className="h-3 w-3" /> {copy('Verified', 'Imethibitishwa')}
                             </span>
                         )}
                     </div>
@@ -36,16 +38,16 @@ export default function MerchantSearchCard({ merchant }) {
                     {merchant.bio && <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{merchant.bio}</p>}
 
                     <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                        <span className="px-2 py-0.5 rounded-full bg-accent/70">{merchant.products_count} bidhaa</span>
-                        <span className="px-2 py-0.5 rounded-full bg-accent/70">{merchant.posts_count} posts</span>
-                        <span className="px-2 py-0.5 rounded-full bg-accent/70">{trust === null ? 'No trust data' : `${trust}% trust`}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-accent/70">{merchant.products_count} {copy('products', 'bidhaa')}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-accent/70">{merchant.posts_count} {copy('posts', 'machapisho')}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-accent/70">{trust === null ? copy('No trust data', 'Hakuna taarifa za uaminifu') : `${trust}% ${copy('trust', 'uaminifu')}`}</span>
                     </div>
 
                     {merchant.primary_location && (
                         <div className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
                             <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                             <span className="line-clamp-2">
-                                {merchant.primary_location.name || 'Location'}
+                                {merchant.primary_location.name || copy('Location', 'Eneo')}
                                 {merchant.primary_location.city ? `, ${merchant.primary_location.city}` : ''}
                                 {merchant.primary_location.region ? `, ${merchant.primary_location.region}` : ''}
                                 {(merchant.location_extra_count || 0) > 0 ? ` +${merchant.location_extra_count}` : ''}
@@ -58,7 +60,7 @@ export default function MerchantSearchCard({ merchant }) {
                         className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-600 text-white px-3 py-2 text-sm font-bold"
                     >
                         <Store className="h-4 w-4" />
-                        Tembelea Biashara
+                        {copy('Visit business', 'Tembelea biashara')}
                     </Link>
                 </div>
             </div>

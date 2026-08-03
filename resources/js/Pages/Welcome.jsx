@@ -1,5 +1,5 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, router } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import {
@@ -12,8 +12,10 @@ import {
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import axios from 'axios';
+import { useLocale } from '@/lib/i18n';
 
 function PasswordlessEntry({ intended }) {
+    const { t } = useLocale();
     const [step, setStep] = useState('phone');
     const [phone, setPhone] = useState('');
     const [otp, setOtp] = useState('');
@@ -28,7 +30,7 @@ function PasswordlessEntry({ intended }) {
     const sendOtp = async (event) => {
         event.preventDefault();
         if (!phone.trim()) {
-            setError('Andika namba yako ya simu.');
+            setError(t('auth.phoneRequired'));
             return;
         }
 
@@ -45,13 +47,13 @@ function PasswordlessEntry({ intended }) {
                 setStep('totp');
                 setTotpMode('authenticator');
                 setTotpCode('');
-                setNotice('Akaunti hii inalindwa na authenticator app.');
+                setNotice(t('auth.authenticatorProtected'));
             } else {
                 setStep('otp');
                 setNotice('');
             }
         } catch (e) {
-            setError(e.response?.data?.message || 'Imeshindwa kutuma verification code. Jaribu tena.');
+            setError(e.response?.data?.message || t('auth.invalidCode'));
         } finally {
             setLoading(false);
         }
@@ -60,7 +62,7 @@ function PasswordlessEntry({ intended }) {
     const verifyOtp = async (event) => {
         event.preventDefault();
         if (otp.trim().length !== 6) {
-            setError('Weka verification code yenye tarakimu 6.');
+            setError(t('auth.codeLength'));
             return;
         }
 
@@ -84,11 +86,11 @@ function PasswordlessEntry({ intended }) {
                 setStep('totp');
                 setTotpMode('authenticator');
                 setOtp('');
-                setNotice('Akaunti hii inalindwa na authenticator app.');
+                setNotice(t('auth.authenticatorProtected'));
                 setError('');
                 return;
             }
-            setError(e.response?.data?.message || 'Verification code si sahihi au imeisha muda wake.');
+            setError(e.response?.data?.message || t('auth.invalidCode'));
         } finally {
             setLoading(false);
         }
@@ -97,12 +99,12 @@ function PasswordlessEntry({ intended }) {
     const verifyTotp = async (event) => {
         event.preventDefault();
         if (!totpCode.trim()) {
-            setError(totpMode === 'recovery' ? 'Weka recovery code.' : 'Weka authenticator code.');
+            setError(totpMode === 'recovery' ? t('auth.recoveryCodeRequired') : t('auth.authenticatorCodeRequired'));
             return;
         }
 
         if (totpMode === 'authenticator' && totpCode.trim().length !== 6) {
-            setError('Weka authenticator code yenye tarakimu 6.');
+            setError(t('auth.authenticatorCodeLength'));
             return;
         }
 
@@ -121,7 +123,7 @@ function PasswordlessEntry({ intended }) {
 
             router.visit(safeRedirect);
         } catch (e) {
-            setError(e.response?.data?.message || 'Authenticator au recovery code si sahihi.');
+            setError(e.response?.data?.message || t('auth.invalidAuthenticator'));
         } finally {
             setLoading(false);
         }
@@ -130,7 +132,7 @@ function PasswordlessEntry({ intended }) {
     const sendRecoveryOtp = async () => {
         if (!phone.trim()) {
             setStep('phone');
-            setError('Andika namba yako ya simu.');
+            setError(t('auth.phoneRequired'));
             return;
         }
 
@@ -145,9 +147,9 @@ function PasswordlessEntry({ intended }) {
             });
             setOtp('');
             setStep('recoveryOtp');
-            setNotice('Recovery OTP imetumwa. Ukithibitisha, 2FA itaondolewa na utahitaji kuiweka tena.');
+            setNotice(t('auth.recoverySent'));
         } catch (e) {
-            setError(e.response?.data?.message || 'Imeshindwa kutuma recovery OTP.');
+            setError(e.response?.data?.message || t('auth.recoverySendFailed'));
         } finally {
             setLoading(false);
         }
@@ -167,14 +169,14 @@ function PasswordlessEntry({ intended }) {
         setTotpMode('authenticator');
         setTotpCode('');
         setError('');
-        setNotice('Akaunti hii inalindwa na authenticator app.');
+        setNotice(t('auth.authenticatorProtected'));
     };
 
     const showRecoveryCodeInput = () => {
         setTotpMode('recovery');
         setTotpCode('');
         setError('');
-        setNotice('Tumia recovery code uliyoihifadhi wakati uliweka 2FA.');
+        setNotice(t('auth.recoveryHelp'));
     };
 
     const showSmsRecoveryConfirm = () => {
@@ -186,21 +188,21 @@ function PasswordlessEntry({ intended }) {
     };
 
     const title = {
-        phone: 'Karibu Takeer',
-        otp: 'Thibitisha namba',
-        totp: totpMode === 'recovery' ? 'Weka recovery code' : 'Weka authenticator code',
-        recoveryConfirm: 'Recover account',
-        recoveryOtp: 'Recover account',
+        phone: t('auth.welcome'),
+        otp: t('auth.verifyNumber'),
+        totp: totpMode === 'recovery' ? t('auth.recoveryCodeRequired') : t('auth.authenticatorCodeRequired'),
+        recoveryConfirm: t('auth.recoveryAccount'),
+        recoveryOtp: t('auth.recoveryAccount'),
     }[step];
 
     const description = {
-        phone: 'Tumia namba yako kuingia, kununua, kuuza, au kuendelea ulipoishia.',
-        otp: `Tumeituma verification code kwenye ${phone}.`,
+        phone: t('auth.loginDescription'),
+        otp: t('auth.codeSent', { phone }),
         totp: totpMode === 'recovery'
-            ? 'Tumia moja kati ya recovery codes ulizohifadhi.'
-            : 'Tumia code ya tarakimu 6 kutoka kwenye authenticator app.',
-        recoveryConfirm: 'Tutakutumia SMS OTP kuthibitisha umiliki wa namba. Ukifanikiwa, 2FA ya zamani itaondolewa.',
-        recoveryOtp: `Tumeituma recovery OTP kwenye ${phone}.`,
+            ? t('auth.recoveryCodesDescription')
+            : t('auth.authenticatorDescription'),
+        recoveryConfirm: t('auth.recoveryDescription'),
+        recoveryOtp: t('auth.recoveryOtpSent', { phone }),
     }[step];
 
     const formSubmitHandler = {
@@ -274,14 +276,14 @@ function PasswordlessEntry({ intended }) {
                                 autoCapitalize="characters"
                                 autoComplete="off"
                                 spellCheck="false"
-                                placeholder="Recovery code"
+                                placeholder={t('auth.recoveryPlaceholder')}
                                 className="h-14 rounded-2xl border-brand-100 px-5 text-center text-base font-black tracking-[0.12em] shadow-sm"
                             />
                         )}
                     </>
                 ) : step === 'recoveryConfirm' ? (
                     <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm font-bold leading-6 text-amber-900">
-                        SMS recovery ni kwa wakati umebadilisha au umepoteza authenticator app. Baada ya kuthibitisha OTP, tutazima 2FA ya sasa ili uiweke upya.
+                        {t('auth.smsRecoveryInfo')}
                     </div>
                 ) : (
                     <Input
@@ -317,7 +319,7 @@ function PasswordlessEntry({ intended }) {
                     disabled={loading}
                     className="h-14 w-full rounded-2xl bg-brand-600 text-base font-black text-white shadow-xl shadow-brand-600/20 hover:bg-brand-700"
                 >
-                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (step === 'phone' || step === 'recoveryConfirm' ? 'Tuma code' : 'Ingia Takeer')}
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (step === 'phone' || step === 'recoveryConfirm' ? t('auth.sendCode') : t('auth.login'))}
                     {!loading && <ChevronRight className="ml-2 h-5 w-5" />}
                 </Button>
             </form>
@@ -332,7 +334,7 @@ function PasswordlessEntry({ intended }) {
                                 onClick={totpMode === 'authenticator' ? showRecoveryCodeInput : showAuthenticatorInput}
                                 className="w-full text-center text-xs font-black uppercase tracking-widest text-brand-600 disabled:opacity-50"
                             >
-                                {totpMode === 'authenticator' ? 'Tumia recovery code' : 'Tumia authenticator app'}
+                                {totpMode === 'authenticator' ? t('auth.useRecovery') : t('auth.useAuthenticator')}
                             </button>
                             <button
                                 type="button"
@@ -340,7 +342,7 @@ function PasswordlessEntry({ intended }) {
                                 onClick={showSmsRecoveryConfirm}
                                 className="w-full text-center text-xs font-black uppercase tracking-widest text-amber-700 disabled:opacity-50"
                             >
-                                Siwezi kufikia authenticator
+                                {t('auth.cannotAccessAuthenticator')}
                             </button>
                         </>
                     )}
@@ -351,7 +353,7 @@ function PasswordlessEntry({ intended }) {
                             onClick={showAuthenticatorInput}
                             className="w-full text-center text-xs font-black uppercase tracking-widest text-brand-600 disabled:opacity-50"
                         >
-                            Rudi kwenye authenticator
+                            {t('auth.backToAuthenticator')}
                         </button>
                     )}
                     <button
@@ -359,14 +361,14 @@ function PasswordlessEntry({ intended }) {
                         onClick={resetToPhone}
                         className="w-full text-center text-xs font-black uppercase tracking-widest text-brand-600"
                     >
-                        Badilisha namba
+                        {t('auth.changeNumber')}
                     </button>
                 </div>
             )}
 
             <div className="my-5 flex items-center gap-3">
                 <div className="h-px flex-1 bg-border" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">au</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{t('auth.or')}</span>
                 <div className="h-px flex-1 bg-border" />
             </div>
 
@@ -375,26 +377,27 @@ function PasswordlessEntry({ intended }) {
                 className="flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-border bg-background text-sm font-black text-foreground shadow-sm transition hover:bg-accent"
             >
                 <span className="text-lg font-black text-blue-500">G</span>
-                Endelea na Google
+                {t('auth.continueGoogle')}
             </a>
         </motion.div>
     );
 }
 
 function ProtectedFlow() {
+    const { t } = useLocale();
     const steps = [
         {
-            title: 'Lipa salama',
+            title: t('welcome.protectedPayments'),
             icon: ShieldCheck,
             tone: 'text-brand-600 bg-brand-50',
         },
         {
-            title: 'Oda itimizwe',
+            title: t('welcome.orderFulfilled'),
             icon: PackageCheck,
             tone: 'text-orange-600 bg-orange-50',
         },
         {
-            title: 'Pesa itolewe',
+            title: t('welcome.payoutReleased'),
             icon: CheckCircle2,
             tone: 'text-green-600 bg-green-50',
         },
@@ -429,23 +432,24 @@ function ProtectedFlow() {
 }
 
 export default function Welcome({ auth, intended }) {
+    const { t } = useLocale();
     const heroImage = "/images/welcome/hero.png";
     const sellingOptions = [
         {
-            title: 'Bidhaa za kidijitali',
-            description: 'Uza ujuzi wako kama kozi, templates, downloads, files, mafunzo, au kazi nyingine ya kidigitali.',
+            title: t('welcome.digitalCard'),
+            description: t('welcome.digitalCardDescription'),
             icon: FileText,
             tone: 'brand',
         },
         {
-            title: 'Huduma',
-            description: 'Pokea oda za huduma, bookings, kazi za ubunifu, ushauri, ufundi, au huduma yoyote inayohitaji makubaliano.',
+            title: t('welcome.serviceCard'),
+            description: t('welcome.serviceCardDescription'),
             icon: BriefcaseBusiness,
             tone: 'blue',
         },
         {
-            title: 'Bidhaa halisi',
-            description: 'Weka bidhaa zako sokoni, pokea malipo salama, na fikisha package kwa mteja popote Tanzania.',
+            title: t('welcome.physicalCard'),
+            description: t('welcome.physicalCardDescription'),
             icon: PackageCheck,
             tone: 'orange',
         },
@@ -472,7 +476,7 @@ export default function Welcome({ auth, intended }) {
 
     return (
         <AppLayout>
-            <Head title="Uza na Ununue kwa Usalama | Takeer" />
+            <Head title={`${t('welcome.heroTitle')} | Takeer`} />
 
             <div className="relative min-h-screen overflow-hidden bg-background">
                 {/* ── Dynamic Background ── */}
@@ -492,23 +496,23 @@ export default function Welcome({ auth, intended }) {
                             className="space-y-10"
                         >
                             <motion.h1 variants={itemVariants} className="max-w-5xl text-5xl md:text-6xl xl:text-7xl font-black text-foreground tracking-tighter leading-[1.08]">
-                                Uza Ujuzi, Huduma na Bidhaa{' '}
+                                {t('welcome.heroTitle')}{' '}
                                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-orange-500">
-                                    kwa Usalama
+                                    {t('welcome.heroAccent')}
                                 </span>
                             </motion.h1>
 
                             <div className="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr] xl:gap-14">
                                 <div className="space-y-7">
                                     <motion.p variants={itemVariants} className="text-lg md:text-xl text-muted-foreground max-w-2xl leading-relaxed">
-                                        Takeer ni soko la digital products, services, na physical products lenye malipo yanayolindwa na Takeer. Muuzaji analipwa akitimiza oda, na mnunuzi analindwa mpaka apokee alichoagiza.
+                                        {t('welcome.intro')}
                                     </motion.p>
 
                                     <motion.div variants={itemVariants} className="flex flex-col gap-3 border-y border-border/70 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-3">
                                         <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                            Unaweza kuuza
+                                            {t('welcome.youCanSell')}
                                         </span>
-                                        {['Digital products', 'Services', 'Physical products'].map((label) => (
+                                        {[t('welcome.digitalProducts'), t('welcome.services'), t('welcome.physicalProducts')].map((label) => (
                                             <span key={label} className="inline-flex items-center gap-2 text-sm font-black text-foreground">
                                                 <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-600" />
                                                 {label}
@@ -524,7 +528,7 @@ export default function Welcome({ auth, intended }) {
                                                     className="h-14 px-7 rounded-2xl text-base font-black bg-brand-600 hover:bg-brand-700 shadow-xl shadow-brand-600/20 active:scale-95 transition-all sm:min-w-60"
                                                     onClick={() => router.visit('/merchant/register')}
                                                 >
-                                                    Fungua Akaunti (Bure)
+                                                    {t('welcome.openAccount')}
                                                     <ChevronRight className="ml-2 h-5 w-5" />
                                                 </Button>
                                                 <Button
@@ -533,7 +537,7 @@ export default function Welcome({ auth, intended }) {
                                                     className="h-14 px-7 rounded-2xl text-base font-black border-2 hover:bg-muted active:scale-95 transition-all sm:min-w-48"
                                                     onClick={() => router.visit('/feed')}
                                                 >
-                                                    Anza Kununua
+                                                    {t('welcome.startBuying')}
                                                 </Button>
                                             </>
                                         ) : (
@@ -542,7 +546,7 @@ export default function Welcome({ auth, intended }) {
                                                 className="h-14 px-8 rounded-2xl text-lg font-bold bg-brand-600 hover:bg-brand-700 shadow-xl shadow-brand-600/20 active:scale-95 transition-all"
                                                 onClick={() => router.visit('/profile')}
                                             >
-                                                Nenda Kwenye Profile
+                                                {t('welcome.goProfile')}
                                                 <ArrowRight className="ml-2 h-5 w-5" />
                                             </Button>
                                         )}
@@ -557,7 +561,7 @@ export default function Welcome({ auth, intended }) {
                                             ))}
                                         </div>
                                         <p className="text-sm font-medium text-muted-foreground">
-                                            <span className="text-foreground font-bold">10,000+</span> wauzaji na wanunuzi tayari wanatumia Takeer
+                                            {t('welcome.usersAlready', { count: '10,000' })}
                                         </p>
                                     </motion.div>
                                 </div>
@@ -595,7 +599,7 @@ export default function Welcome({ auth, intended }) {
                                                     <TrendingUp className="h-5 w-5" />
                                                 </div>
                                                 <div>
-                                                    <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground">Growth</p>
+                                                    <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground">{t('welcome.growth')}</p>
                                                     <p className="text-xl font-black text-foreground">+142%</p>
                                                 </div>
                                             </div>
@@ -611,13 +615,13 @@ export default function Welcome({ auth, intended }) {
                         <div className="mb-10 max-w-3xl">
                             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-brand-700 dark:border-brand-900/60 dark:bg-brand-950/30 dark:text-brand-300">
                                 <Sparkles className="h-4 w-4" />
-                                Selling enabled
+                                {t('welcome.sellingEnabled')}
                             </div>
                             <h2 className="text-3xl md:text-5xl font-black tracking-tight">
-                                Kila mtu ana kitu cha kuuza
+                                {t('welcome.everyoneCanSell')}
                             </h2>
                             <p className="mt-4 text-lg leading-relaxed text-muted-foreground">
-                                Ukiwa na skill, service, bidhaa ya kidigitali, au stock ya dukani, Takeer inakupa sehemu moja ya kuuza, kupokea oda, malipo salama ndani ya Takeer, na kumhakikishia mteja kuwa hatapoteza fedha.
+                                {t('welcome.sellingIntro')}
                             </p>
                         </div>
 
@@ -652,9 +656,9 @@ export default function Welcome({ auth, intended }) {
                     {/* ── Account Types Section ── */}
                     <section className="py-24 border-t border-border/50">
                         <div className="text-center space-y-4 mb-16">
-                            <h2 className="text-3xl md:text-5xl font-black tracking-tight">Chagua Jinsi ya Kuanza</h2>
+                            <h2 className="text-3xl md:text-5xl font-black tracking-tight">{t('welcome.chooseStart')}</h2>
                             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                                Anza kuuza mara moja kama mtu binafsi, au jenga biashara yenye wasifu, timu, maeneo, na tools za usimamizi kadiri unavyokua.
+                                {t('welcome.chooseStartDescription')}
                             </p>
                         </div>
 
@@ -668,12 +672,12 @@ export default function Welcome({ auth, intended }) {
                                 <div className="h-16 w-16 rounded-2xl bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center text-brand-600 mb-8">
                                     <User className="h-8 w-8" />
                                 </div>
-                                <h3 className="text-2xl font-black mb-4">Akaunti ya Binafsi</h3>
+                                <h3 className="text-2xl font-black mb-4">{t('welcome.personalAccount')}</h3>
                                 <p className="text-muted-foreground mb-8 leading-relaxed">
-                                    Akaunti ya kuanzia kwa kila mtumiaji. Uza skill production yako, huduma, bidhaa za kidijitali, au bidhaa halisi ukitumia profile yako ya binafsi, huku malipo yakilindwa mpaka oda itimizwe.
+                                    {t('welcome.personalDescription')}
                                 </p>
                                 <ul className="space-y-3 mb-8">
-                                    {['Kuuza kumewezeshwa moja kwa moja', 'Escrow inalinda pande zote', 'Digital, services na physical products', 'Payout baada ya oda kuthibitishwa'].map(feat => (
+                                    {[t('welcome.directSelling'), t('welcome.pspSettlement'), t('welcome.digitalServicesPhysical'), t('welcome.payoutAfterConfirmation')].map(feat => (
                                         <li key={feat} className="flex items-center gap-3 text-sm font-bold text-foreground">
                                             <CheckCircle2 className="h-4 w-4 text-brand-500" /> {feat}
                                         </li>
@@ -690,12 +694,12 @@ export default function Welcome({ auth, intended }) {
                                 <div className="h-16 w-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 mb-8">
                                     <Store className="h-8 w-8" />
                                 </div>
-                                <h3 className="text-2xl font-black mb-4">Akaunti ya Biashara</h3>
+                                <h3 className="text-2xl font-black mb-4">{t('welcome.businessAccount')}</h3>
                                 <p className="text-muted-foreground mb-8 leading-relaxed">
-                                    Peleka biashara yako ngazi nyingine. Unda wasifu maalum wa biashara, simamia oda na timu, na wajengee wateja imani kuwa Takeer inasimamia malipo, delivery, na mawasiliano ya oda.
+                                    {t('welcome.businessDescription')}
                                 </p>
                                 <ul className="space-y-3 mb-8">
-                                    {['Wasifu wa biashara unaoaminika', 'Support ya maeneo mengi', 'Team management', 'Analytics na usimamizi wa oda'].map(feat => (
+                                    {[t('welcome.trustedBusinessProfile'), t('welcome.multipleLocations'), t('welcome.teamManagement'), t('welcome.analyticsOrderManagement')].map(feat => (
                                         <li key={feat} className="flex items-center gap-3 text-sm font-bold text-foreground">
                                             <CheckCircle2 className="h-4 w-4 text-blue-500" /> {feat}
                                         </li>
@@ -711,9 +715,9 @@ export default function Welcome({ auth, intended }) {
                             <div className="h-12 w-12 rounded-xl bg-orange-100 dark:bg-orange-950/40 flex items-center justify-center text-orange-600">
                                 <ShieldCheck className="h-6 w-6" />
                             </div>
-                            <h4 className="text-xl font-black tracking-tight">Malipo Yanalindwa</h4>
+                            <h4 className="text-xl font-black tracking-tight">{t('welcome.protectedPayments')}</h4>
                             <p className="text-muted-foreground leading-relaxed">
-                                Takeer inakaa katikati ya mteja na merchant. Pesa hushikiliwa salama mpaka package, digital product, au huduma ithibitishwe kuwa imetolewa vizuri.
+                                {t('welcome.protectedPaymentsDescription')}
                             </p>
                         </div>
 
@@ -721,9 +725,9 @@ export default function Welcome({ auth, intended }) {
                             <div className="h-12 w-12 rounded-xl bg-blue-100 dark:bg-blue-950/40 flex items-center justify-center text-blue-600">
                                 <RefreshCcw className="h-6 w-6" />
                             </div>
-                            <h4 className="text-xl font-black tracking-tight">Refund Ikihitajika</h4>
+                            <h4 className="text-xl font-black tracking-tight">{t('welcome.refundIfNeeded')}</h4>
                             <p className="text-muted-foreground leading-relaxed">
-                                Kama mteja hajapokea alichoagiza, refund process inaweza kuanzishwa. Hivyo mteja hapotezi fedha kwa muuzaji asiyetimiza ahadi.
+                                {t('welcome.refundDescription')}
                             </p>
                         </div>
 
@@ -731,9 +735,9 @@ export default function Welcome({ auth, intended }) {
                             <div className="h-12 w-12 rounded-xl bg-purple-100 dark:bg-purple-950/40 flex items-center justify-center text-purple-600">
                                 <MapPin className="h-6 w-6" />
                             </div>
-                            <h4 className="text-xl font-black tracking-tight">Popote Tanzania</h4>
+                            <h4 className="text-xl font-black tracking-tight">{t('welcome.anywhereTanzania')}</h4>
                             <p className="text-muted-foreground leading-relaxed">
-                                Nunua kutoka merchant yeyote ndani ya Takeer ukiwa na uhakika kuwa oda yako inafuatiliwa mpaka ufikishiwe package au huduma yako.
+                                {t('welcome.anywhereDescription')}
                             </p>
                         </div>
                     </section>
@@ -744,28 +748,32 @@ export default function Welcome({ auth, intended }) {
                             <div className="absolute top-0 right-0 w-[50%] h-full bg-white/10 skew-x-[-20deg] transition-transform duration-1000 group-hover:translate-x-20" />
                             <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8 text-white">
                                 <div className="space-y-4 text-center md:text-left">
-                                    <h3 className="text-3xl md:text-5xl font-black tracking-tight leading-tight">Uko tayari kuuza <br /> au kununua salama?</h3>
-                                    <p className="text-brand-100 text-lg opacity-90 font-medium">Jiunge na soko ambalo muuzaji hupata anachostahili, na mteja hulindwa mpaka apokee alichoagiza.</p>
+                                    <h3 className="text-3xl md:text-5xl font-black tracking-tight leading-tight">{t('welcome.readyTitle')}</h3>
+                                    <p className="text-brand-100 text-lg opacity-90 font-medium">{t('welcome.readyDescription')}</p>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
                                     <Button
                                         className="h-16 px-10 rounded-2xl bg-white text-brand-600 hover:bg-brand-50 text-xl font-black shadow-xl"
                                         onClick={() => router.visit('/merchant/register')}
                                     >
-                                        Jiunge Sasa
+                                        {t('welcome.joinNow')}
                                     </Button>
                                     <Button
                                         className="h-16 px-10 rounded-2xl bg-white/10 hover:bg-white/20 border-2 border-white/30 text-white text-xl font-black transition-all"
                                         onClick={() => router.visit('/feed')}
                                     >
-                                        Gundua Bidhaa
+                                        {t('welcome.discoverProducts')}
                                     </Button>
                                 </div>
                             </div>
                         </div>
                         <p className="mt-8 text-center text-xs font-semibold leading-6 text-muted-foreground">
-                            Takeer is a product of Avly Tech Group Limited.
+                            {t('welcome.productOf')}
                         </p>
+                        <div className="mt-3 flex flex-wrap justify-center gap-4 text-xs font-black text-muted-foreground">
+                            <Link href="/legal" className="hover:text-brand-700">{t('common.legalCenter')}</Link>
+                            <Link href="/help" className="hover:text-brand-700">{t('welcome.helpComplaints')}</Link>
+                        </div>
                     </section>
 
                 </div>

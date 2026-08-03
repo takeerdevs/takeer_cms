@@ -5,8 +5,10 @@ import { Button } from '@/Components/ui/Button';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Plus, Link as LinkIcon, Edit, Trash2, ExternalLink, MousePointerClick, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
+import { useLocale } from '@/lib/i18n';
 
 export default function PaymentPagesIndex({ merchantUsername, pages }) {
+    const { copy } = useLocale();
     const [copiedId, setCopiedId] = useState(null);
 
     const copyLink = (slug, id) => {
@@ -18,24 +20,24 @@ export default function PaymentPagesIndex({ merchantUsername, pages }) {
 
     return (
         <AppLayout>
-            <Head title="Payment Pages | Takeer Commerce Pro" />
+            <Head title={`${copy('Payment pages', 'Kurasa za malipo')} | Takeer Commerce Pro`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-8 pb-24">
                 
                 {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-                            Payment Pages <span className="text-[10px] bg-brand-600 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">PRO</span>
+                            {copy('Payment pages', 'Kurasa za malipo')} <span className="text-[10px] bg-brand-600 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">PRO</span>
                         </h1>
                         <p className="text-muted-foreground text-sm mt-1">
-                            Tengeneza link maalum za malipo kwa ajili ya kampeni zako za Instagram au WhatsApp.
+                            {copy('Create dedicated payment links for your Instagram or WhatsApp campaigns.', 'Tengeneza viungo maalum vya malipo kwa kampeni zako za Instagram au WhatsApp.')}
                         </p>
                     </div>
                     <Button 
                         onClick={() => router.visit(`/merchant/${merchantUsername}/payment-pages/create`)}
                         className="bg-brand-600 hover:bg-brand-700 text-white font-bold h-11 px-6 rounded-xl shadow-lg shadow-brand-600/20"
                     >
-                        <Plus className="mr-2 h-5 w-5" /> Tengeneza Page Mpya
+                        <Plus className="mr-2 h-5 w-5" /> {copy('Create new page', 'Tengeneza ukurasa mpya')}
                     </Button>
                 </div>
 
@@ -46,16 +48,16 @@ export default function PaymentPagesIndex({ merchantUsername, pages }) {
                             <div className="h-20 w-20 bg-muted rounded-3xl flex items-center justify-center mb-6">
                                 <LinkIcon className="h-10 w-10 text-muted-foreground opacity-30" />
                             </div>
-                            <h3 className="font-bold text-xl">Bado huna Payment Page</h3>
+                            <h3 className="font-bold text-xl">{copy('You have no payment pages yet', 'Bado huna ukurasa wa malipo')}</h3>
                             <p className="text-muted-foreground text-sm mt-2 max-w-sm">
-                                Payment pages zinakusaidia kuuza bidhaa moja kwa moja kupitia link bila mteja kupotelea kwenye store nzima.
+                                {copy('Payment pages help you sell products directly through a link without sending the customer through the entire store.', 'Kurasa za malipo hukusaidia kuuza bidhaa moja kwa moja kupitia kiungo bila mteja kupotelea kwenye duka zima.')}
                             </p>
                             <Button 
                                 variant="outline" 
                                 className="mt-6 border-brand-200 text-brand-700 font-bold"
                                 onClick={() => router.visit(`/merchant/${merchantUsername}/payment-pages/create`)}
                             >
-                                Anza Sasa
+                                {copy('Start now', 'Anza sasa')}
                             </Button>
                         </CardContent>
                     </Card>
@@ -75,17 +77,17 @@ export default function PaymentPagesIndex({ merchantUsername, pages }) {
 
                                         <div className="grid grid-cols-3 gap-2 py-3 border-y border-muted/30">
                                             <div className="text-center">
-                                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-black">Views</p>
+                                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-black">{copy('Views', 'Mionekano')}</p>
                                                 <p className="font-black text-slate-900">{page.views_count || 0}</p>
                                             </div>
                                             <div className="text-center border-x border-muted/30">
-                                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-black">Conv %</p>
+                                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-black">{copy('Conv %', 'Conv %')}</p>
                                                 <p className="font-black text-slate-900">
                                                     {page.views_count > 0 ? ((page.orders_count / page.views_count) * 100).toFixed(1) : '0.0'}%
                                                 </p>
                                             </div>
                                             <div className="text-center">
-                                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-black">Revenue</p>
+                                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-black">{copy('Revenue', 'Mapato')}</p>
                                                 <p className="font-black text-green-600">
                                                     {new Intl.NumberFormat('en-TZ', { style: 'currency', currency: 'TZS', minimumFractionDigits: 0 }).format(page.revenue || 0).replace('TZS', '')}
                                                 </p>
@@ -110,9 +112,9 @@ export default function PaymentPagesIndex({ merchantUsername, pages }) {
                                                 onClick={() => copyLink(page.slug, page.id)}
                                             >
                                                 {copiedId === page.id ? (
-                                                    <><Check className="mr-1.5 h-3.5 w-3.5 text-green-600" /> Copied!</>
+                                                    <><Check className="mr-1.5 h-3.5 w-3.5 text-green-600" /> {copy('Copied!', 'Imenakiliwa!')}</>
                                                 ) : (
-                                                    <><Copy className="mr-1.5 h-3.5 w-3.5" /> Copy Link</>
+                                                    <><Copy className="mr-1.5 h-3.5 w-3.5" /> {copy('Copy link', 'Nakili kiungo')}</>
                                                 )}
                                             </Button>
                                             <Button 

@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\Payments;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Payments\PaymentCallbackProcessor;
+use App\Payments\PaymentEvent;
+use App\Services\ProviderEventRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -39,22 +41,19 @@ class AzamPayCallbackController extends Controller
 
     public function __construct(
         private readonly PaymentCallbackProcessor $processor,
+        private readonly ProviderEventRecorder $events,
     ) {}
 
     public function handle(Request $request): JsonResponse
     {
         $payload = $request->all();
 
-        Log::info('AzamPay Callback: Received', [
-            'ip'      => $request->ip(),
-            'payload' => $payload,
-        ]);
+        Log::info('AzamPay callback received.', ['ip' => $request->ip()]);
 
         // 1. Verify RSA signature to confirm this is genuinely from AzamPay
         if (!$this->verifySignature($payload)) {
-            Log::warning('AzamPay Callback: Signature verification FAILED.', [
-                'payload' => $payload,
-            ]);
+            $rejected = new PaymentEvent(provider: 'azampay', direction: 'payin', status: 'rejected', rawPayload: $payload);
+            $this->events->record($request, $rejected, !empty($payload['signature']), false);
             // Return 200 to prevent AzamPay from retrying a known-bad request
             return response()->json(['message' => 'Signature verification failed'], 200);
         }
@@ -62,7 +61,15 @@ class AzamPayCallbackController extends Controller
         // 2. Locate our order using utilityref = transaction_ref
         $transactionRef = $payload['utilityref'] ?? null;
         if (!$transactionRef) {
-            Log::error('AzamPay Callback: Missing utilityref in payload.', $payload);
+            $event = new PaymentEvent(
+                provider: 'azampay',
+                direction: 'payin',
+                status: 'rejected',
+                rawPayload: $payload,
+                failureReason: 'Missing provider transaction reference.',
+            );
+            $providerEvent = $this->events->record($request, $event, true, true);
+            $providerEvent->update(['validation_state' => 'review', 'processing_result' => 'missing_takeer_reference']);
             return response()->json(['message' => 'Missing utilityref'], 200);
         }
 
@@ -76,26 +83,20 @@ class AzamPayCallbackController extends Controller
         $status   = strtolower($payload['transactionstatus'] ?? '');
         $gatewayRef = $payload['externalreference'] ?? ($payload['mnoreference'] ?? 'N/A');
 
-        if ($status === 'success') {
-            $this->processor->handleSuccess(
-                order:      $order,
-                gatewayRef: $gatewayRef,
-                gateway:    'azampay',
-            );
-
-            Log::info("AzamPay Callback: Order [{$order->id}] payment confirmed.", [
-                'gateway_ref' => $gatewayRef,
-            ]);
-        } else {
-            $this->processor->handleFailure(
-                order:  $order,
-                reason: "AzamPay status: {$status}",
-            );
-
-            Log::info("AzamPay Callback: Order [{$order->id}] payment failed/cancelled.", [
-                'status' => $status,
-            ]);
-        }
+        $event = new PaymentEvent(
+            provider: 'azampay',
+            direction: 'payin',
+            status: $status,
+            providerReference: $gatewayRef,
+            takeerReference: (string) $transactionRef,
+            amount: isset($payload['amount']) ? (float) $payload['amount'] : null,
+            currency: $payload['currency'] ?? 'TZS',
+            network: $payload['operator'] ?? null,
+            rawPayload: $payload,
+            failureReason: $payload['message'] ?? null,
+        );
+        $providerEvent = $this->events->record($request, $event, true, true);
+        $this->processor->processVerifiedEvent($event, $providerEvent);
 
         // AzamPay expects HTTP 200 to acknowledge receipt
         return response()->json(['message' => 'Callback processed'], 200);
@@ -113,32 +114,27 @@ class AzamPayCallbackController extends Controller
     {
         $signature = $payload['signature'] ?? null;
 
-        // In sandbox, AzamPay may not always send a valid signature. Log and allow.
         if (empty($signature)) {
-            if (!app()->environment('production')) {
-                Log::warning('AzamPay Callback: No signature in payload — allowing (sandbox mode).');
-                return true;
-            }
             Log::error('AzamPay Callback: Missing signature in production callback.');
             return false;
         }
 
         $publicKeyPem = $this->getPublicKey();
         if (!$publicKeyPem) {
-            // If we can't fetch the public key, allow in sandbox but reject in prod
-            if (!app()->environment('production')) {
-                Log::warning('AzamPay Callback: Could not fetch public key — allowing (sandbox mode).');
-                return true;
-            }
             Log::error('AzamPay Callback: Cannot verify signature — public key unavailable.');
             return false;
         }
 
-        // Concatenate the signed fields in AzamPay's specified order
-        $dataToVerify = ($payload['utilityref']        ?? '')
-                      . ($payload['externalreference'] ?? '')
-                      . ($payload['transactionstatus'] ?? '')
-                      . ($payload['operator']          ?? '');
+        $signedFields = config('services.azampay.callback_signature_fields', []);
+        if (!is_array($signedFields) || $signedFields === []) {
+            Log::error('AzamPay Callback: signature field order is not configured from the provider contract.');
+            return false;
+        }
+
+        // The exact field order is deployment configuration supplied from the current PSP contract.
+        $dataToVerify = collect($signedFields)
+            ->map(fn (string $field) => (string) data_get($payload, $field, ''))
+            ->implode('');
 
         $signatureBytes = base64_decode($signature);
         $publicKey      = openssl_pkey_get_public($publicKeyPem);

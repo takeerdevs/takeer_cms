@@ -7,6 +7,7 @@ import { Input } from '@/Components/ui/Input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/Components/ui/Dialog';
 import { Shapes, Plus, Trash2, Pencil, Check } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 import axios from 'axios';
 
 const emptyCategory = { name: '', parent_id: '', image_url: '', is_active: true, sort_order: 0, brand_ids: [], unit_type_ids: [] };
@@ -24,6 +25,7 @@ const emptyAttr = {
     sort_order: 0,
 };
 export default function AdminCategories() {
+    const { copy } = useLocale();
     const [categories, setCategories] = useState([]);
     const [brands, setBrands] = useState([]);
     const [unitTypes, setUnitTypes] = useState([]);
@@ -52,7 +54,7 @@ export default function AdminCategories() {
             setBrands(brandRes.data?.data || []);
             setUnitTypes(unitRes.data?.data || []);
         } catch {
-            toast.error('Failed to load catalog data.');
+            toast.error(copy('Failed to load catalog data.', 'Imeshindikana kupakia data ya orodha.'));
         } finally {
             setLoading(false);
         }
@@ -65,7 +67,7 @@ export default function AdminCategories() {
 
     const createCategory = async () => {
         if (!categoryForm.name.trim()) {
-            toast.error('Category name is required.');
+            toast.error(copy('Category name is required.', 'Jina la kategoria linahitajika.'));
             return;
         }
         try {
@@ -76,11 +78,11 @@ export default function AdminCategories() {
                 brand_ids: (categoryForm.brand_ids || []).map(Number),
                 unit_type_ids: (categoryForm.unit_type_ids || []).map(Number),
             });
-            toast.success('Category created.');
+            toast.success(copy('Category created.', 'Kategoria imeundwa.'));
             setCategoryForm(emptyCategory);
             await loadData(categoryPage);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to create category.');
+            toast.error(error.response?.data?.message || copy('Failed to create category.', 'Imeshindikana kuunda kategoria.'));
         }
     };
 
@@ -96,31 +98,31 @@ export default function AdminCategories() {
                 brand_ids: (editingCategory.brand_ids || []).map(Number),
                 unit_type_ids: (editingCategory.unit_type_ids || []).map(Number),
             });
-            toast.success('Category updated.');
+            toast.success(copy('Category updated.', 'Kategoria imesasishwa.'));
             setEditingCategory(null);
             await loadData(categoryPage);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to update category.');
+            toast.error(error.response?.data?.message || copy('Failed to update category.', 'Imeshindikana kusasisha kategoria.'));
         }
     };
 
     const deleteCategory = async (id) => {
-        if (!window.confirm('Delete this category and all child attributes?')) return;
+        if (!window.confirm(copy('Delete this category and all child attributes?', 'Futa kategoria hii na sifa zake zote ndogo?'))) return;
         try {
             await axios.delete(`/admin/api/catalog/categories/${id}`);
-            toast.success('Category deleted.');
+            toast.success(copy('Category deleted.', 'Kategoria imefutwa.'));
             const nextPage = categories.length === 1 && categoryPage > 1 ? categoryPage - 1 : categoryPage;
             setCategoryPage(nextPage);
             await loadData(nextPage);
         } catch {
-            toast.error('Failed to delete category.');
+            toast.error(copy('Failed to delete category.', 'Imeshindikana kufuta kategoria.'));
         }
     };
 
     const createAttribute = async (categoryId) => {
         const current = attributeFormByCategory[categoryId] || emptyAttr;
         if (!current.key.trim() || !current.label.trim()) {
-            toast.error('Attribute key and label are required.');
+            toast.error(copy('Attribute key and label are required.', 'Ufunguo na lebo ya sifa vinahitajika.'));
             return;
         }
 
@@ -142,11 +144,11 @@ export default function AdminCategories() {
                 ai_extractable: Boolean(current.ai_extractable),
                 sort_order: Number(current.sort_order || 0),
             });
-            toast.success('Attribute created.');
+            toast.success(copy('Attribute created.', 'Sifa imeundwa.'));
             setAttributeFormByCategory((prev) => ({ ...prev, [categoryId]: emptyAttr }));
             await loadData(categoryPage);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to create attribute.');
+            toast.error(error.response?.data?.message || copy('Failed to create attribute.', 'Imeshindikana kuunda sifa.'));
         }
     };
 
@@ -170,22 +172,22 @@ export default function AdminCategories() {
                 ai_extractable: !!editingAttribute.ai_extractable,
                 sort_order: Number(editingAttribute.sort_order || 0),
             });
-            toast.success('Attribute updated.');
+            toast.success(copy('Attribute updated.', 'Sifa imesasishwa.'));
             setEditingAttribute(null);
             await loadData(categoryPage);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to update attribute.');
+            toast.error(error.response?.data?.message || copy('Failed to update attribute.', 'Imeshindikana kusasisha sifa.'));
         }
     };
 
     const deleteAttribute = async (id) => {
-        if (!window.confirm('Delete this attribute?')) return;
+        if (!window.confirm(copy('Delete this attribute?', 'Futa sifa hii?'))) return;
         try {
             await axios.delete(`/admin/api/catalog/attributes/${id}`);
-            toast.success('Attribute deleted.');
+            toast.success(copy('Attribute deleted.', 'Sifa imefutwa.'));
             await loadData(categoryPage);
         } catch {
-            toast.error('Failed to delete attribute.');
+            toast.error(copy('Failed to delete attribute.', 'Imeshindikana kufuta sifa.'));
         }
     };
 
@@ -220,32 +222,32 @@ export default function AdminCategories() {
     };
 
     return (
-        <AdminLayout title="Categories">
-            <Head title="Admin Categories | Takeer" />
+        <AdminLayout title={copy('Categories', 'Kategoria')}>
+            <Head title={`${copy('Admin Categories', 'Kategoria za Msimamizi')} | Takeer`} />
 
             <div className="space-y-6">
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                        <Shapes className="h-6 w-6 text-brand-700" /> Product Categories & Facets
+                        <Shapes className="h-6 w-6 text-brand-700" /> {copy('Product categories & facets', 'Kategoria na sifa za bidhaa')}
                     </h1>
-                    <p className="text-slate-600 mt-1 text-sm">Manage category tree, product facets, and category-level brand/unit restrictions.</p>
+                    <p className="text-slate-600 mt-1 text-sm">{copy('Manage category tree, product facets, and category-level brand/unit restrictions.', 'Simamia mti wa kategoria, sifa za bidhaa na vizuizi vya chapa/vipimo kwa kategoria.')}</p>
                 </div>
 
                 <Card className="bg-white border-slate-200 p-4 space-y-3">
-                    <p className="font-bold text-slate-900">Create Category</p>
+                    <p className="font-bold text-slate-900">{copy('Create Category', 'Unda Kategoria')}</p>
                     <div className="grid md:grid-cols-5 gap-3">
-                        <Input value={categoryForm.name} onChange={(e) => setCategoryForm((p) => ({ ...p, name: e.target.value }))} placeholder="Category name" />
+                        <Input value={categoryForm.name} onChange={(e) => setCategoryForm((p) => ({ ...p, name: e.target.value }))} placeholder={copy('Category name', 'Jina la kategoria')} />
                         <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={categoryForm.parent_id} onChange={(e) => setCategoryForm((p) => ({ ...p, parent_id: e.target.value }))}>
-                            <option value="">Parent (root)</option>
+                            <option value="">{copy('Parent (root)', 'Mzazi (mzizi)')}</option>
                             {allCategoryOptions.map((option) => (
                                 <option key={option.id} value={option.id}>{option.label}</option>
                             ))}
                         </select>
-                        <Input value={categoryForm.image_url} onChange={(e) => setCategoryForm((p) => ({ ...p, image_url: e.target.value }))} placeholder="Category image URL" />
-                        <Input type="number" min="0" value={categoryForm.sort_order} onChange={(e) => setCategoryForm((p) => ({ ...p, sort_order: e.target.value }))} placeholder="Sort order" />
+                        <Input value={categoryForm.image_url} onChange={(e) => setCategoryForm((p) => ({ ...p, image_url: e.target.value }))} placeholder={copy('Category image URL', 'URL ya picha ya kategoria')} />
+                        <Input type="number" min="0" value={categoryForm.sort_order} onChange={(e) => setCategoryForm((p) => ({ ...p, sort_order: e.target.value }))} placeholder={copy('Sort order', 'Mpangilio wa kupanga')} />
                         <Button className="bg-brand-600 hover:bg-brand-700 text-white" onClick={createCategory}>
                             <Plus className="h-4 w-4 mr-2" />
-                            Add Category
+                            {copy('Add category', 'Ongeza kategoria')}
                         </Button>
                     </div>
                     <BrandPicker
@@ -273,7 +275,7 @@ export default function AdminCategories() {
                 </Card>
 
                 {loading ? (
-                    <Card className="bg-white border-slate-200 p-10 text-center text-slate-500">Loading categories...</Card>
+                    <Card className="bg-white border-slate-200 p-10 text-center text-slate-500">{copy('Loading categories...', 'Inapakia kategoria...')}</Card>
                 ) : (
                     <div className="space-y-4">
                         {categories.map((category) => (
@@ -340,25 +342,25 @@ export default function AdminCategories() {
             <Dialog open={!!editingCategory} onOpenChange={(open) => { if (!open) setEditingCategory(null); }}>
                 <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Edit Category</DialogTitle>
-                        <DialogDescription>Update category details and allowed brands.</DialogDescription>
+                        <DialogTitle>{copy('Edit Category', 'Hariri Kategoria')}</DialogTitle>
+                        <DialogDescription>{copy('Update category details and allowed brands.', 'Sasisha maelezo ya kategoria na chapa zinazoruhusiwa.')}</DialogDescription>
                     </DialogHeader>
                     {editingCategory && (
                         <div className="space-y-4">
                             <div className="grid md:grid-cols-2 gap-3">
-                                <Input value={editingCategory.name} onChange={(e) => setEditingCategory((p) => ({ ...p, name: e.target.value }))} placeholder="Category name" />
+                                <Input value={editingCategory.name} onChange={(e) => setEditingCategory((p) => ({ ...p, name: e.target.value }))} placeholder={copy('Category name', 'Jina la kategoria')} />
                                 <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={editingCategory.parent_id} onChange={(e) => setEditingCategory((p) => ({ ...p, parent_id: e.target.value }))}>
-                                    <option value="">Parent (root)</option>
+                                    <option value="">{copy('Parent (root)', 'Mzazi (mzizi)')}</option>
                                     {allCategoryOptions.filter((option) => option.id !== editingCategory.id).map((option) => (
                                         <option key={option.id} value={option.id}>{option.label}</option>
                                     ))}
                                 </select>
-                                <Input value={editingCategory.image_url} onChange={(e) => setEditingCategory((p) => ({ ...p, image_url: e.target.value }))} placeholder="Image URL" />
-                                <Input type="number" min="0" value={editingCategory.sort_order} onChange={(e) => setEditingCategory((p) => ({ ...p, sort_order: e.target.value }))} placeholder="Sort order" />
+                                <Input value={editingCategory.image_url} onChange={(e) => setEditingCategory((p) => ({ ...p, image_url: e.target.value }))} placeholder={copy('Image URL', 'URL ya picha')} />
+                                <Input type="number" min="0" value={editingCategory.sort_order} onChange={(e) => setEditingCategory((p) => ({ ...p, sort_order: e.target.value }))} placeholder={copy('Sort order', 'Mpangilio wa kuonyesha')} />
                             </div>
                             <label className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm flex items-center gap-2 w-fit">
                                 <input type="checkbox" checked={!!editingCategory.is_active} onChange={(e) => setEditingCategory((p) => ({ ...p, is_active: e.target.checked }))} />
-                                Active
+                                {copy('Active', 'Hai')}
                             </label>
                             <BrandPicker
                                 label="Allowed brands"
@@ -385,7 +387,7 @@ export default function AdminCategories() {
                         </div>
                     )}
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditingCategory(null)}>Cancel</Button>
+                        <Button variant="outline" onClick={() => setEditingCategory(null)}>{copy('Cancel', 'Ghairi')}</Button>
                         <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={saveCategory}>
                             <Check className="h-4 w-4 mr-1" /> Save Category
                         </Button>
@@ -396,65 +398,65 @@ export default function AdminCategories() {
             <Dialog open={!!editingAttribute} onOpenChange={(open) => { if (!open) setEditingAttribute(null); }}>
                 <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Edit Attribute</DialogTitle>
-                        <DialogDescription>Update facet behavior and input style.</DialogDescription>
+                        <DialogTitle>{copy('Edit Attribute', 'Hariri Sifa')}</DialogTitle>
+                        <DialogDescription>{copy('Update facet behavior and input style.', 'Sasisha tabia ya sifa na mtindo wa kuingiza.')}</DialogDescription>
                     </DialogHeader>
                     {editingAttribute && (
                         <div className="grid md:grid-cols-2 gap-3">
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Key</p>
+                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">{copy('Key', 'Ufunguo')}</p>
                                 <Input value={editingAttribute.key} onChange={(e) => setEditingAttribute((p) => ({ ...p, key: e.target.value }))} placeholder="key" />
                             </div>
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Label</p>
+                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">{copy('Label', 'Lebo')}</p>
                                 <Input value={editingAttribute.label} onChange={(e) => setEditingAttribute((p) => ({ ...p, label: e.target.value }))} placeholder="label" />
                             </div>
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Input Type</p>
+                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">{copy('Input type', 'Aina ya ingizo')}</p>
                                 <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={editingAttribute.input_type} onChange={(e) => setEditingAttribute((p) => ({ ...p, input_type: e.target.value }))}>
-                                    <option value="text">text</option>
-                                    <option value="textarea">textarea</option>
-                                    <option value="number">number</option>
-                                    <option value="select">select</option>
-                                    <option value="multiselect">multiselect</option>
-                                    <option value="date">date</option>
-                                    <option value="boolean">boolean</option>
+                                    <option value="text">{copy('text', 'maandishi')}</option>
+                                    <option value="textarea">{copy('textarea', 'eneo la maandishi')}</option>
+                                    <option value="number">{copy('number', 'namba')}</option>
+                                    <option value="select">{copy('select', 'chagua')}</option>
+                                    <option value="multiselect">{copy('multiselect', 'chagua nyingi')}</option>
+                                    <option value="date">{copy('date', 'tarehe')}</option>
+                                    <option value="boolean">{copy('boolean', 'ndiyo/hapana')}</option>
                                 </select>
                             </div>
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Select Options (CSV)</p>
+                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">{copy('Select options (CSV)', 'Chaguo (CSV)')}</p>
                                 <Input
                                     value={editingAttribute.options_csv}
                                     onChange={(e) => setEditingAttribute((p) => ({ ...p, options_csv: e.target.value }))}
-                                    placeholder="e.g SSD, HDD, NVMe"
+                                    placeholder={copy('e.g. SSD, HDD, NVMe', 'mf. SSD, HDD, NVMe')}
                                     disabled={!['select', 'multiselect'].includes(editingAttribute.input_type)}
                                 />
                             </div>
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Number UI Hint</p>
+                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">{copy('Number UI hint', 'Kidokezo cha namba')}</p>
                                 <select
                                     className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-100 disabled:text-slate-400"
                                     value={editingAttribute.ui_hint || ''}
                                     onChange={(e) => setEditingAttribute((p) => ({ ...p, ui_hint: e.target.value }))}
                                     disabled={editingAttribute.input_type !== 'number'}
                                 >
-                                    <option value="">no hint</option>
-                                    <option value="number_with_unit">number + unit</option>
+                                    <option value="">{copy('no hint', 'hakuna kidokezo')}</option>
+                                    <option value="number_with_unit">{copy('number + unit', 'namba + kipimo')}</option>
                                 </select>
                             </div>
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Units (CSV)</p>
+                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">{copy('Units (CSV)', 'Vipimo (CSV)')}</p>
                                 <Input
                                     value={editingAttribute.unit_options_csv || ''}
                                     onChange={(e) => setEditingAttribute((p) => ({ ...p, unit_options_csv: e.target.value }))}
-                                    placeholder="e.g GB, TB"
+                                    placeholder={copy('e.g. GB, TB', 'mf. GB, TB')}
                                     disabled={editingAttribute.input_type !== 'number'}
                                 />
                             </div>
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Sort Order</p>
+                                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">{copy('Sort order', 'Mpangilio wa kuonyesha')}</p>
                                 <Input type="number" min="0" value={editingAttribute.sort_order ?? 0} onChange={(e) => setEditingAttribute((p) => ({ ...p, sort_order: e.target.value }))} placeholder="0" />
-                                <p className="text-[11px] text-slate-500">Lower number appears first in merchant form and filters.</p>
+                                <p className="text-[11px] text-slate-500">{copy('Lower number appears first in merchant form and filters.', 'Namba ndogo huonekana kwanza kwenye fomu na vichujio vya muuzaji.')}</p>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:col-span-2">
                                 <label className="h-10 rounded-md border border-slate-300 bg-white px-3 text-xs flex items-center gap-2">
@@ -479,7 +481,7 @@ export default function AdminCategories() {
                         </div>
                     )}
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditingAttribute(null)}>Cancel</Button>
+                        <Button variant="outline" onClick={() => setEditingAttribute(null)}>{copy('Cancel', 'Ghairi')}</Button>
                         <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={saveAttribute}>
                             <Check className="h-4 w-4 mr-1" /> Save Attribute
                         </Button>
@@ -491,6 +493,7 @@ export default function AdminCategories() {
 }
 
 function CategoryHeader({ category, displayName, onEdit, onDelete }) {
+    const { copy } = useLocale();
     return (
         <div className="flex items-center justify-between gap-3">
             <div>
@@ -499,10 +502,10 @@ function CategoryHeader({ category, displayName, onEdit, onDelete }) {
             </div>
             <div className="flex gap-2">
                 <Button variant="outline" onClick={() => onEdit(category)}>
-                    <Pencil className="h-4 w-4 mr-1" /> Edit
+                    <Pencil className="h-4 w-4 mr-1" /> {copy('Edit', 'Hariri')}
                 </Button>
                 <Button variant="outline" className="text-red-700 border-red-300" onClick={() => onDelete(category.id)}>
-                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                    <Trash2 className="h-4 w-4 mr-2" /> {copy('Delete', 'Futa')}
                 </Button>
             </div>
         </div>
@@ -510,12 +513,14 @@ function CategoryHeader({ category, displayName, onEdit, onDelete }) {
 }
 
 function BrandPicker({ label, brands, selectedIds, onToggle }) {
+    const { copy } = useLocale();
+    const translatedLabel = copy(label, label === 'Allowed brands for this category' ? 'Chapa zinazoruhusiwa kwa kategoria hii' : 'Chapa zinazoruhusiwa');
     return (
         <div className="space-y-2">
-            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">{label}</p>
+            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">{translatedLabel}</p>
             <div className="grid md:grid-cols-4 gap-2">
                 {brands.length === 0 ? (
-                    <p className="text-xs text-slate-500">Create brands first.</p>
+                    <p className="text-xs text-slate-500">{copy('Create brands first.', 'Unda chapa kwanza.')}</p>
                 ) : brands.map((brand) => (
                     <label key={brand.id} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm flex items-center gap-2">
                         <input type="checkbox" checked={selectedIds.includes(brand.id)} onChange={() => onToggle(brand.id)} />
@@ -528,11 +533,12 @@ function BrandPicker({ label, brands, selectedIds, onToggle }) {
 }
 
 function BrandSummary({ brands }) {
+    const { copy } = useLocale();
     return (
         <div className="space-y-1">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Allowed Brands</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Allowed brands', 'Chapa zinazoruhusiwa')}</p>
             {brands.length === 0 ? (
-                <p className="text-xs text-slate-500">No brand restriction.</p>
+                <p className="text-xs text-slate-500">{copy('No brand restriction.', 'Hakuna kizuizi cha chapa.')}</p>
             ) : (
                 <div className="flex flex-wrap gap-2">
                     {brands.map((brand) => (
@@ -545,6 +551,8 @@ function BrandSummary({ brands }) {
 }
 
 function UnitPicker({ label, units, selectedIds, onToggle }) {
+    const { copy } = useLocale();
+    const translatedLabel = copy(label, label.includes('for this category') ? 'Vipimo vinavyoruhusiwa kuuzwa kwa kategoria hii' : 'Vipimo vinavyoruhusiwa kuuzwa');
     const grouped = units.reduce((acc, unit) => {
         const key = unit.unit_category || 'other';
         acc[key] = acc[key] || [];
@@ -554,9 +562,9 @@ function UnitPicker({ label, units, selectedIds, onToggle }) {
 
     return (
         <div className="space-y-2">
-            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">{label}</p>
+            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">{translatedLabel}</p>
             {units.length === 0 ? (
-                <p className="text-xs text-slate-500">Create unit types first.</p>
+                    <p className="text-xs text-slate-500">{copy('Create unit types first.', 'Unda aina za vipimo kwanza.')}</p>
             ) : (
                 <div className="space-y-2">
                     {Object.entries(grouped).map(([category, items]) => (
@@ -579,16 +587,17 @@ function UnitPicker({ label, units, selectedIds, onToggle }) {
 }
 
 function UnitSummary({ units }) {
+    const { copy } = useLocale();
     return (
         <div className="space-y-1">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Allowed Units</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Allowed units', 'Vipimo vinavyoruhusiwa')}</p>
             {units.length === 0 ? (
-                <p className="text-xs text-slate-500">No unit restriction yet.</p>
+                <p className="text-xs text-slate-500">{copy('No unit restriction yet.', 'Hakuna kizuizi cha kipimo bado.')}</p>
             ) : (
                 <div className="flex flex-wrap gap-2">
                     {units.map((unit) => (
                         <span key={unit.id} className="rounded-full border border-slate-300 px-2 py-1 text-xs">
-                            {unit.name} ({unit.code}){unit.pivot?.is_default ? ' · default' : ''}
+                            {unit.name} ({unit.code}){unit.pivot?.is_default ? ` · ${copy('default', 'chaguo-msingi')}` : ''}
                         </span>
                     ))}
                 </div>
@@ -598,32 +607,33 @@ function UnitSummary({ units }) {
 }
 
 function AttributeBlock({ title, attributes, form, setForm, onCreate, onDelete, onEdit }) {
+    const { copy } = useLocale();
     return (
         <div className="space-y-3">
             <p className="text-sm font-bold text-slate-800">{title}</p>
             <div className="grid md:grid-cols-8 gap-2">
-                <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} placeholder="key e.g ram" />
-                <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Label e.g RAM" />
+                <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} placeholder={copy('Key, e.g. ram', 'Ufunguo, mf. ram')} />
+                <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder={copy('Label, e.g. RAM', 'Lebo, mf. RAM')} />
                 <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.input_type} onChange={(e) => setForm({ ...form, input_type: e.target.value })}>
-                                    <option value="text">text</option>
-                    <option value="textarea">textarea</option>
-                    <option value="number">number</option>
-                    <option value="select">select</option>
-                    <option value="multiselect">multiselect</option>
-                    <option value="date">date</option>
-                    <option value="boolean">boolean</option>
+                    <option value="text">{copy('text', 'maandishi')}</option>
+                    <option value="textarea">{copy('textarea', 'eneo la maandishi')}</option>
+                    <option value="number">{copy('number', 'namba')}</option>
+                    <option value="select">{copy('select', 'chagua')}</option>
+                    <option value="multiselect">{copy('multiselect', 'chagua nyingi')}</option>
+                    <option value="date">{copy('date', 'tarehe')}</option>
+                    <option value="boolean">{copy('boolean', 'ndiyo/hapana')}</option>
                 </select>
-                <Input value={form.options_csv} onChange={(e) => setForm({ ...form, options_csv: e.target.value })} placeholder="Options CSV" />
+                <Input value={form.options_csv} onChange={(e) => setForm({ ...form, options_csv: e.target.value })} placeholder={copy('Options CSV', 'Chaguo za CSV')} />
                 <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-xs" value={form.ui_hint || ''} onChange={(e) => setForm({ ...form, ui_hint: e.target.value })}>
-                    <option value="">no hint</option>
-                    <option value="number_with_unit">number + unit</option>
+                    <option value="">{copy('no hint', 'hakuna kidokezo')}</option>
+                    <option value="number_with_unit">{copy('number + unit', 'namba + kipimo')}</option>
                 </select>
-                <Input value={form.unit_options_csv || ''} onChange={(e) => setForm({ ...form, unit_options_csv: e.target.value })} placeholder="Units CSV e.g GB,TB" />
+                <Input value={form.unit_options_csv || ''} onChange={(e) => setForm({ ...form, unit_options_csv: e.target.value })} placeholder={copy('Units CSV, e.g. GB, TB', 'Vipimo vya CSV, mf. GB, TB')} />
                 <label className="h-10 rounded-md border border-slate-300 bg-white px-3 text-xs flex items-center gap-2">
-                    <input type="checkbox" checked={!!form.is_required} onChange={(e) => setForm({ ...form, is_required: e.target.checked })} /> Required
-                </label>
+                    <input type="checkbox" checked={!!form.is_required} onChange={(e) => setForm({ ...form, is_required: e.target.checked })} /> {copy('Required', 'Inahitajika')}
+                    </label>
                 <label className="h-10 rounded-md border border-slate-300 bg-white px-3 text-xs flex items-center gap-2">
-                    <input type="checkbox" checked={!!form.is_filterable} onChange={(e) => setForm({ ...form, is_filterable: e.target.checked })} /> Filterable
+                    <input type="checkbox" checked={!!form.is_filterable} onChange={(e) => setForm({ ...form, is_filterable: e.target.checked })} /> {copy('Filterable', 'Inaweza kuchujwa')}
                 </label>
                 <label className="h-10 rounded-md border border-slate-300 bg-white px-3 text-xs flex items-center gap-2">
                     <input
@@ -632,25 +642,25 @@ function AttributeBlock({ title, attributes, form, setForm, onCreate, onDelete, 
                         onChange={(e) => setForm({ ...form, is_variant_axis: e.target.checked })}
                         disabled={form.input_type !== 'select'}
                     />
-                    Variant axis
+                    {copy('Variant axis', 'Mhimili wa variant')}
                 </label>
                 <label className="h-10 rounded-md border border-slate-300 bg-white px-3 text-xs flex items-center gap-2">
                     <input type="checkbox" checked={!!form.ai_extractable} onChange={(e) => setForm({ ...form, ai_extractable: e.target.checked })} /> AI
                 </label>
-                <Button className="bg-brand-600 hover:bg-brand-700 text-white" onClick={onCreate}>Add Attribute</Button>
+                <Button className="bg-brand-600 hover:bg-brand-700 text-white" onClick={onCreate}>{copy('Add Attribute', 'Ongeza Sifa')}</Button>
             </div>
             <div className="space-y-2">
                 {attributes.length === 0 ? (
-                    <p className="text-xs text-slate-500">No attributes yet.</p>
+                    <p className="text-xs text-slate-500">{copy('No attributes yet.', 'Hakuna sifa bado.')}</p>
                 ) : attributes.map((attr) => (
                     <div key={attr.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2 flex items-center justify-between gap-3">
                         <p className="text-sm text-slate-800">
-                            <span className="font-semibold">{attr.label}</span> ({attr.key}) · {attr.input_type}
-                            {attr.ui_hint ? ` · ${attr.ui_hint}` : ''}
-                            {attr.is_required ? ' · required' : ''}
-                            {attr.is_filterable ? ' · filterable' : ''}
-                            {attr.is_variant_axis ? ' · variant-axis' : ''}
-                            {attr.ai_extractable ? ' · ai' : ''}
+                            <span className="font-semibold">{attr.label}</span> ({attr.key}) · {attributeInputTypeLabel(attr.input_type, copy)}
+                            {attr.ui_hint ? ` · ${attributeInputTypeLabel(attr.ui_hint, copy)}` : ''}
+                            {attr.is_required ? ` · ${copy('required', 'inahitajika')}` : ''}
+                            {attr.is_filterable ? ` · ${copy('filterable', 'inaweza kuchujwa')}` : ''}
+                            {attr.is_variant_axis ? ` · ${copy('variant-axis', 'mhimili wa variant')}` : ''}
+                            {attr.ai_extractable ? ` · ${copy('AI', 'AI')}` : ''}
                         </p>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={() => onEdit(attr)}>
@@ -665,4 +675,19 @@ function AttributeBlock({ title, attributes, form, setForm, onCreate, onDelete, 
             </div>
         </div>
     );
+}
+
+function attributeInputTypeLabel(value, copy) {
+    const labels = {
+        text: ['text', 'maandishi'],
+        textarea: ['textarea', 'eneo la maandishi'],
+        number: ['number', 'namba'],
+        select: ['select', 'chagua'],
+        multiselect: ['multiselect', 'chagua nyingi'],
+        date: ['date', 'tarehe'],
+        boolean: ['boolean', 'ndiyo/hapana'],
+        number_with_unit: ['number + unit', 'namba + kipimo'],
+    };
+
+    return labels[value] ? copy(...labels[value]) : value;
 }

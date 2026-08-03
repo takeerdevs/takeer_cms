@@ -6,6 +6,7 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { ArrowLeft, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const labels = {
     physical: 'Physical Products',
@@ -17,6 +18,7 @@ const labels = {
 };
 
 export default function MerchantCatalogType({ merchantId, type }) {
+    const { t, copy } = useLocale();
     const [merchant, setMerchant] = useState(null);
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -24,12 +26,12 @@ export default function MerchantCatalogType({ merchantId, type }) {
     const [page, setPage] = useState(1);
     const [lastPage, setLastPage] = useState(1);
 
-    const pageTitle = useMemo(() => `Merchant ${labels[type] || 'Catalog'} - Admin`, [type]);
+    const pageTitle = useMemo(() => `${copy('Merchant', 'Muuzaji')} ${labels[type] || copy('Catalog', 'Katalogi')} - Admin`, [type, copy]);
 
     const loadMerchant = async () => {
         const res = await fetch(`/admin/api/merchants/${merchantId}`, { headers: { Accept: 'application/json' } });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Failed to load merchant.');
+        if (!res.ok) throw new Error(data.message || t('adminUi.merchant'));
         setMerchant(data.merchant);
     };
 
@@ -38,7 +40,7 @@ export default function MerchantCatalogType({ merchantId, type }) {
         try {
             const res = await fetch(`/admin/api/merchants/${merchantId}/catalog/${type}?page=${nextPage}&search=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to load catalog.');
+            if (!res.ok) throw new Error(data.message || t('adminUi.noRecords'));
             setItems(data.data || []);
             setPage(data.current_page || 1);
             setLastPage(data.last_page || 1);
@@ -62,12 +64,12 @@ export default function MerchantCatalogType({ merchantId, type }) {
             <div className="space-y-5">
                 <div>
                     <Link href={`/admin/merchants/${merchantId}`} className="inline-flex items-center text-sm text-slate-600 hover:text-slate-900">
-                        <ArrowLeft className="h-4 w-4 mr-1" /> Back to merchant
+                        <ArrowLeft className="h-4 w-4 mr-1" /> {t('adminUi.backToMerchant')}
                     </Link>
                     <h1 className="text-2xl font-black text-slate-900 mt-2">
-                        {merchant?.display_name || 'Merchant'} - {labels[type] || 'Catalog'}
+                        {merchant?.display_name || t('adminUi.merchant')} - {labels[type] || copy('Catalog', 'Catalog')}
                     </h1>
-                    <p className="text-sm text-slate-600">Read-only admin validation view.</p>
+                    <p className="text-sm text-slate-600">{t('adminUi.validationView')}</p>
                 </div>
 
                 <div className="flex gap-2">
@@ -75,31 +77,31 @@ export default function MerchantCatalogType({ merchantId, type }) {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                         <Input
                             className="bg-white border-slate-300 text-slate-900 pl-9"
-                            placeholder={`Search ${labels[type] || 'items'}...`}
+                            placeholder={`${t('adminUi.search')} ${labels[type] || copy('items', 'items')}...`}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
                     </div>
-                    <Button variant="outline" onClick={() => loadItems(1, search)}>Search</Button>
+                    <Button variant="outline" onClick={() => loadItems(1, search)}>{t('adminUi.search')}</Button>
                 </div>
 
                 <Card className="bg-white border-slate-200">
                     <CardContent className="p-0">
                         {loading ? (
-                            <div className="p-8 text-center text-slate-500">Loading...</div>
+                            <div className="p-8 text-center text-slate-500">{t('adminUi.loading')}</div>
                         ) : items.length === 0 ? (
-                            <div className="p-8 text-center text-slate-500">No records found.</div>
+                            <div className="p-8 text-center text-slate-500">{t('adminUi.noRecords')}</div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full min-w-[900px] text-sm">
                                     <thead>
                                         <tr className="border-b border-slate-200">
-                                            <th className="text-left p-3 text-slate-500">ID</th>
-                                            <th className="text-left p-3 text-slate-500">Title</th>
-                                            <th className="text-left p-3 text-slate-500">Type</th>
-                                            <th className="text-left p-3 text-slate-500">Status</th>
-                                            <th className="text-left p-3 text-slate-500">Price</th>
-                                            <th className="text-left p-3 text-slate-500">Created</th>
+                                            <th className="text-left p-3 text-slate-500">{t('adminUi.id')}</th>
+                                            <th className="text-left p-3 text-slate-500">{t('adminUi.title')}</th>
+                                            <th className="text-left p-3 text-slate-500">{t('adminUi.type')}</th>
+                                            <th className="text-left p-3 text-slate-500">{t('adminUi.status')}</th>
+                                            <th className="text-left p-3 text-slate-500">{t('adminUi.price')}</th>
+                                            <th className="text-left p-3 text-slate-500">{t('adminUi.created')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -107,7 +109,7 @@ export default function MerchantCatalogType({ merchantId, type }) {
                                             <tr key={item.id} className="border-b border-slate-100">
                                                 <td className="p-3 text-slate-800">{item.id}</td>
                                                 <td className="p-3 text-slate-800">
-                                                    {item.title || item.name || item.caption || 'Untitled'}
+                                                    {item.title || item.name || item.caption || copy('Untitled', 'Bila kichwa')}
                                                 </td>
                                                 <td className="p-3 text-slate-700">
                                                     {item.type || item.billing_interval || (type === 'posts' ? 'post' : type)}
@@ -127,9 +129,9 @@ export default function MerchantCatalogType({ merchantId, type }) {
                 </Card>
 
                 <div className="flex items-center justify-end gap-2">
-                    <Button variant="outline" disabled={page <= 1} onClick={() => loadItems(page - 1, search)}>Prev</Button>
-                    <span className="text-sm text-slate-700">Page {page} / {lastPage}</span>
-                    <Button variant="outline" disabled={page >= lastPage} onClick={() => loadItems(page + 1, search)}>Next</Button>
+                    <Button variant="outline" disabled={page <= 1} onClick={() => loadItems(page - 1, search)}>{t('adminUi.previous')}</Button>
+                    <span className="text-sm text-slate-700">{copy('Page', 'Ukurasa')} {page} / {lastPage}</span>
+                    <Button variant="outline" disabled={page >= lastPage} onClick={() => loadItems(page + 1, search)}>{t('adminUi.next')}</Button>
                 </div>
             </div>
         </AdminLayout>

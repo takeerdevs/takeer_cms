@@ -18,8 +18,10 @@ import { Input } from '@/Components/ui/Input';
 import { Switch } from '@/Components/ui/Switch';
 import { Label } from '@/Components/ui/Label';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 export default function RetailSettings({ merchant }) {
+    const { copy } = useLocale();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [settings, setSettings] = useState({
@@ -87,10 +89,10 @@ export default function RetailSettings({ merchant }) {
         setSavingFiscal(true);
         try {
             await window.axios.post('/api/retail/fiscal-integrations', fiscalForm);
-            toast.success('Fiscal receipt integration saved.');
+            toast.success(copy('Fiscal receipt integration saved.', 'Muunganisho wa risiti ya kikodi umehifadhiwa.'));
             fetchSettings();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed to save fiscal receipt integration.');
+            toast.error(err.response?.data?.message || copy('Failed to save fiscal receipt integration.', 'Imeshindikana kuhifadhi muunganisho wa risiti ya kikodi.'));
         } finally {
             setSavingFiscal(false);
         }
@@ -99,10 +101,10 @@ export default function RetailSettings({ merchant }) {
     const handleRetryReceipt = async (receipt) => {
         try {
             await window.axios.post(`/api/retail/fiscal-receipts/${receipt.id}/retry`);
-            toast.success('Fiscal receipt retry attempted.');
+            toast.success(copy('Fiscal receipt retry attempted.', 'Jaribio la risiti ya kikodi limefanywa.'));
             fetchSettings();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Retry failed.');
+            toast.error(err.response?.data?.message || copy('Retry failed.', 'Jaribio limeshindikana.'));
         }
     };
 
@@ -110,9 +112,9 @@ export default function RetailSettings({ merchant }) {
         setSaving(true);
         try {
             await window.axios.patch('/api/retail/settings', settings);
-            toast.success('Mipangilio imehifadhiwa kikamilifu!');
+            toast.success(copy('Settings saved successfully!', 'Mipangilio imehifadhiwa kikamilifu!'));
         } catch (err) {
-            toast.error('Imeshindwa kuhifadhi mipangilio.');
+            toast.error(copy('Failed to save settings.', 'Imeshindwa kuhifadhi mipangilio.'));
         } finally {
             setSaving(false);
         }
@@ -126,7 +128,7 @@ export default function RetailSettings({ merchant }) {
 
     return (
         <AppLayout>
-            <Head title="Retail Settings | Takeer" />
+            <Head title={`${copy('Retail Settings', 'Mipangilio ya Rejareja')} | Takeer`} />
             
             <div className="max-w-4xl mx-auto py-8 px-4 md:px-6">
                 <div className="flex items-center gap-4 mb-8">
@@ -139,8 +141,8 @@ export default function RetailSettings({ merchant }) {
                         <ChevronLeft className="h-6 w-6" />
                     </Button>
                     <div>
-                        <h1 className="text-3xl font-black tracking-tight text-brand-900">Retail Settings</h1>
-                        <p className="text-muted-foreground font-medium">Configure POS operational limits and approvals.</p>
+                        <h1 className="text-3xl font-black tracking-tight text-brand-900">{copy('Retail Settings', 'Mipangilio ya Rejareja')}</h1>
+                        <p className="text-muted-foreground font-medium">{copy('Configure POS operational limits and approvals.', 'Sanidi vikomo vya uendeshaji wa POS na idhini.')}</p>
                     </div>
                 </div>
 
@@ -151,16 +153,16 @@ export default function RetailSettings({ merchant }) {
                             <div className="h-12 w-12 rounded-2xl bg-brand-600/10 flex items-center justify-center mb-4">
                                 <Percent className="h-6 w-6 text-brand-600" />
                             </div>
-                            <CardTitle className="text-xl font-black">Discount Thresholds</CardTitle>
+                            <CardTitle className="text-xl font-black">{copy('Discount Thresholds', 'Viwango vya Punguzo')}</CardTitle>
                             <CardDescription className="font-medium">
-                                Control how much discount staff can give without manager PIN.
+                                {copy('Control how much discount staff can give without manager PIN.', 'Dhibiti punguzo ambalo wahudumu wanaweza kutoa bila PIN ya meneja.')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="p-8 space-y-6">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div className="space-y-1">
-                                    <Label className="text-sm font-black uppercase tracking-wider text-brand-900">Max No-PIN Discount (%)</Label>
-                                    <p className="text-xs text-muted-foreground font-medium">Staff can bargain up to this percentage without needing approval.</p>
+                                    <Label className="text-sm font-black uppercase tracking-wider text-brand-900">{copy('Max No-PIN Discount (%)', 'Punguzo la Juu Bila PIN (%)')}</Label>
+                                    <p className="text-xs text-muted-foreground font-medium">{copy('Staff can bargain up to this percentage without needing approval.', 'Wahudumu wanaweza kujadiliana hadi asilimia hii bila kuhitaji idhini.')}</p>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <Input 
@@ -181,16 +183,16 @@ export default function RetailSettings({ merchant }) {
                             <div className="h-12 w-12 rounded-2xl bg-brand-600/10 flex items-center justify-center mb-4">
                                 <Shield className="h-6 w-6 text-brand-600" />
                             </div>
-                            <CardTitle className="text-xl font-black">Operational Security</CardTitle>
+                            <CardTitle className="text-xl font-black">{copy('Operational Security', 'Usalama wa Uendeshaji')}</CardTitle>
                             <CardDescription className="font-medium">
-                                Manage PIN requirements and remote overrides.
+                                {copy('Manage PIN requirements and remote overrides.', 'Simamia mahitaji ya PIN na idhini za mbali.')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="p-8 space-y-8">
                             <div className="flex items-center justify-between">
                                 <div className="space-y-1">
-                                    <Label className="text-sm font-black uppercase tracking-wider text-brand-900">PIN for Partial Payments</Label>
-                                    <p className="text-xs text-muted-foreground font-medium">Require an approval PIN whenever an order is not fully paid (Credit/Deni).</p>
+                                    <Label className="text-sm font-black uppercase tracking-wider text-brand-900">{copy('PIN for Partial Payments', 'PIN kwa Malipo ya Sehemu')}</Label>
+                                    <p className="text-xs text-muted-foreground font-medium">{copy('Require an approval PIN whenever an order is not fully paid (Credit).', 'Hitaji PIN ya idhini kila oda haijalipwa kikamilifu (Mkopo).')}</p>
                                 </div>
                                 <Switch 
                                     checked={settings.require_pin_for_partial_payment}
@@ -202,8 +204,8 @@ export default function RetailSettings({ merchant }) {
 
                             <div className="flex items-center justify-between">
                                 <div className="space-y-1">
-                                    <Label className="text-sm font-black uppercase tracking-wider text-brand-900">Allow Remote Approval</Label>
-                                    <p className="text-xs text-muted-foreground font-medium">Allow staff to request approval via notification when manager is away.</p>
+                                    <Label className="text-sm font-black uppercase tracking-wider text-brand-900">{copy('Allow Remote Approval', 'Ruhusu Idhini ya Mbali')}</Label>
+                                    <p className="text-xs text-muted-foreground font-medium">{copy('Allow staff to request approval via notification when manager is away.', 'Ruhusu wahudumu kuomba idhini kwa arifa meneja akiwa mbali.')}</p>
                                 </div>
                                 <Switch 
                                     checked={settings.allow_remote_approval}
@@ -219,16 +221,16 @@ export default function RetailSettings({ merchant }) {
                             <div className="h-12 w-12 rounded-2xl bg-brand-600/10 flex items-center justify-center mb-4">
                                 <Clock className="h-6 w-6 text-brand-600" />
                             </div>
-                            <CardTitle className="text-xl font-black">Online Reservation</CardTitle>
+                            <CardTitle className="text-xl font-black">{copy('Online Reservation', 'Reservation ya Mtandaoni')}</CardTitle>
                             <CardDescription className="font-medium">
-                                Enable customers to reserve items online via partial payments.
+                                {copy('Enable customers to reserve items online via partial payments.', 'Ruhusu wateja kuhifadhi bidhaa mtandaoni kupitia malipo ya sehemu.')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="p-8 space-y-8">
                             <div className="flex items-center justify-between">
                                 <div className="space-y-1">
-                                    <Label className="text-sm font-black uppercase tracking-wider text-brand-900">Allow Online Reservations</Label>
-                                    <p className="text-xs text-muted-foreground font-medium">Enable 'Pay Later' / Partial payment for online orders (Reservations).</p>
+                                    <Label className="text-sm font-black uppercase tracking-wider text-brand-900">{copy('Allow Online Reservations', 'Ruhusu Reservations za Mtandaoni')}</Label>
+                                    <p className="text-xs text-muted-foreground font-medium">{copy("Enable 'Pay Later' / partial payment for online orders.", 'Washa Lipa Baadaye / malipo ya sehemu kwa oda za mtandaoni.')}</p>
                                 </div>
                                 <Switch 
                                     checked={settings.allow_online_reservation}
@@ -240,8 +242,8 @@ export default function RetailSettings({ merchant }) {
 
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div className="space-y-1">
-                                    <Label className="text-sm font-black uppercase tracking-wider text-brand-900">Reservation Limit (Hours)</Label>
-                                    <p className="text-xs text-muted-foreground font-medium">Maximum time allowed to complete payment before order expires.</p>
+                                    <Label className="text-sm font-black uppercase tracking-wider text-brand-900">{copy('Reservation Limit (Hours)', 'Kikomo cha Reservation (Masaa)')}</Label>
+                                    <p className="text-xs text-muted-foreground font-medium">{copy('Maximum time allowed to complete payment before order expires.', 'Muda wa juu wa kukamilisha malipo kabla oda haijaisha.')}</p>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <Input 
@@ -250,7 +252,7 @@ export default function RetailSettings({ merchant }) {
                                         value={settings.reservation_max_hours}
                                         onChange={(e) => setSettings({...settings, reservation_max_hours: parseInt(e.target.value)})}
                                     />
-                                    <span className="font-black text-brand-900 text-sm">Hours</span>
+                                    <span className="font-black text-brand-900 text-sm">{copy('Hours', 'Masaa')}</span>
                                 </div>
                             </div>
                         </CardContent>
@@ -261,16 +263,16 @@ export default function RetailSettings({ merchant }) {
                             <div className="h-12 w-12 rounded-2xl bg-brand-600/10 flex items-center justify-center mb-4">
                                 <ReceiptText className="h-6 w-6 text-brand-600" />
                             </div>
-                            <CardTitle className="text-xl font-black">Fiscal Receipts</CardTitle>
+                            <CardTitle className="text-xl font-black">{copy('Fiscal Receipts', 'Risiti za Kikodi')}</CardTitle>
                             <CardDescription className="font-medium">
-                                Connect a country-specific fiscal receipt provider. Receipts are issued under this merchant's tax identity.
+                                {copy("Connect a country-specific fiscal receipt provider. Receipts are issued under this merchant's tax identity.", 'Unganisha mtoa risiti wa kikodi wa nchi husika. Risiti zitatolewa kwa utambulisho wa kodi wa muuzaji huyu.')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="p-8 space-y-6">
                             {!fiscalData.country ? (
-                                <p className="text-sm font-bold text-amber-700">Set the merchant country before configuring fiscal receipts.</p>
+                                <p className="text-sm font-bold text-amber-700">{copy('Set the merchant country before configuring fiscal receipts.', 'Weka nchi ya muuzaji kabla ya kusanidi risiti za kikodi.')}</p>
                             ) : fiscalData.regimes?.length === 0 ? (
-                                <p className="text-sm font-bold text-slate-600">No fiscal receipt regime is configured for {fiscalData.country.name} yet.</p>
+                                <p className="text-sm font-bold text-slate-600">{copy('No fiscal receipt regime is configured for', 'Hakuna mfumo wa risiti za kikodi uliosanidiwa kwa')} {fiscalData.country.name} {copy('yet.', 'bado.')}</p>
                             ) : (
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -312,8 +314,8 @@ export default function RetailSettings({ merchant }) {
                                                 onChange={(e) => setFiscalForm({ ...fiscalForm, mode: e.target.value })}
                                                 className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full"
                                             >
-                                                <option value="test">Test</option>
-                                                <option value="live">Live</option>
+                                                <option value="test">{copy('Test', 'Majaribio')}</option>
+                                                <option value="live">{copy('Live', 'Hai')}</option>
                                             </select>
                                         </Field>
                                         <Field label="TIN">
@@ -346,9 +348,9 @@ export default function RetailSettings({ merchant }) {
                                                 onChange={(e) => setFiscalForm({ ...fiscalForm, status: e.target.value })}
                                                 className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full"
                                             >
-                                                <option value="draft">Draft</option>
-                                                <option value="active">Active</option>
-                                                <option value="paused">Paused</option>
+                                                <option value="draft">{copy('Draft', 'Rasimu')}</option>
+                                                <option value="active">{copy('Active', 'Hai')}</option>
+                                                <option value="paused">{copy('Paused', 'Imesitishwa')}</option>
                                             </select>
                                         </Field>
                                     </div>
@@ -361,7 +363,7 @@ export default function RetailSettings({ merchant }) {
 
                                     {fiscalData.manual_fallback?.enabled && (
                                         <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                                            <p className="text-sm font-black text-slate-900">Manual receipt fallback is active</p>
+                                        <p className="text-sm font-black text-slate-900">{copy('Manual receipt fallback is active', 'Njia ya risiti ya mkono inatumika')}</p>
                                             <p className="text-xs font-bold text-slate-600 mt-1">
                                                 {fiscalData.manual_fallback.message}
                                             </p>
@@ -369,7 +371,7 @@ export default function RetailSettings({ merchant }) {
                                     )}
 
                                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Receipt monitor</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Receipt monitor', 'Ufuatiliaji wa risiti')}</p>
                                         <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mt-3">
                                             {[
                                                 ['Issued', receiptSummary.issued || 0],
@@ -389,7 +391,7 @@ export default function RetailSettings({ merchant }) {
 
                                         <div className="mt-4 divide-y divide-slate-200 rounded-2xl overflow-hidden border border-slate-200 bg-white">
                                             {recentReceipts.length === 0 ? (
-                                                <p className="p-4 text-xs font-bold text-slate-500">No fiscal receipt records yet.</p>
+                                                <p className="p-4 text-xs font-bold text-slate-500">{copy('No fiscal receipt records yet.', 'Hakuna kumbukumbu za risiti za kikodi bado.')}</p>
                                             ) : recentReceipts.map((receipt) => (
                                                 <div key={receipt.id} className="p-3 flex items-center justify-between gap-3">
                                                     <div className="min-w-0">
@@ -402,7 +404,7 @@ export default function RetailSettings({ merchant }) {
                                                     </div>
                                                     {['failed', 'provider_pending', 'pending', 'queued'].includes(receipt.status) && (
                                                         <Button variant="outline" size="sm" className="rounded-xl shrink-0" onClick={() => handleRetryReceipt(receipt)}>
-                                                            Retry
+                                                            {copy('Retry', 'Jaribu tena')}
                                                         </Button>
                                                     )}
                                                 </div>
@@ -412,7 +414,7 @@ export default function RetailSettings({ merchant }) {
 
                                     <div className="flex justify-end">
                                         <Button variant="outline" className="rounded-xl" onClick={handleSaveFiscal} disabled={savingFiscal || !fiscalForm.fiscal_provider_id}>
-                                            {savingFiscal ? 'Saving...' : 'Save Fiscal Integration'}
+                                            {savingFiscal ? copy('Saving...', 'Inahifadhi...') : copy('Save Fiscal Integration', 'Hifadhi Muunganisho wa Kikodi')}
                                         </Button>
                                     </div>
                                 </>
@@ -426,8 +428,8 @@ export default function RetailSettings({ merchant }) {
                             onClick={handleSave}
                             disabled={saving}
                         >
-                            {saving ? 'Inahifadhi...' : (
-                                <>Hifadhi Mabadiliko <Save className="ml-2 h-5 w-5" /></>
+                            {saving ? copy('Saving...', 'Inahifadhi...') : (
+                                <>{copy('Save Changes', 'Hifadhi Mabadiliko')} <Save className="ml-2 h-5 w-5" /></>
                             )}
                         </Button>
                     </div>
@@ -438,9 +440,25 @@ export default function RetailSettings({ merchant }) {
 }
 
 function Field({ label, children }) {
+    const { copy } = useLocale();
+    const translations = {
+        Country: 'Nchi',
+        'Fiscal Regime': 'Mfumo wa kikodi',
+        Provider: 'Mtoa huduma',
+        Mode: 'Njia',
+        TIN: 'TIN',
+        VRN: 'VRN',
+        'Branch Code': 'Msimbo wa tawi',
+        'Device Serial': 'Namba ya kifaa',
+        'Provider Access Expires': 'Ufikiaji wa mtoa huduma unaisha',
+        'API Key': 'API Key',
+        Username: 'Jina la mtumiaji',
+        Password: 'Nenosiri',
+        Status: 'Hali',
+    };
     return (
         <label className="space-y-1.5 block">
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy(label, translations[label] || label)}</span>
             {children}
         </label>
     );

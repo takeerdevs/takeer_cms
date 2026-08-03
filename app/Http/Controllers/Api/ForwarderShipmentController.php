@@ -278,10 +278,10 @@ class ForwarderShipmentController extends Controller
 
         if (
             $nextDeliveryStatus === 'ready_at_terminal'
-            && $shipment->order->payment_status === 'awaiting_merchant_confirmation'
+            && $shipment->order->payment_status === 'pending_fulfillment'
         ) {
             $shipment->order->forceFill([
-                'payment_status' => 'escrow_locked',
+                'payment_status' => 'pending_fulfillment',
                 'merchant_confirmed_at' => $shipment->order->merchant_confirmed_at ?: now(),
             ])->save();
         }

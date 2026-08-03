@@ -13,6 +13,7 @@ window.route = appRoute;
 import { createRoot } from 'react-dom/client';
 import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
+import { LocaleProvider } from './lib/i18n';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Takeer';
 
@@ -25,7 +26,12 @@ createInertiaApp({
         ),
     setup({ el, App, props }) {
         const root = createRoot(el);
-        root.render(<App {...props} />);
+        const initialLocale = props?.initialPage?.props?.locale || 'en';
+        root.render(
+            <LocaleProvider initialLocale={initialLocale}>
+                <App {...props} />
+            </LocaleProvider>,
+        );
     },
     progress: {
         color: '#10b981', // Emerald green — Takeer brand

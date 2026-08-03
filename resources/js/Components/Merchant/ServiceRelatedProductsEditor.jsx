@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle2, Search, ShoppingBag } from 'lucide-react';
 import { Input } from '@/Components/ui/Input';
+import { useLocale } from '@/lib/i18n';
 
 export default function ServiceRelatedProductsEditor({
     isLoadingProducts,
@@ -12,28 +13,29 @@ export default function ServiceRelatedProductsEditor({
     serviceRelatedProductIds,
     toggleServiceRelatedProduct,
 }) {
+    const { copy } = useLocale();
     return (
         <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
             <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Products made or used with this service</label>
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Products made or used with this service', 'Bidhaa zinazotengenezwa au kutumika na huduma hii')}</label>
                 <p className="text-xs text-muted-foreground mt-1">
-                    Optional. Search and attach published products you make, bring, install, or commonly sell with this service.
+                    {copy('Optional. Search and attach published products you make, bring, install, or commonly sell with this service.', 'Ni hiari. Tafuta na ambatanisha bidhaa ulizochapisha unazotengeneza, kuleta, kufunga, au kuuza pamoja na huduma hii.')}
                 </p>
             </div>
             {isLoadingProducts ? (
                 <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
-                    Loading your products...
+                    {copy('Loading your products...', 'Inapakia bidhaa zako...')}
                 </div>
             ) : physicalMerchantProducts.length === 0 ? (
                 <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
-                    No published physical products yet. Publish products first, then attach them here.
+                    {copy('No published physical products yet. Publish products first, then attach them here.', 'Bado hakuna bidhaa za kimwili zilizochapishwa. Chapisha bidhaa kwanza, kisha zambatanishe hapa.')}
                 </div>
             ) : (
                 <div className="space-y-3">
                     <label className="relative block">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                         <Input
-                            placeholder="Search published products..."
+                            placeholder={copy('Search published products...', 'Tafuta bidhaa zilizochapishwa...')}
                             value={serviceProductSearch}
                             onChange={(e) => setServiceProductSearch(e.target.value)}
                             className="h-11 pl-9 text-sm"
@@ -41,16 +43,16 @@ export default function ServiceRelatedProductsEditor({
                     </label>
                     {visiblePhysicalMerchantProducts.length === 0 ? (
                         <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
-                            No published products match this search.
+                            {copy('No published products match this search.', 'Hakuna bidhaa zilizochapishwa zinazoendana na utafutaji huu.')}
                         </div>
                     ) : (
                         <>
                             <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-muted-foreground">
                                 <span>
-                                    Showing {visiblePhysicalMerchantProducts.length} of {filteredPhysicalMerchantProducts.length} published product{filteredPhysicalMerchantProducts.length === 1 ? '' : 's'}
+                                    {copy(`Showing ${visiblePhysicalMerchantProducts.length} of ${filteredPhysicalMerchantProducts.length} published product${filteredPhysicalMerchantProducts.length === 1 ? '' : 's'}`, `Inaonyesha ${visiblePhysicalMerchantProducts.length} kati ya bidhaa ${filteredPhysicalMerchantProducts.length} zilizochapishwa`)}
                                 </span>
                                 {filteredPhysicalMerchantProducts.length > 10 && (
-                                    <span>Refine search to see more</span>
+                                    <span>{copy('Refine search to see more', 'Boresha utafutaji kuona zaidi')}</span>
                                 )}
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -90,7 +92,7 @@ export default function ServiceRelatedProductsEditor({
             )}
             {serviceRelatedProductIds.length > 0 && (
                 <p className="text-[11px] font-bold text-purple-700">
-                    {serviceRelatedProductIds.length} product{serviceRelatedProductIds.length === 1 ? '' : 's'} attached to this service.
+                    {copy(`${serviceRelatedProductIds.length} product${serviceRelatedProductIds.length === 1 ? '' : 's'} attached to this service.`, `Bidhaa ${serviceRelatedProductIds.length} zimeambatanishwa na huduma hii.`)}
                 </p>
             )}
         </div>

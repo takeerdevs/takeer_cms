@@ -23,6 +23,7 @@ import { productPriceLabel } from '@/lib/productUnits';
 import { formatOfferCount } from '@/Components/MerchantOffersPanel';
 import FeedFreightRouteCard from '@/Components/FreightRouteCard';
 import FollowStoreButton from '@/Components/FollowStoreButton';
+import { useLocale } from '@/lib/i18n';
 
 const fetcher = async (url) => {
     const response = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -91,6 +92,7 @@ const SECTION_COPY = {
 };
 
 export default function PublicShop({ merchantSlug, shopSection = 'all' }) {
+    const { t } = useLocale();
     const section = SHOP_SECTIONS.some((item) => item.key === shopSection) ? shopSection : 'all';
     const sectionConfig = SHOP_SECTIONS.find((item) => item.key === section) || SHOP_SECTIONS[0];
     const [query, setQuery] = useState('');
@@ -105,8 +107,16 @@ export default function PublicShop({ merchantSlug, shopSection = 'all' }) {
     const merchant = data?.merchant || null;
     const offerCounts = data?.offer_counts ?? null;
     const slug = merchant?.slug || merchantSlug;
-    const copy = SECTION_COPY[section] || SECTION_COPY.all;
-    const visibleSections = useMemo(() => visibleShopSections(offerCounts), [offerCounts]);
+    const copy = {
+        eyebrow: t(`shop.sections.${section}.eyebrow`),
+        title: t(`shop.sections.${section}.title`),
+        body: t(`shop.sections.${section}.body`),
+    };
+    const visibleSections = useMemo(() => visibleShopSections(offerCounts).map((item) => ({
+        ...item,
+        label: t(`shop.sections.${item.key}.label`),
+        hint: t(`shop.sections.${item.key}.hint`),
+    })), [offerCounts, t]);
     const bio = String(merchant?.bio || '').trim();
     const hasLongBio = bio.length > 140;
 
@@ -129,7 +139,7 @@ export default function PublicShop({ merchantSlug, shopSection = 'all' }) {
         return (
             <AppLayout>
                 <div className="flex min-h-[60vh] items-center justify-center p-6 text-center">
-                    <p className="text-destructive">Ofa hazipatikani au mtandao unasumbua.</p>
+                    <p className="text-destructive">{t('shop.loadFailed')}</p>
                 </div>
             </AppLayout>
         );
@@ -149,7 +159,7 @@ export default function PublicShop({ merchantSlug, shopSection = 'all' }) {
                                 <Link
                                     href={`/u/${slug}`}
                                     className="absolute left-4 top-5 flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-neutral-100"
-                                    aria-label="Back to profile"
+                                    aria-label={t('common.backToProfile')}
                                 >
                                     <ArrowLeft className="h-5 w-5" />
                                 </Link>
@@ -174,7 +184,7 @@ export default function PublicShop({ merchantSlug, shopSection = 'all' }) {
                                                 onClick={() => setBioExpanded((current) => !current)}
                                                 className="mt-0.5 font-semibold text-slate-950 hover:text-brand-700"
                                             >
-                                                {bioExpanded ? 'less' : 'more'}
+                                                {bioExpanded ? t('shop.less') : t('shop.more')}
                                             </button>
                                         )}
                                     </div>
@@ -214,7 +224,7 @@ export default function PublicShop({ merchantSlug, shopSection = 'all' }) {
                                             value={query}
                                             onChange={(event) => setQuery(event.target.value)}
                                             className="h-12 w-full rounded-full border border-neutral-200 bg-neutral-50 pl-10 pr-4 text-sm font-medium text-foreground outline-none ring-brand-500/30 transition placeholder:text-muted-foreground focus:border-brand-200 focus:bg-white focus:ring-2"
-                                            placeholder={`Search ${copy.eyebrow.toLowerCase()}...`}
+                                            placeholder={t('shop.searchPlaceholder', { section: copy.eyebrow.toLowerCase() })}
                                         />
                                     </div>
                                 </div>
@@ -366,14 +376,26 @@ function visibleShopSections(offerCounts) {
 }
 
 function OfferRail({ title, href, items, renderItem, layout = 'grid' }) {
+    const { copy } = useLocale();
     if (!items.length) return null;
+
+    const titleTranslations = {
+        Products: 'Bidhaa',
+        Services: 'Huduma',
+        Digital: 'Kidijitali',
+        Content: 'Maudhui',
+        Offerings: 'Matoleo',
+        'Freight routes': 'Njia za freight',
+        Bundles: 'Vifurushi',
+        Memberships: 'Uanachama',
+    };
 
     return (
         <section>
             <div className="mb-3 flex items-center justify-between gap-4">
-                <h2 className="text-base font-black text-slate-950">{title}</h2>
+                <h2 className="text-base font-black text-slate-950">{copy(title, titleTranslations[title] || title)}</h2>
                 <Link href={href} className="inline-flex items-center gap-1 text-xs font-black uppercase tracking-wide text-brand-700 hover:text-brand-800">
-                    View all
+                    {copy('View all', 'Tazama zote')}
                     <ExternalLink className="h-3 w-3" />
                 </Link>
             </div>
@@ -393,11 +415,12 @@ function ListWrap({ children }) {
 }
 
 function ProductCard({ product }) {
+    const { t } = useLocale();
     return (
         <Link href={route('product.show', product.slug || product.id)} className="group flex min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white transition hover:border-brand-200 hover:shadow-sm">
             <OfferImage imageUrl={product.image_url} title={product.title} icon={ShoppingBag} />
             <div className="flex flex-1 flex-col p-3">
-                <p className="text-[11px] font-black uppercase tracking-wide text-brand-700">Product</p>
+                <p className="text-[11px] font-black uppercase tracking-wide text-brand-700">{t('common.product')}</p>
                 <h2 className="mt-1 line-clamp-2 text-sm font-black leading-tight text-slate-950 sm:text-base">{product.title}</h2>
                 <OfferFooter price={productPriceLabel(product)} />
             </div>
@@ -406,9 +429,10 @@ function ProductCard({ product }) {
 }
 
 function ServiceCard({ product }) {
+    const { t, copy } = useLocale();
     const detail = product.service_location_type || product.service_duration_minutes
         ? [formatServiceLocation(product.service_location_type), formatServiceDuration(product.service_duration_minutes)].filter(Boolean).join(' · ')
-        : 'Service';
+        : copy('Service', 'Huduma');
 
     return (
         <Link href={route('product.show', product.slug || product.id)} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 transition hover:border-brand-200 hover:shadow-sm sm:grid-cols-[8rem_1fr_auto]">
@@ -422,7 +446,7 @@ function ServiceCard({ product }) {
             </div>
             <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end">
                 <p className="text-sm font-black text-brand-700">{productPriceLabel(product)}</p>
-                <span className="inline-flex h-9 items-center rounded-lg bg-slate-950 px-3 text-xs font-black text-white">Open</span>
+                <span className="inline-flex h-9 items-center rounded-lg bg-slate-950 px-3 text-xs font-black text-white">{t('common.open')}</span>
             </div>
         </Link>
     );
@@ -581,15 +605,16 @@ function OfferFooter({ price }) {
 }
 
 function EmptyShopState({ section }) {
-    const copy = SECTION_COPY[section] || SECTION_COPY.all;
+    const { t } = useLocale();
+    const eyebrow = t(`shop.sections.${section}.eyebrow`);
 
     return (
         <div className="px-4 py-16 text-center">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
                 <ShoppingBag className="h-7 w-7" />
             </div>
-            <p className="mt-4 text-base font-black text-slate-950">Hakuna ofa kwa sasa.</p>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">{copy.eyebrow} items will appear here when this merchant publishes them.</p>
+            <p className="mt-4 text-base font-black text-slate-950">{t('shop.empty')}</p>
+            <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">{t('shop.emptyDescription', { section: eyebrow })}</p>
         </div>
     );
 }

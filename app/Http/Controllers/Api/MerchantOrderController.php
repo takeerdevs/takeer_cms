@@ -17,6 +17,7 @@ use App\Models\ReturnRequest;
 use App\Models\SubscriptionPlan;
 use App\Models\UserSubscription;
 use App\Services\ForwarderShipmentService;
+use App\Services\MarketplaceSettlementService;
 use App\Services\PickupAgreementService;
 use App\Services\SmsService;
 use App\Support\MerchantPermissions;
@@ -69,8 +70,8 @@ class MerchantOrderController extends Controller
             $status = (string) $request->input('status');
             $query->where('payment_status', $status);
 
-            // Escrow workflow is meaningful for physical products and physical bundles.
-            if (in_array($status, ['awaiting_merchant_confirmation', 'escrow_locked', 'disputed'], true)) {
+            // Provider-controlled settlement workflow is meaningful for physical products and physical bundles.
+            if (in_array($status, ['pending_fulfillment', 'payment_confirmed', 'release_eligible', 'disputed'], true)) {
                 $this->scopePhysicalFulfillmentOrders($query);
             }
         }
@@ -126,7 +127,7 @@ class MerchantOrderController extends Controller
                 'display_icon' => $display['icon'],
                 'display_image' => $display['image'] ?? null,
                 'offering_group_selection' => $order->offering_group_selection ?? null,
-                'is_escrow_order' => $display['is_escrow_order'],
+                'is_protected_order' => $display['is_protected_order'],
                 'is_inquiry' => (bool) $order->is_inquiry,
                 'inquiry_status' => $order->inquiry_status,
                 'merchant_confirmed_at' => $order->merchant_confirmed_at?->toISOString(),
@@ -163,12 +164,12 @@ class MerchantOrderController extends Controller
         return response()->json([
             'total' => (clone $base)->count(),
             'pending' => $this->scopePhysicalFulfillmentOrders(
-                (clone $base)->where('payment_status', 'awaiting_merchant_confirmation')
+                (clone $base)->whereIn('payment_status', ['pending_fulfillment', 'payment_confirmed'])
             )->count(),
-            'escrow' => $this->scopePhysicalFulfillmentOrders(
-                (clone $base)->where('payment_status', 'escrow_locked')
+            'provider_review' => $this->scopePhysicalFulfillmentOrders(
+                (clone $base)->whereIn('payment_status', ['release_eligible', 'payout_processing'])
             )->count(),
-            'completed' => (clone $base)->whereIn('payment_status', ['resolved_merchant_paid'])->count(),
+            'completed' => (clone $base)->whereIn('payment_status', ['paid_out'])->count(),
             'disputed' => $this->scopePhysicalFulfillmentOrders(
                 (clone $base)->where('payment_status', 'disputed')
             )->count(),
@@ -331,7 +332,6 @@ class MerchantOrderController extends Controller
             'agreed_at' => $order->agreed_at?->toISOString(),
             'merchant_confirmed_at' => $order->merchant_confirmed_at?->toISOString(),
             'is_merchant_confirmed' => $order->merchant_confirmed_at !== null,
-            'paid_out_at' => $order->paid_out_at?->toISOString(),
             'pickup_location_id' => $order->pickup_location_id,
             'pickup_ready_at' => $order->pickup_ready_at?->toISOString(),
             'pickup_deadline_at' => $order->pickup_deadline_at?->toISOString(),
@@ -450,8 +450,8 @@ class MerchantOrderController extends Controller
             'display_kind' => $display['kind'],
             'display_icon' => $display['icon'],
             'display_image' => $display['image'] ?? null,
-            'is_escrow_order' => $display['is_escrow_order'],
-            'order_flow' => $display['is_escrow_order'] ? 'escrow' : 'instant',
+            'is_protected_order' => $display['is_protected_order'],
+            'order_flow' => $display['is_protected_order'] ? 'fulfillment' : 'instant',
         ]);
     }
 
@@ -540,19 +540,10 @@ class MerchantOrderController extends Controller
                 'completed_at' => now(),
             ]);
 
-            if ($validated['resolution_type'] === 'refund' && in_array($order->payment_status, ['escrow_locked', 'shipped', 'disputed'], true)) {
-                $order->update(['payment_status' => 'resolved_buyer_refunded']);
-                $wallet = $order->merchant->wallet()->firstOrCreate(
-                    ['merchant_id' => $order->merchant_id],
-                    ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
-                );
-                $fromFrozen = min((float) $order->total_paid, max(0, (float) $wallet->frozen_balance));
-                if ($fromFrozen > 0) {
-                    $wallet->decrement('frozen_balance', $fromFrozen);
-                }
-                $remaining = (float) $order->total_paid - $fromFrozen;
-                if ($remaining > 0) {
-                    $wallet->decrement('balance', $remaining);
+            if ($validated['resolution_type'] === 'refund' && in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed', 'release_eligible', 'disputed'], true)) {
+                $order->update(['payment_status' => 'refund_pending']);
+                if ($order->settlement) {
+                    app(MarketplaceSettlementService::class)->requestRefund($order->settlement, 'merchant_return_completed', 'merchant', $order->merchant?->user_id);
                 }
             }
         });
@@ -642,7 +633,7 @@ class MerchantOrderController extends Controller
                     default => 'download',
                 },
                 'image' => $this->safeProductImageUrl($order->product),
-                'is_escrow_order' => $order->requiresPhysicalFulfillment()
+                'is_protected_order' => $order->requiresPhysicalFulfillment()
                     || (($order->product->digital_delivery_type ?? null) === 'custom_delivery'),
             ];
         }
@@ -654,7 +645,7 @@ class MerchantOrderController extends Controller
                 'kind' => 'post_content',
                 'icon' => 'book_open',
                 'image' => $post?->cover_image_url,
-                'is_escrow_order' => false,
+                'is_protected_order' => false,
             ];
         }
 
@@ -665,7 +656,7 @@ class MerchantOrderController extends Controller
                 'kind' => 'post_content',
                 'icon' => 'book_open',
                 'image' => $content?->cover_image_url,
-                'is_escrow_order' => false,
+                'is_protected_order' => false,
             ];
         }
 
@@ -678,7 +669,7 @@ class MerchantOrderController extends Controller
                 'kind' => $isPhysicalBundle ? 'physical_bundle' : ($bundle?->is_course ? 'course_bundle' : 'bundle'),
                 'icon' => 'boxes',
                 'image' => $bundle?->cover_image_url,
-                'is_escrow_order' => $isPhysicalBundle,
+                'is_protected_order' => $isPhysicalBundle,
             ];
         }
 
@@ -692,7 +683,7 @@ class MerchantOrderController extends Controller
                 'kind' => $isPhysicalGroup ? 'physical_bundle' : 'offering_group',
                 'icon' => 'layers',
                 'image' => $group?->cover_image_url,
-                'is_escrow_order' => $isPhysicalGroup,
+                'is_protected_order' => $isPhysicalGroup,
             ];
         }
 
@@ -703,7 +694,7 @@ class MerchantOrderController extends Controller
                 'kind' => 'subscription_plan',
                 'icon' => 'crown',
                 'image' => null,
-                'is_escrow_order' => false,
+                'is_protected_order' => false,
             ];
         }
 
@@ -712,7 +703,7 @@ class MerchantOrderController extends Controller
             'kind' => 'post_content',
             'icon' => 'book_open',
             'image' => $this->safeProductImageUrl($order->product),
-            'is_escrow_order' => false,
+            'is_protected_order' => false,
         ];
     }
 
@@ -757,7 +748,7 @@ class MerchantOrderController extends Controller
         abort_unless($merchant->user_id === $request->user()->id, 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
         abort_unless($order->requiresPhysicalFulfillment(), 422, 'Dispatch evidence inahitajika kwa physical orders pekee.');
-        abort_unless(in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true), 422, 'Order must be paid before dispatch.');
+        abort_unless(in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed'], true), 422, 'Order must be paid before dispatch.');
         abort_unless(in_array($mode, ['local', 'intercity'], true), 422, 'Delivery mode is invalid.');
         abort_if($order->delivery?->delivery_type === 'self_pickup', 422, 'Self-pickup orders are completed with the pickup PIN, not dispatch.');
 
@@ -771,7 +762,7 @@ class MerchantOrderController extends Controller
         ]);
 
         $order->update([
-            'payment_status' => 'escrow_locked',
+            'payment_status' => 'pending_fulfillment',
             'merchant_dispatch_video_url' => $validated['merchant_dispatch_video_url'] ?? null,
             'merchant_confirmed_at' => $order->merchant_confirmed_at ?: now(),
         ]);
@@ -847,7 +838,7 @@ class MerchantOrderController extends Controller
         abort_unless($order->requiresPhysicalFulfillment(), 422, 'Rider links are available for physical orders only.');
         abort_unless($order->delivery, 422, 'Delivery details are not available for this order.');
         abort_if($order->delivery->delivery_type === 'self_pickup', 422, 'Self-pickup orders do not need a rider link.');
-        abort_unless(in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed'], true), 422, 'Order must be paid before sharing a rider link.');
+        abort_unless(in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed', 'release_eligible', 'disputed'], true), 422, 'Order must be paid before sharing a rider link.');
 
         $validated = $request->validate([
             'expires_in_hours' => ['nullable', 'integer', 'min:1', 'max:72'],
@@ -875,7 +866,7 @@ class MerchantOrderController extends Controller
         abort_unless($this->canOperateMerchant($request, $merchant), 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
         abort_unless($order->requiresPhysicalFulfillment(), 422, 'Delivery updates are available for physical orders only.');
-        abort_unless(in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed'], true), 422, 'Order must be paid before delivery status can be updated.');
+        abort_unless(in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed', 'release_eligible', 'disputed'], true), 422, 'Order must be paid before delivery status can be updated.');
 
         $validated = $request->validate([
             'status' => ['required', 'string', 'in:' . implode(',', self::DELIVERY_STATUSES)],
@@ -999,10 +990,10 @@ class MerchantOrderController extends Controller
 
             if (
                 in_array($validated['status'], ['dispatched', 'with_boda', 'in_transit', 'arrived', 'ready_at_terminal', 'delivered'], true)
-                && $order->payment_status === 'awaiting_merchant_confirmation'
+                && $order->payment_status === 'pending_fulfillment'
             ) {
                 $order->update([
-                    'payment_status' => 'escrow_locked',
+                    'payment_status' => 'pending_fulfillment',
                     'merchant_confirmed_at' => $order->merchant_confirmed_at ?: now(),
                 ]);
             }
@@ -1100,7 +1091,7 @@ class MerchantOrderController extends Controller
 
     /**
      * Verify pickup using Customer's PIN.
-     * On success: escrow released to merchant wallet, order marked complete.
+     * On success: provider payout is requested and order marked complete.
      */
     public function verifyPickup(Request $request, Merchant $merchant, Order $order): JsonResponse
     {
@@ -1126,7 +1117,7 @@ class MerchantOrderController extends Controller
         RateLimiter::clear($throttleKey);
 
         abort_unless(
-            in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true),
+            in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed'], true),
             422,
             'Order must be paid before pickup can be released.'
         );
@@ -1149,7 +1140,9 @@ class MerchantOrderController extends Controller
                 'note' => 'Pickup PIN verified.',
             ]);
 
-            app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
+            app(\App\Services\MarketplaceSettlementService::class)->releaseAfterFulfillment($order, 'pickup_confirmed', [
+                'delivery_id' => $order->delivery?->id,
+            ]);
             app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
             app(PickupAgreementService::class)->markCompleted($order->fresh(['delivery']));
 
@@ -1209,7 +1202,7 @@ class MerchantOrderController extends Controller
             return response()->json(['message' => 'Pickup window has not expired yet.'], 422);
         }
 
-        if ($order->pickup_completed_at || in_array($order->payment_status, ['resolved_merchant_paid', 'resolved_buyer_refunded'], true)) {
+        if ($order->pickup_completed_at || in_array($order->payment_status, ['paid_out', 'refunded'], true)) {
             return response()->json(['message' => 'This pickup order is already closed.'], 422);
         }
 
@@ -1356,7 +1349,7 @@ class MerchantOrderController extends Controller
             });
         $this->scopePrimaryOrders($lookup);
         $order = $lookup
-            ->orderByRaw("CASE payment_status WHEN 'awaiting_merchant_confirmation' THEN 0 WHEN 'escrow_locked' THEN 1 WHEN 'shipped' THEN 2 WHEN 'pending' THEN 3 ELSE 4 END")
+            ->orderByRaw("CASE payment_status WHEN 'pending_fulfillment' THEN 0 WHEN 'payment_confirmed' THEN 1 WHEN 'release_eligible' THEN 2 WHEN 'pending' THEN 3 ELSE 4 END")
             ->latest()
             ->first();
 
@@ -1385,14 +1378,14 @@ class MerchantOrderController extends Controller
             : null;
         $deliveryType = $order->delivery?->delivery_type;
         $isPickup = $deliveryType === 'self_pickup' || filled($order->delivery?->pickup_pin);
-        $isPaidForRelease = in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true);
+        $isPaidForRelease = in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed'], true);
         $additionalPaidTotal = $this->additionalPaidTotal($order);
         $canVerifyPickup = $isPickup
             && $isPaidForRelease
             && $order->merchant_confirmed_at
             && $this->isPickupReadyForRelease($order)
             && $order->delivery?->pickup_pin;
-        $amountPaid = $isPaidForRelease || in_array($order->payment_status, ['shipped', 'disputed', 'resolved_merchant_paid'], true)
+        $amountPaid = $isPaidForRelease || in_array($order->payment_status, ['release_eligible', 'disputed', 'paid_out'], true)
             ? (float) $order->total_paid + $additionalPaidTotal
             : 0.0;
         $amountTotal = (float) $order->total_paid + $additionalPaidTotal;
@@ -1502,7 +1495,7 @@ class MerchantOrderController extends Controller
             return 'This order is not a pickup order.';
         }
 
-        if (!in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true)) {
+        if (!in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed'], true)) {
             return 'Payment is not complete yet. Complete payment before releasing this order.';
         }
 
@@ -1534,7 +1527,7 @@ class MerchantOrderController extends Controller
                         ->where('extra_items->parent_order_id', $order->id);
                 });
             })
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'])
             ->sum('total_paid');
     }
 
@@ -1631,7 +1624,9 @@ class MerchantOrderController extends Controller
                 'note' => 'Buyer release PIN verified.',
             ]);
 
-            app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
+            app(\App\Services\MarketplaceSettlementService::class)->releaseAfterFulfillment($order, 'merchant_delivery_confirmed', [
+                'delivery_id' => $order->delivery?->id,
+            ]);
             app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
         });
 
@@ -1715,7 +1710,7 @@ class MerchantOrderController extends Controller
                 'inspection_required' => array_key_exists('inspection_required', $validated) ? (bool) $validated['inspection_required'] : data_get($order->agreement_snapshot, 'inspection_required'),
                 'payment_terms_note' => $validated['payment_terms_note'] ?? data_get($order->agreement_snapshot, 'payment_terms_note'),
                 'customization_note' => $validated['customization_note'] ?? data_get($order->agreement_snapshot, 'customization_note'),
-                'safepay_required' => $isB2BOrder ? true : data_get($order->agreement_snapshot, 'safepay_required'),
+                'provider_payment_required' => $isB2BOrder ? true : data_get($order->agreement_snapshot, 'provider_payment_required'),
                 'delivery_type' => $order->delivery?->delivery_type,
                 'physical_address' => $order->delivery?->physical_address,
                 'notes' => $validated['message'] ?? null,
@@ -1780,7 +1775,7 @@ class MerchantOrderController extends Controller
         }
 
         $isPaidPhysicalConfirmation = $order->requiresPhysicalFulfillment()
-            && $order->payment_status === 'awaiting_merchant_confirmation'
+            && $order->payment_status === 'pending_fulfillment'
             && !$order->merchant_confirmed_at;
 
         if ($isPaidPhysicalConfirmation) {

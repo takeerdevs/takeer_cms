@@ -4,11 +4,13 @@ import { Head, Link } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
 import PostCard from '@/Components/PostCard';
 import FollowStoreButton from '@/Components/FollowStoreButton';
+import { useLocale } from '@/lib/i18n';
 import { BadgeCheck, ExternalLink, Globe2, Instagram, Link2, Loader2, Mail, MessageCircle, Music2, Send, Share2, ShoppingBag, Store, Youtube } from 'lucide-react';
 
 const fetcher = (url) => fetch(url, { headers: { Accept: 'application/json' } }).then(res => res.json());
 
 export default function PublicMerchantProfile({ merchantSlug, initialData }) {
+    const { t, copy } = useLocale();
     const sentinelRef = useRef(null);
     const getKey = (pageIndex, previousPageData) => {
         if (previousPageData && !previousPageData.posts.links.next) return null;
@@ -46,7 +48,7 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
         return (
             <AppLayout>
                 <div className="flex min-h-[60vh] items-center justify-center p-6 text-center">
-                    <p className="text-destructive">Biashara haipatikani au mtandao unasumbua.</p>
+                    <p className="text-destructive">{t('common.merchantProfileLoadFailed')}</p>
                 </div>
             </AppLayout>
         );
@@ -54,7 +56,7 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
 
     return (
         <AppLayout>
-            <Head title={`${merchant?.name || 'Biashara'} | Profile`} />
+            <Head title={`${merchant?.name || t('common.merchant')} | ${t('common.profile')}`} />
 
             <div className="mx-auto max-w-[640px]">
                 <header className="border-b border-neutral-200/80 bg-background px-5 pb-5 pt-7">
@@ -76,7 +78,7 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
                                         {merchant?.is_verified && (
                                             <BadgeCheck
                                                 className="h-5 w-5 shrink-0 text-sky-500"
-                                                aria-label="Verified profile"
+                                                aria-label={copy('Verified profile', 'Wasifu uliothibitishwa')}
                                             />
                                         )}
                                     </div>
@@ -106,7 +108,7 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
                                     className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-black text-white transition-colors hover:bg-brand-700"
                                 >
                                     <ShoppingBag className="h-4 w-4" />
-                                    <span>Shop</span>
+                                    <span>{t('common.shop')}</span>
                                 </Link>
                                 <div className="min-w-0">
                                     <FollowStoreButton
@@ -116,7 +118,7 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
                                         isOwner={merchant?.is_owner}
                                         showCount={false}
                                         className="h-11 w-full rounded-lg"
-                                        labelFollow="Follow"
+                                        labelFollow={t('common.follow')}
                                     />
                                 </div>
                                 <ShareProfileButton slug={slug} />
@@ -127,7 +129,7 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
                                 className="mt-3 inline-flex max-w-full items-center gap-1.5 text-xs font-bold text-muted-foreground transition-colors hover:text-brand-700"
                             >
                                 <Store className="h-3.5 w-3.5 shrink-0" />
-                                <span className="truncate">Open commerce link page</span>
+                                <span className="truncate">{t('common.openCommercePage')}</span>
                                 <ExternalLink className="h-3 w-3 shrink-0" />
                             </Link>
                         </div>
@@ -141,7 +143,7 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
                         </div>
                     ) : posts.length === 0 ? (
                         <div className="px-5 py-16 text-center text-muted-foreground">
-                            Hakuna machapisho bado.
+                            {t('common.noPosts')}
                         </div>
                     ) : (
                         posts.map((post, index) => (
@@ -155,7 +157,7 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
                         {isLoadingMore ? (
                             <Loader2 className="h-6 w-6 animate-spin text-brand-500" />
                         ) : (
-                            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Inapakia zaidi...</span>
+                            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('common.loadingMore')}</span>
                         )}
                     </div>
                 )}
@@ -200,8 +202,8 @@ function ShareProfileButton({ slug }) {
         <button
             type="button"
             onClick={shareProfile}
-            title="Share profile"
-            aria-label="Share profile"
+            title={copy('Share profile', 'Shiriki wasifu')}
+            aria-label={copy('Share profile', 'Shiriki wasifu')}
             className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-foreground transition-colors hover:bg-neutral-100"
         >
             <Share2 className="h-4 w-4" />

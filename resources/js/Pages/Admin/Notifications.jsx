@@ -5,9 +5,11 @@ import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Bell, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 import axios from 'axios';
 
 export default function Notifications() {
+    const { t, copy } = useLocale();
     const [logs, setLogs] = useState([]);
     const [summary, setSummary] = useState({});
     const [meta, setMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
@@ -30,7 +32,7 @@ export default function Notifications() {
                 total: res.data?.logs?.total || 0,
             });
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed to load notifications.');
+            toast.error(err.response?.data?.message || t('adminUi.loadingNotifications'));
         } finally {
             setLoading(false);
         }
@@ -45,8 +47,8 @@ export default function Notifications() {
         : '-';
 
     return (
-        <AdminLayout title="Notification Outbox">
-            <Head title="Notification Outbox | Takeer" />
+        <AdminLayout title={t('adminUi.notifications')}>
+            <Head title={`${t('adminUi.notifications')} | Takeer`} />
 
             <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -55,8 +57,8 @@ export default function Notifications() {
                             <Bell className="h-6 w-6" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-black text-slate-900">Notification Outbox</h1>
-                            <p className="text-sm text-slate-600">Monitor SMS, WhatsApp, and email payloads prepared by Takeer.</p>
+                            <h1 className="text-2xl font-black text-slate-900">{t('adminUi.notifications')}</h1>
+                            <p className="text-sm text-slate-600">{t('adminUi.notificationsDescription')}</p>
                         </div>
                     </div>
                     <Button variant="outline" onClick={() => load(meta.current_page)} disabled={loading}>
@@ -83,31 +85,31 @@ export default function Notifications() {
                                 onChange={(e) => setStatus(e.target.value)}
                                 className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
                             >
-                                <option value="all">All statuses</option>
-                                <option value="pending">Pending</option>
-                                <option value="failed">Failed</option>
-                                <option value="sent">Sent</option>
+                                <option value="all">{t('adminUi.allStatuses')}</option>
+                                <option value="pending">{copy('Pending', 'Inasubiri')}</option>
+                                <option value="failed">{copy('Failed', 'Imeshindikana')}</option>
+                                <option value="sent">{copy('Sent', 'Imetumwa')}</option>
                             </select>
                             <select
                                 value={channel}
                                 onChange={(e) => setChannel(e.target.value)}
                                 className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
                             >
-                                <option value="all">All channels</option>
-                                <option value="sms">SMS</option>
-                                <option value="whatsapp">WhatsApp</option>
-                                <option value="email">Email</option>
+                                <option value="all">{copy('All channels', 'Njia zote')}</option>
+                                <option value="sms">{copy('SMS', 'SMS')}</option>
+                                <option value="whatsapp">{copy('WhatsApp', 'WhatsApp')}</option>
+                                <option value="email">{copy('Email', 'Barua pepe')}</option>
                             </select>
                             <input
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && load(1)}
                                 className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
-                                placeholder="Search recipient, user, subject, message..."
+                                placeholder={copy('Search recipient, user, subject, message...', 'Tafuta mpokeaji, user, mada, ujumbe...')}
                             />
                             <Button variant="outline" onClick={() => load(1)}>
                                 <Search className="h-4 w-4 mr-2" />
-                                Search
+                                {copy('Search', 'Tafuta')}
                             </Button>
                         </div>
                     </CardContent>
@@ -116,9 +118,9 @@ export default function Notifications() {
                 <Card className="bg-white border-slate-200">
                     <CardContent className="p-0">
                         {loading ? (
-                            <div className="py-14 text-center text-slate-500">Loading notifications...</div>
+                            <div className="py-14 text-center text-slate-500">{t('adminUi.loadingNotifications')}</div>
                         ) : logs.length === 0 ? (
-                            <div className="py-14 text-center text-slate-500">No notifications found.</div>
+                            <div className="py-14 text-center text-slate-500">{t('adminUi.noNotifications')}</div>
                         ) : (
                             <div className="divide-y divide-slate-100">
                                 {logs.map((log) => (
@@ -143,9 +145,9 @@ export default function Notifications() {
                                                 )}
                                             </div>
                                             <div className="lg:w-72 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                                                <p><span className="font-black text-slate-900">Recipient:</span> {log.recipient || log.phone || log.email || '-'}</p>
-                                                <p><span className="font-black text-slate-900">User:</span> {log.user?.name || '-'} {log.user?.email ? `(${log.user.email})` : ''}</p>
-                                                <p><span className="font-black text-slate-900">Created:</span> {formatDate(log.created_at)}</p>
+                                                <p><span className="font-black text-slate-900">{copy('Recipient:', 'Mpokeaji:')}</span> {log.recipient || log.phone || log.email || '-'}</p>
+                                                <p><span className="font-black text-slate-900">{copy('User:', 'User:')}</span> {log.user?.name || '-'} {log.user?.email ? `(${log.user.email})` : ''}</p>
+                                                <p><span className="font-black text-slate-900">{copy('Created:', 'Iliundwa:')}</span> {formatDate(log.created_at)}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -156,10 +158,10 @@ export default function Notifications() {
                 </Card>
 
                 <div className="flex items-center justify-between">
-                    <p className="text-sm text-slate-500">Showing page {meta.current_page} of {meta.last_page} · {meta.total} logs</p>
+                    <p className="text-sm text-slate-500">{copy('Showing page', 'Inaonyesha ukurasa')} {meta.current_page} {copy('of', 'kati ya')} {meta.last_page} · {meta.total} {copy('logs', 'kumbukumbu')}</p>
                     <div className="flex gap-2">
-                        <Button variant="outline" disabled={loading || meta.current_page <= 1} onClick={() => load(meta.current_page - 1)}>Previous</Button>
-                        <Button variant="outline" disabled={loading || meta.current_page >= meta.last_page} onClick={() => load(meta.current_page + 1)}>Next</Button>
+                        <Button variant="outline" disabled={loading || meta.current_page <= 1} onClick={() => load(meta.current_page - 1)}>{t('adminUi.previous')}</Button>
+                        <Button variant="outline" disabled={loading || meta.current_page >= meta.last_page} onClick={() => load(meta.current_page + 1)}>{t('adminUi.next')}</Button>
                     </div>
                 </div>
             </div>
@@ -168,10 +170,22 @@ export default function Notifications() {
 }
 
 function Metric({ label, value, tone }) {
+    const { copy } = useLocale();
+    const labels = {
+        Total: ['Total', 'Jumla'],
+        Pending: ['Pending', 'Inasubiri'],
+        Failed: ['Failed', 'Imeshindikana'],
+        Sent: ['Sent', 'Imetumwa'],
+        SMS: ['SMS', 'SMS'],
+        WhatsApp: ['WhatsApp', 'WhatsApp'],
+        Email: ['Email', 'Barua pepe'],
+    };
+    const displayLabel = labels[label] ? copy(...labels[label]) : label;
+
     return (
         <Card className="bg-white border-slate-200">
             <CardContent className="p-4">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{displayLabel}</p>
                 <p className={`mt-2 text-2xl font-black ${tone}`}>{value}</p>
             </CardContent>
         </Card>

@@ -3,303 +3,250 @@
 namespace App\Payments;
 
 use App\Models\Order;
-use App\Models\ExtraCharge;
+use App\Models\PaymentAttempt;
+use App\Models\ProviderEvent;
 use App\Models\RetailAuditLog;
 use App\Models\Transaction;
-use App\Models\UserSubscription;
-use App\Services\AutomaticWithdrawalService;
 use App\Services\EntitlementService;
-use App\Services\PayoutPolicyService;
+use App\Services\MarketplaceSettlementService;
 use App\Services\PickupAgreementService;
 use App\Services\SmsService;
 use App\Services\SubscriptionRenewalService;
-use App\Services\WithdrawalPolicyService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Shared payment success/failure handler.
- *
- * This is the SINGLE place where business logic runs after any gateway
- * confirms payment — wallet crediting, entitlement grants, subscriptions.
- *
- * AzamPay callback → AzamPayCallbackController → PaymentCallbackProcessor
- * M-Pesa callback  → MpesaCallbackController   → PaymentCallbackProcessor
- * Flutterwave      → FlutterwaveCallbackController → PaymentCallbackProcessor
- *
- * This ensures all gateways share identical post-payment behaviour.
+ * Applies only provider events that have already passed callback authentication.
+ * No method in this class creates, credits, debits, or transfers a platform balance.
  */
 class PaymentCallbackProcessor
 {
     public function __construct(
+        private readonly MarketplaceSettlementService $settlements,
         private readonly EntitlementService $entitlementService,
         private readonly SmsService $smsService,
     ) {}
 
+    public function processVerifiedEvent(PaymentEvent $event, ProviderEvent $providerEvent): void
+    {
+        if (! $providerEvent->signature_valid || $event->direction !== 'payin') {
+            return;
+        }
+
+        $attempt = PaymentAttempt::query()->with(['order', 'provider', 'channel'])->where('takeer_reference', $event->takeerReference)->first();
+        if (! $attempt) {
+            $providerEvent->update(['validation_state' => 'review', 'processing_result' => 'attempt_not_found']);
+            return;
+        }
+
+        if ((int) $attempt->payment_provider_id !== (int) $providerEvent->payment_provider_id) {
+            $providerEvent->update(['validation_state' => 'rejected', 'processing_result' => 'provider_mismatch']);
+            return;
+        }
+        if ($attempt->provider?->key && strcasecmp((string) $attempt->provider->key, (string) $event->provider) !== 0) {
+            $providerEvent->update(['validation_state' => 'rejected', 'processing_result' => 'provider_key_mismatch']);
+            return;
+        }
+        if ($event->channelKey && $attempt->channel?->key && $event->channelKey !== $attempt->channel->key) {
+            $providerEvent->update(['validation_state' => 'rejected', 'processing_result' => 'channel_mismatch']);
+            return;
+        }
+
+        try {
+            if ($event->isSuccessful()) {
+                $this->handleConfirmedPayment($attempt, $event, $providerEvent);
+                $providerEvent->update(['validation_state' => 'processed', 'processing_result' => 'payment_confirmed', 'processed_at' => now()]);
+                return;
+            }
+
+            if ($event->isFailed()) {
+                $this->settlements->failPayment($attempt->order, $attempt, $event);
+                $providerEvent->update(['validation_state' => 'processed', 'processing_result' => 'payment_failed', 'processed_at' => now()]);
+                return;
+            }
+
+            $providerEvent->update(['validation_state' => 'pending', 'processing_result' => 'provider_status_pending']);
+        } catch (\Throwable $exception) {
+            $providerEvent->update([
+                'validation_state' => 'review',
+                'processing_result' => 'validation_failed',
+                'validation_errors' => ['payment' => $exception->getMessage()],
+            ]);
+            Log::warning('Provider payment event requires operations review.', [
+                'provider_event_id' => $providerEvent->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    public function handleConfirmedPayment(PaymentAttempt $attempt, PaymentEvent $event, ?ProviderEvent $providerEvent = null): void
+    {
+        $order = $attempt->order;
+        if (! $order || $attempt->state === 'confirmed') {
+            return;
+        }
+
+        $settlement = $this->settlements->confirmPayment($order, $attempt, $event);
+
+        if ($this->isRetailCreditPaymentOrder($order)) {
+            $this->handleRetailCreditPayment($order, $event->providerReference ?: $order->transaction_ref, $event->provider);
+            return;
+        }
+
+        if ($this->isPickupFeePaymentOrder($order)) {
+            $this->handlePickupFeePayment($order, $event->providerReference ?: $order->transaction_ref, $event->provider);
+            return;
+        }
+
+        DB::afterCommit(function () use ($order): void {
+            $fresh = $order->fresh(['buyer', 'merchant.user', 'product', 'delivery']);
+            if (! $fresh) {
+                return;
+            }
+
+            if ($fresh->product) {
+                event(new \App\Events\OrderPaid($fresh->fresh(['product', 'buyer'])));
+            }
+
+            if (! $fresh->requiresPhysicalFulfillment()) {
+                $this->entitlementService->grantForOrder($fresh->fresh(['product']));
+                if ($fresh->purchasable_type === 'subscription_plan') {
+                    $subscription = app(SubscriptionRenewalService::class)->createOrExtendFromOrder($fresh);
+                    $this->entitlementService->grantForSubscription($subscription);
+                }
+                $this->sendDigitalAccessSms($fresh);
+            }
+
+            if ($fresh->requiresPhysicalFulfillment()) {
+                if ($fresh->is_inquiry) {
+                    $fresh->markPhysicalAgreement([
+                        'total_paid' => (float) $fresh->total_paid,
+                        'notes' => 'Buyer accepted the quoted physical order and the PSP confirmed payment.',
+                    ]);
+                }
+                if ($fresh->buyer?->phone_number) {
+                    $this->smsService->sendPhysicalPaymentHeldToBuyer($fresh->buyer->phone_number, (string) ($fresh->public_id ?: $fresh->id), (float) $fresh->total_paid, $fresh->buyer_id);
+                }
+                if ($fresh->merchant?->user?->phone_number) {
+                    $this->smsService->sendPhysicalPaymentHeldToMerchant($fresh->merchant->user->phone_number, (string) ($fresh->public_id ?: $fresh->id), (float) $fresh->total_paid, $fresh->merchant->user_id);
+                }
+            }
+
+            $fresh->loadMissing('product');
+            \App\Models\ServiceRequest::query()->where('payment_order_id', $fresh->id)->update([
+                'payment_status' => 'paid',
+                'status' => 'confirmed',
+            ]);
+        });
+
+        Log::info('Authenticated payment applied to order-specific settlement.', [
+            'order_id' => $order->id,
+            'settlement_id' => $settlement->id,
+            'provider_event_id' => $providerEvent?->id,
+        ]);
+    }
+
+    public function handleFailure(Order $order, string $reason = 'Payment failed'): void
+    {
+        $attempt = PaymentAttempt::query()->where('order_id', $order->id)->latest('id')->first();
+        if ($attempt) {
+            $event = new PaymentEvent(
+                provider: (string) ($order->payment_gateway ?: 'unknown'),
+                direction: 'payin',
+                status: 'failed',
+                providerReference: $order->gateway_ref,
+                takeerReference: $attempt->takeer_reference,
+                amount: (float) $order->total_paid,
+                currency: (string) ($order->customer_currency_code ?: $order->merchant_currency_code ?: 'TZS'),
+                failureReason: $reason,
+            );
+            $this->settlements->failPayment($order, $attempt, $event);
+        }
+    }
+
     /**
-     * Process a confirmed successful payment notification from any gateway.
-     *
-     * @param  Order   $order       The pending order that was paid.
-     * @param  string  $gatewayRef  The gateway's own transaction reference number.
-     * @param  string  $gateway     Gateway name e.g. "azampay", "mpesa_ke"
+     * Non-production compatibility helper for legacy simulation callers.
+     * Production payment confirmation must arrive through a recorded,
+     * authenticated provider event.
      */
     public function handleSuccess(Order $order, string $gatewayRef, string $gateway): void
     {
-        if ($order->payment_status !== 'pending') {
-            Log::warning("PaymentCallbackProcessor: Order [{$order->id}] is not pending (status: {$order->payment_status}). Skipping.");
-            return;
+        if (app()->environment('production')) {
+            throw new \RuntimeException('Simulated payment confirmation is disabled in production.');
         }
 
-        if ($this->isRetailCreditPaymentOrder($order)) {
-            $this->handleRetailCreditPayment($order, $gatewayRef, $gateway);
-            return;
+        $providerId = $order->payment_provider_id
+            ?: \App\Models\PaymentProvider::query()->where('key', $gateway)->value('id');
+        if (! $providerId) {
+            throw new \RuntimeException('A licensed PSP provider is required for the payment attempt.');
         }
+        $providerKey = (string) (\App\Models\PaymentProvider::query()->whereKey($providerId)->value('key') ?: $gateway);
 
-        if ($this->isPickupEscrowFeePaymentOrder($order)) {
-            $this->handlePickupEscrowFeePayment($order, $gatewayRef, $gateway);
-            return;
-        }
+        $attempt = PaymentAttempt::query()->firstOrCreate(
+            ['idempotency_key' => 'simulation-order-' . $order->id],
+            [
+                'order_id' => $order->id,
+                'payment_provider_id' => $providerId,
+                'takeer_reference' => (string) ($order->transaction_ref ?: 'SIM-' . $order->id),
+                'expected_amount_minor' => (int) round((float) ($order->customer_total_amount ?? $order->total_paid) * 100),
+                'expected_currency' => strtoupper((string) ($order->customer_currency_code ?: $order->merchant_currency_code ?: 'TZS')),
+                'expected_country_code' => strtoupper((string) ($order->country_code ?: 'TZ')),
+                'payment_phone_hash' => $order->payment_phone ? hash('sha256', preg_replace('/\D+/', '', $order->payment_phone)) : null,
+                'state' => 'created',
+                'request_snapshot' => ['source' => 'non_production_simulation'],
+                'initiated_at' => now(),
+            ],
+        );
 
-        Log::info("PaymentCallbackProcessor: Processing success for order [{$order->id}] via [{$gateway}] ref [{$gatewayRef}].");
-
-        DB::transaction(function () use ($order, $gatewayRef, $gateway) {
-            $isPhysical = $order->requiresPhysicalFulfillment();
-            $payoutPolicy = app(PayoutPolicyService::class)->resolveForOrder($order);
-            $shouldHoldFunds = $isPhysical || (bool) $payoutPolicy['holds_funds'];
-
-            if ($isPhysical && $order->is_inquiry) {
-                $order->markPhysicalAgreement([
-                    'total_paid' => (float) $order->total_paid,
-                    'notes' => 'Buyer accepted the quoted physical order and gateway confirmed payment.',
-                ]);
-            }
-
-            $order->update([
-                'payment_status' => $isPhysical
-                    ? 'awaiting_merchant_confirmation'
-                    : ($shouldHoldFunds ? 'escrow_locked' : 'resolved_merchant_paid'),
-                'gateway_ref'    => $gatewayRef,
-                'payment_gateway' => $gateway,
-                'merchant_confirmed_at' => $order->merchant_confirmed_at,
-            ]);
-
-            // Log TRA-ready transaction record
-            $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
-            Transaction::create([
-                'user_id'      => $order->buyer_id,
-                'merchant_id'  => $order->merchant_id,
-                'order_id'     => $order->id,
-                'type'         => 'order_revenue',
-                ...$fee['snapshot'],
-                'gross_amount' => $order->total_paid,
-                'fee_amount'   => $fee['fee_amount'],
-                'net_amount'   => $fee['net_amount'],
-                'tax_amount'   => $fee['tax_amount'],
-                'reference'    => $gatewayRef,
-            ]);
-
-            $wallet = $order->merchant->wallet()->firstOrCreate(
-                ['merchant_id' => $order->merchant_id],
-                ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
-            );
-
-            if ($shouldHoldFunds) {
-                // Freeze funds in merchant wallet until buyer, admin, or policy review releases them.
-                $wallet->increment('frozen_balance', $order->total_paid);
-                if (! $isPhysical) {
-                    $this->entitlementService->grantForOrder($order->fresh(['product']));
-                }
-                if ($isPhysical) {
-                    $order->loadMissing(['buyer', 'merchant.user', 'delivery']);
-                    if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup') {
-                        app(PickupAgreementService::class)->ensureAgreementForPaidPickup($order);
-                        $order->refresh()->loadMissing(['buyer', 'merchant.user', 'delivery']);
-                    }
-                    $publicId = (string) ($order->public_id ?: $order->id);
-                    if ($order->buyer?->phone_number) {
-                        $this->smsService->sendPhysicalPaymentHeldToBuyer($order->buyer->phone_number, $publicId, (float) $order->total_paid, $order->buyer_id);
-                        if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
-                            $this->smsService->sendPickupPinToBuyer($order->buyer->phone_number, $publicId, (string) $order->delivery->pickup_pin, $order->buyer_id);
-                        }
-                    }
-                    if ($order->merchant?->user?->phone_number) {
-                        $this->smsService->sendPhysicalPaymentHeldToMerchant($order->merchant->user->phone_number, $publicId, (float) $order->total_paid, $order->merchant->user_id);
-                    }
-                }
-            } else {
-                // Credit merchant according to the resolved payout policy.
-                $wallet->increment('balance', $fee['net_amount']);
-                $this->entitlementService->grantForOrder($order->fresh(['product']));
-                $withdrawalPolicy = app(WithdrawalPolicyService::class)->resolveForOrder($order->fresh(['merchant.country', 'merchant.currency']));
-                app(AutomaticWithdrawalService::class)->createForOrder($order->fresh(['merchant.country', 'merchant.currency']), (float) $fee['net_amount'], $withdrawalPolicy);
-
-                // Handle subscription activation
-                if ($order->purchasable_type === 'subscription_plan') {
-                    $subscription = $this->createOrRenewSubscription($order);
-                    $this->entitlementService->grantForSubscription($subscription);
-                }
-            }
-
-            \App\Models\ServiceRequest::query()
-                ->where('payment_order_id', $order->id)
-                ->update([
-                    'payment_status' => 'paid',
-                    'status' => 'confirmed',
-                ]);
-        });
-
-        $this->sendDigitalAccessSms($order);
-
-        // Fire events (outside transaction to avoid holding DB locks)
-        if ($order->product) {
-            event(new \App\Events\OrderPaid($order));
-        }
-
-        if ($order->product?->isPhysical()) {
-            \App\Jobs\DispatchCourier::dispatch($order);
-        }
-    }
-
-    /**
-     * Process a confirmed failed/rejected payment from any gateway.
-     *
-     * @param  Order   $order
-     * @param  string  $reason  Human-readable failure reason for logging.
-     */
-    public function handleFailure(Order $order, string $reason = 'Payment failed'): void
-    {
-        if ($order->payment_status !== 'pending') {
-            Log::warning("PaymentCallbackProcessor: Order [{$order->id}] is not pending. Skipping failure handler.");
-            return;
-        }
-
-        if ($this->isRetailCreditPaymentOrder($order)) {
-            $order->update(['payment_status' => 'failed']);
-            Log::info("PaymentCallbackProcessor: POS credit payment order [{$order->id}] failed. Reason: {$reason}");
-            return;
-        }
-
-        if ($this->isPickupEscrowFeePaymentOrder($order)) {
-            $order->update(['payment_status' => 'failed']);
-            $parent = Order::query()->whereKey((int) data_get($order->extra_items, 'parent_order_id'))->first();
-            if ($parent && data_get($order->extra_items, 'type') === 'extra_charge') {
-                $snapshot = $parent->pickup_policy_snapshot ?: [];
-                $activeProposalId = (string) data_get($snapshot, 'active_extra_charge.id', '');
-                $paymentProposalId = (string) data_get($order->extra_items, 'proposal_id', '');
-
-                if ($paymentProposalId !== '' && hash_equals($activeProposalId, $paymentProposalId)) {
-                    if (isset($snapshot['active_extra_charge'])) {
-                        $snapshot['active_extra_charge']['status'] = 'proposed';
-                    }
-                    $extraChargeId = (int) data_get($order->extra_items, 'extra_charge_id');
-                    if ($extraChargeId > 0) {
-                        ExtraCharge::query()
-                            ->whereKey($extraChargeId)
-                            ->where('order_id', $parent->id)
-                            ->update(['status' => 'proposed']);
-                    }
-                    $parent->forceFill([
-                        'pickup_policy_snapshot' => $snapshot,
-                    ])->save();
-                }
-            } elseif ($parent && data_get($order->extra_items, 'type') === 'pickup_delivery_fee') {
-                $snapshot = $parent->pickup_policy_snapshot ?: [];
-                if (isset($snapshot['delivery_conversion'])) {
-                    $snapshot['delivery_conversion']['status'] = 'quoted';
-                }
-                $parent->forceFill([
-                    'pickup_status' => 'delivery_conversion_quoted',
-                    'pickup_policy_snapshot' => $snapshot,
-                ])->save();
-            }
-            Log::info("PaymentCallbackProcessor: Pickup escrow fee payment order [{$order->id}] failed. Reason: {$reason}");
-            return;
-        }
-
-        Log::info("PaymentCallbackProcessor: Marking order [{$order->id}] as failed. Reason: {$reason}");
-
-        $order->update(['payment_status' => 'failed']);
-
-        $order->releaseInventory();
-    }
-
-    private function createOrRenewSubscription(Order $order): UserSubscription
-    {
-        return app(SubscriptionRenewalService::class)->createOrExtendFromOrder($order);
+        $this->handleConfirmedPayment($attempt->fresh(['order']), new PaymentEvent(
+            provider: $providerKey,
+            direction: 'payin',
+            status: 'success',
+            providerReference: $gatewayRef,
+            takeerReference: $attempt->takeer_reference,
+            amount: (float) ($order->customer_total_amount ?? $order->total_paid),
+            currency: $attempt->expected_currency,
+            rawPayload: ['simulated' => true],
+        ));
     }
 
     private function sendDigitalAccessSms(Order $order): void
     {
         $order->loadMissing(['buyer', 'product']);
-        if (!$order->product || !($order->product->isDigital() || $order->product->isService())) {
+        if (! $order->product || ! ($order->product->isDigital() || $order->product->isService())) {
             return;
         }
-
         $phone = $order->buyer?->phone_number ?: $order->account_phone ?: $order->customer_phone;
-        if (!$phone) {
-            return;
+        if ($phone) {
+            $this->smsService->sendDigitalDeliveryNotification($phone, (string) $order->product->title, url('/orders'), $order->buyer_id, 'digital-delivery:' . ($order->public_id ?: $order->id));
         }
-
-        $this->smsService->sendDigitalDeliveryNotification(
-            $phone,
-            (string) $order->product->title,
-            url('/orders'),
-            $order->buyer_id,
-            'digital-delivery:'.($order->public_id ?: $order->id)
-        );
     }
 
     private function handleRetailCreditPayment(Order $paymentOrder, string $gatewayRef, string $gateway): void
     {
         $creditOrderId = (int) data_get($paymentOrder->extra_items, 'credit_order_id');
-        if (!$creditOrderId) {
-            Log::error("PaymentCallbackProcessor: Credit payment order [{$paymentOrder->id}] missing original order id.");
+        if (! $creditOrderId) {
             return;
         }
 
-        DB::transaction(function () use ($paymentOrder, $creditOrderId, $gatewayRef, $gateway) {
-            $creditOrder = Order::query()
-                ->whereKey($creditOrderId)
-                ->lockForUpdate()
-                ->first();
-
-            if (!$creditOrder) {
-                Log::error("PaymentCallbackProcessor: Original credit order [{$creditOrderId}] not found.");
+        DB::transaction(function () use ($paymentOrder, $creditOrderId, $gatewayRef, $gateway): void {
+            $creditOrder = Order::query()->whereKey($creditOrderId)->lockForUpdate()->first();
+            if (! $creditOrder) {
                 return;
             }
-
             $payableTotal = (float) ($creditOrder->counter_total ?? $creditOrder->grand_total ?? $creditOrder->total_paid ?? 0);
-            $currentPaid = (float) ($creditOrder->total_paid ?? 0);
-            $outstanding = max($payableTotal - $currentPaid, 0);
-            $amount = min((float) $paymentOrder->total_paid, $outstanding);
-            $newPaid = round($currentPaid + $amount, 2);
-            $remaining = max($payableTotal - $newPaid, 0);
-
+            $amount = min((float) $paymentOrder->total_paid, max($payableTotal - (float) $creditOrder->total_paid, 0));
             if ($amount <= 0) {
-                $paymentOrder->update([
-                    'payment_status' => 'resolved_merchant_paid',
-                    'gateway_ref' => $gatewayRef,
-                    'payment_gateway' => $gateway,
-                ]);
-                Log::warning("PaymentCallbackProcessor: Credit payment order [{$paymentOrder->id}] had no outstanding balance to apply.");
                 return;
             }
-
+            $remaining = max($payableTotal - ((float) $creditOrder->total_paid + $amount), 0);
             $creditOrder->update([
-                'total_paid' => $newPaid,
-                'payment_status' => $remaining <= 0 ? 'resolved_merchant_paid' : 'pending',
+                'total_paid' => round((float) $creditOrder->total_paid + $amount, 2),
+                'payment_status' => $remaining <= 0 ? 'payment_confirmed' : 'pending',
             ]);
-
-            $paymentOrder->update([
-                'payment_status' => 'resolved_merchant_paid',
-                'gateway_ref' => $gatewayRef,
-                'payment_gateway' => $gateway,
-            ]);
-
-            $reference = $gatewayRef !== 'N/A' ? $gatewayRef : $paymentOrder->transaction_ref;
-            $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($paymentOrder, (float) $amount);
-
-            Transaction::create([
+            $paymentOrder->update(['payment_status' => 'payment_confirmed', 'gateway_ref' => $gatewayRef, 'payment_gateway' => $gateway]);
+            $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($paymentOrder, $amount);
+            Transaction::query()->firstOrCreate(['reference' => $gatewayRef], [
                 'user_id' => $paymentOrder->buyer_id,
                 'merchant_id' => $paymentOrder->merchant_id,
                 'order_id' => $paymentOrder->id,
@@ -309,29 +256,44 @@ class PaymentCallbackProcessor
                 'fee_amount' => $fee['fee_amount'],
                 'net_amount' => $fee['net_amount'],
                 'tax_amount' => $fee['tax_amount'],
-                'reference' => $reference,
             ]);
-
-            $wallet = $creditOrder->merchant->wallet()->firstOrCreate(
-                ['merchant_id' => $creditOrder->merchant_id],
-                ['user_id' => $creditOrder->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
-            );
-            $wallet->increment('balance', $fee['net_amount']);
-
             RetailAuditLog::create([
                 'merchant_id' => $creditOrder->merchant_id,
                 'staff_id' => null,
                 'user_id' => $paymentOrder->buyer_id,
                 'action' => 'OUTSTANDING_BALANCE_PAYMENT',
-                'description' => "Online payment collected for POS {$creditOrder->public_id}.",
-                'metadata' => [
-                    'order_id' => $creditOrder->id,
-                    'public_id' => $creditOrder->public_id,
-                    'payment_order_id' => $paymentOrder->id,
-                    'amount' => $amount,
-                    'remaining_balance' => $remaining,
-                    'note' => "Online payment via {$gateway}. Ref: {$gatewayRef}",
-                ],
+                'description' => 'Online payment collected for a POS order.',
+                'metadata' => ['order_id' => $creditOrder->id, 'payment_order_id' => $paymentOrder->id, 'amount' => $amount, 'remaining_balance' => $remaining, 'provider_reference' => $gatewayRef],
+            ]);
+        });
+    }
+
+    private function handlePickupFeePayment(Order $paymentOrder, string $gatewayRef, string $gateway): void
+    {
+        DB::transaction(function () use ($paymentOrder, $gatewayRef, $gateway): void {
+            $paymentOrder = Order::query()->whereKey($paymentOrder->id)->lockForUpdate()->firstOrFail();
+            $parent = Order::query()->with(['merchant.user', 'buyer'])->whereKey((int) data_get($paymentOrder->extra_items, 'parent_order_id'))->lockForUpdate()->firstOrFail();
+            $feeType = data_get($paymentOrder->extra_items, 'type');
+            if ($feeType === 'pickup_delivery_fee') {
+                app(PickupAgreementService::class)->markDeliveryConversionPaid($paymentOrder, $gatewayRef, $gateway);
+            } else {
+                app(PickupAgreementService::class)->markExtraChargePaid($paymentOrder, $gatewayRef, $gateway);
+            }
+            $paymentOrder->update(['payment_status' => 'payment_confirmed', 'gateway_ref' => $gatewayRef, 'payment_gateway' => $gateway]);
+            Transaction::query()->firstOrCreate(['reference' => $gatewayRef . '-PICKUP-FEE-' . $paymentOrder->id], [
+                'user_id' => $paymentOrder->buyer_id,
+                'merchant_id' => $paymentOrder->merchant_id,
+                'order_id' => $paymentOrder->id,
+                'type' => 'order_revenue',
+                'fee_policy_name' => 'Order-specific delivery fee passthrough',
+                'fee_policy_type' => 'fixed',
+                'currency_code' => $paymentOrder->merchant_currency_code ?: $parent->merchant_currency_code ?: 'TZS',
+                'gross_amount' => $paymentOrder->total_paid,
+                'fee_amount' => 0,
+                'provider_cost_amount' => 0,
+                'takeer_margin_amount' => 0,
+                'net_amount' => $paymentOrder->total_paid,
+                'tax_amount' => 0,
             ]);
         });
     }
@@ -341,70 +303,9 @@ class PaymentCallbackProcessor
         return (int) data_get($order->extra_items, 'credit_order_id') > 0;
     }
 
-    private function isPickupEscrowFeePaymentOrder(Order $order): bool
+    private function isPickupFeePaymentOrder(Order $order): bool
     {
         return in_array(data_get($order->extra_items, 'type'), ['extra_charge', 'pickup_delivery_fee'], true)
             && (int) data_get($order->extra_items, 'parent_order_id') > 0;
-    }
-
-    private function handlePickupEscrowFeePayment(Order $paymentOrder, string $gatewayRef, string $gateway): void
-    {
-        DB::transaction(function () use ($paymentOrder, $gatewayRef, $gateway) {
-            $paymentOrder = Order::query()->whereKey($paymentOrder->id)->lockForUpdate()->firstOrFail();
-            if ($paymentOrder->payment_status !== 'pending') {
-                Log::warning("PaymentCallbackProcessor: Pickup escrow fee payment order [{$paymentOrder->id}] is not pending.");
-                return;
-            }
-
-            $parentOrderId = (int) data_get($paymentOrder->extra_items, 'parent_order_id');
-            $parent = Order::query()->with(['merchant.user'])->whereKey($parentOrderId)->lockForUpdate()->firstOrFail();
-            $amount = (float) $paymentOrder->total_paid;
-            $reference = $gatewayRef !== 'N/A' ? $gatewayRef : (string) $paymentOrder->transaction_ref;
-            $feeType = data_get($paymentOrder->extra_items, 'type');
-
-            if ($feeType === 'pickup_delivery_fee') {
-                app(PickupAgreementService::class)->markDeliveryConversionPaid($paymentOrder, $gatewayRef, $gateway);
-            } else {
-                app(PickupAgreementService::class)->markExtraChargePaid($paymentOrder, $gatewayRef, $gateway);
-            }
-
-            Transaction::create([
-                'user_id' => $paymentOrder->buyer_id,
-                'merchant_id' => $paymentOrder->merchant_id,
-                'order_id' => $paymentOrder->id,
-                'type' => 'order_revenue',
-                'fee_policy_name' => $feeType === 'pickup_delivery_fee'
-                    ? 'Pickup delivery conversion fee passthrough'
-                    : 'Extra charge passthrough',
-                'fee_policy_type' => 'fixed',
-                'currency_code' => $paymentOrder->merchant_currency_code ?: $parent->merchant_currency_code ?: 'TZS',
-                'gross_amount' => $amount,
-                'fee_amount' => 0,
-                'provider_cost_amount' => 0,
-                'takeer_margin_amount' => 0,
-                'net_amount' => $amount,
-                'tax_amount' => 0,
-                'reference' => $reference . '-PICKUP-FEE-' . $paymentOrder->id,
-            ]);
-
-            $merchant = $parent->merchant ?: $paymentOrder->merchant;
-            if ($merchant?->user) {
-                $wallet = $merchant->wallet()->firstOrCreate(
-                    ['merchant_id' => $merchant->id],
-                    ['user_id' => $merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
-                );
-                $wallet->increment('frozen_balance', $amount);
-            }
-
-            $parent->loadMissing(['buyer', 'merchant.user']);
-            $publicId = (string) ($parent->public_id ?: $parent->id);
-            $label = $feeType === 'pickup_delivery_fee' ? 'Delivery fee' : 'Extra charge';
-            if ($parent->buyer?->phone_number) {
-                $this->smsService->sendPickupFeeHeldToBuyer($parent->buyer->phone_number, $publicId, $label, $amount, $parent->buyer_id);
-            }
-            if ($parent->merchant?->user?->phone_number) {
-                $this->smsService->sendPickupFeeHeldToMerchant($parent->merchant->user->phone_number, $publicId, $label, $amount, $parent->merchant->user_id);
-            }
-        });
     }
 }

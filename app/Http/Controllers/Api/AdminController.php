@@ -24,13 +24,10 @@ use App\Models\RetailAuditLog;
 use App\Models\ServiceCategory;
 use App\Models\ServiceRequest;
 use App\Models\SubscriptionPlan;
-use App\Models\WithdrawalRequest;
+use App\Models\ProviderRefund;
 use App\Services\PlatformNotificationService;
 use App\Services\AdminAttentionService;
-use App\Services\PayoutPolicyService;
-use App\Services\SelcomPayoutService;
-use App\Services\ProviderTreasuryService;
-use App\Services\WithdrawalAccountingService;
+use App\Services\MarketplaceSettlementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -213,9 +210,9 @@ class AdminController extends Controller
         }
 
         $order = $dispute->order;
-        if (!$order || !$this->hasPlatformHeldPayment($order)) {
+        if (!$order || ! $order->settlement()->exists()) {
             return response()->json([
-                'message' => 'This order has no refundable platform-held payment.',
+                'message' => 'This order has no provider settlement to refund.',
             ], 422);
         }
 
@@ -233,21 +230,19 @@ class AdminController extends Controller
             ]);
 
             if ($validated['verdict'] === 'refund_buyer') {
-                $order->update(['payment_status' => 'resolved_buyer_refunded']);
-                $pickupFeeOrders = $this->pickupEscrowFeeOrders($order);
-                $pickupFeeRefundTotal = (float) $pickupFeeOrders->sum('total_paid');
-                $pickupFeeOrders->each->update(['payment_status' => 'resolved_buyer_refunded']);
+                $order->update(['payment_status' => 'refund_pending']);
                 \App\Models\ServiceRequest::query()
                     ->where('payment_order_id', $order->id)
                     ->update([
-                        'payment_status' => 'refunded',
+                        'payment_status' => 'refund_pending',
                         'delivery_status' => 'disputed',
                     ]);
-                $wallet = $order->merchant->wallet()->firstOrCreate(
-                    ['merchant_id' => $order->merchant_id],
-                    ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
+                app(MarketplaceSettlementService::class)->requestRefund(
+                    $order->settlement()->firstOrFail(),
+                    'admin_dispute_refund',
+                    'admin',
+                    $request->user()?->id,
                 );
-                $this->debitRefundAmount($wallet, (float) $order->total_paid + $pickupFeeRefundTotal);
             } else {
                 \App\Models\ServiceRequest::query()
                     ->where('payment_order_id', $order->id)
@@ -257,7 +252,11 @@ class AdminController extends Controller
                         'customer_confirmed_at' => now(),
                         'status' => 'completed',
                     ]);
-                app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
+                app(MarketplaceSettlementService::class)->releaseAfterFulfillment(
+                    $order,
+                    'admin_dispute_resolved_for_merchant',
+                    ['dispute_id' => $dispute->id],
+                );
             }
         });
 
@@ -358,49 +357,6 @@ class AdminController extends Controller
         return response()->json(['message' => 'Trust & Safety action recorded successfully.']);
     }
 
-    private function hasPlatformHeldPayment(Order $order): bool
-    {
-        $isServiceSafePay = \App\Models\ServiceRequest::query()
-            ->where('payment_order_id', $order->id)
-            ->exists();
-
-        return (float) $order->total_paid > 0
-            && ($order->payment_mode === 'online_escrow' || $isServiceSafePay)
-            && in_array($order->payment_status, [
-                'escrow_locked',
-                'shipped',
-                'disputed',
-                'awaiting_merchant_confirmation',
-                'paid_pending_confirmation',
-                'paid',
-                'resolved_merchant_paid',
-            ], true);
-    }
-
-    private function debitRefundAmount(\App\Models\Wallet $wallet, float $amount): void
-    {
-        $fromFrozen = min($amount, max(0, (float) $wallet->frozen_balance));
-        if ($fromFrozen > 0) {
-            $wallet->decrement('frozen_balance', $fromFrozen);
-        }
-
-        $remaining = $amount - $fromFrozen;
-        if ($remaining > 0) {
-            $wallet->decrement('balance', $remaining);
-        }
-    }
-
-    private function pickupEscrowFeeOrders(Order $order)
-    {
-        return Order::query()
-            ->where('merchant_id', $order->merchant_id)
-            ->whereIn('payment_status', ['escrow_locked', 'disputed'])
-            ->whereIn('extra_items->type', ['extra_charge', 'pickup_delivery_fee'])
-            ->where('extra_items->parent_order_id', $order->id)
-            ->lockForUpdate()
-            ->get();
-    }
-
     private function trustSafetyActionLabel(string $action): string
     {
         return match ($action) {
@@ -439,81 +395,6 @@ class AdminController extends Controller
         }
     }
 
-    public function approveWithdrawal(Request $request, WithdrawalRequest $withdrawal, SelcomPayoutService $selcomPayouts): JsonResponse
-    {
-        $withdrawal->loadMissing(['paymentProvider', 'paymentProviderChannel.provider', 'payoutCredential.channel.provider']);
-        $handledBySelcom = $selcomPayouts->shouldHandle($withdrawal);
-
-        if ($handledBySelcom) {
-            $claimed = DB::transaction(function () use ($withdrawal) {
-                $locked = WithdrawalRequest::query()
-                    ->whereKey($withdrawal->id)
-                    ->lockForUpdate()
-                    ->firstOrFail();
-
-                if ($locked->status !== 'pending') {
-                    return false;
-                }
-
-                $snapshot = $locked->payout_snapshot ?: [];
-                $snapshot['admin_approval_claimed_at'] = now()->toISOString();
-                $snapshot['admin_approval_claimed_by'] = request()->user()?->id;
-
-                $locked->update([
-                    'status' => 'processing',
-                    'payout_snapshot' => $snapshot,
-                ]);
-
-                return true;
-            });
-
-            if (! $claimed) {
-                return response()->json(['message' => 'This withdrawal request has already been handled.'], 400);
-            }
-
-            $result = $selcomPayouts->submit($withdrawal->fresh());
-
-            if (! $result->success) {
-                return response()->json([
-                    'message' => $result->message,
-                    'error_code' => $result->errorCode,
-                ], 422);
-            }
-
-            return response()->json([
-                'message' => 'Withdrawal submitted to Selcom for processing.',
-                'gateway_ref' => $result->gatewayRef,
-            ]);
-        }
-
-        if ($withdrawal->status !== 'pending') {
-            return response()->json(['message' => 'This withdrawal request has already been handled.'], 400);
-        }
-
-        $claimed = DB::transaction(function () use ($withdrawal) {
-            $locked = WithdrawalRequest::query()
-                ->whereKey($withdrawal->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            if ($locked->status !== 'pending') {
-                return false;
-            }
-
-            $locked->update(['status' => 'approved']);
-            app(ProviderTreasuryService::class)->captureWithdrawal($locked->fresh());
-            app(WithdrawalAccountingService::class)->recordSubmitted($locked->fresh());
-
-            return true;
-        });
-
-        if (! $claimed) {
-            return response()->json(['message' => 'This withdrawal request has already been handled.'], 400);
-        }
-
-        return response()->json(['message' => 'Withdrawal approved successfully.']);
-    }
-
     public function approveRefund(Request $request, RefundRequest $refund): JsonResponse
     {
         $validated = $request->validate([
@@ -540,7 +421,33 @@ class AdminController extends Controller
 
             $order = $locked->order;
             if ($order && $order->payment_status === 'refund_pending') {
-                $order->forceFill(['payment_status' => 'resolved_buyer_refunded'])->save();
+                $settlement = $order->settlement()->first();
+                if (! $settlement) {
+                    abort(422, 'This refund request has no provider settlement to refund.');
+                }
+
+                $isPickupCancellation = $locked->source === 'pickup_grace_cancellation';
+                $refundAmountMinor = $isPickupCancellation
+                    ? (int) round((float) $locked->amount * 100)
+                    : null;
+
+                if ($refundAmountMinor !== 0) {
+                    app(MarketplaceSettlementService::class)->requestRefund(
+                        $settlement,
+                        $isPickupCancellation ? 'pickup_cancellation_refund' : 'admin_refund_approved',
+                        'admin',
+                        $request->user()?->id,
+                        $refundAmountMinor,
+                        $isPickupCancellation ? 'order-settlement-refund-' . $settlement->id . '-pickup-cancellation' : null,
+                        $isPickupCancellation ? [
+                            'refund_request_id' => $locked->id,
+                            'pickup_cancellation' => true,
+                            'close_after_refund' => true,
+                            'merchant_penalty_amount' => (float) $locked->merchant_penalty_amount,
+                            'merchant_penalty_percent' => (float) $locked->merchant_penalty_percent,
+                        ] : [],
+                    );
+                }
             }
 
             if ($order) {
@@ -777,35 +684,14 @@ class AdminController extends Controller
     {
         $validated = $request->validate([
             'disable_pos_payment_links' => 'sometimes|boolean',
-            'payment_release_controls.overrides' => 'sometimes|array',
-            'payment_release_controls.overrides.*' => 'string|in:platform_default,automatic_release,manual_review,escrow_hold,release_paused',
             'reason_notes' => 'nullable|string|max:2000',
         ]);
 
         $settings = $merchant->retail_settings;
         $oldDisablePosPaymentLinks = (bool) ($settings['disable_pos_payment_links'] ?? false);
-        $oldReleaseControls = $settings['payment_release_controls'] ?? ['overrides' => []];
 
         if (array_key_exists('disable_pos_payment_links', $validated)) {
             $settings['disable_pos_payment_links'] = (bool) $validated['disable_pos_payment_links'];
-        }
-
-        if (array_key_exists('payment_release_controls', $validated)) {
-            $incoming = $validated['payment_release_controls']['overrides'] ?? [];
-            $settings['payment_release_controls'] = [
-                'overrides' => collect(PayoutPolicyService::BUCKETS)
-                    ->mapWithKeys(function (string $label, string $bucket) use ($incoming) {
-                        $mode = $incoming[$bucket] ?? PayoutPolicyService::MODE_PLATFORM_DEFAULT;
-
-                        return [$bucket => in_array($mode, PayoutPolicyService::MERCHANT_OVERRIDE_MODES, true)
-                            ? $mode
-                            : PayoutPolicyService::MODE_PLATFORM_DEFAULT];
-                    })
-                    ->all(),
-                'updated_by_admin_id' => $request->user()?->id,
-                'updated_at' => now()->toISOString(),
-                'reason_notes' => $validated['reason_notes'] ?? null,
-            ];
         }
 
         $merchant->update(['retail_settings' => $settings]);
@@ -818,24 +704,9 @@ class AdminController extends Controller
             'description' => 'Admin updated merchant settings.',
             'metadata' => [
                 'disable_pos_payment_links' => $settings['disable_pos_payment_links'] ?? false,
-                'old_payment_release_controls' => $oldReleaseControls,
-                'new_payment_release_controls' => $settings['payment_release_controls'] ?? null,
                 'reason_notes' => $validated['reason_notes'] ?? null,
             ],
         ]);
-
-        if (array_key_exists('payment_release_controls', $validated) && $merchant->user) {
-            app(PlatformNotificationService::class)->dispatchToUser($merchant->user, [
-                'subject' => 'Your Takeer payment release settings changed',
-                'message' => $this->releasePolicyChangeMessage($merchant, $settings['payment_release_controls'], $validated['reason_notes'] ?? null),
-                'dedupe_key' => 'merchant-payment-release-policy-updated:' . $merchant->id . ':' . md5(json_encode($settings['payment_release_controls'])),
-                'metadata' => [
-                    'event_type' => 'merchant_payment_release_policy_updated',
-                    'merchant_id' => $merchant->id,
-                    'reason_notes' => $validated['reason_notes'] ?? null,
-                ],
-            ]);
-        }
 
         if (
             array_key_exists('disable_pos_payment_links', $validated)
@@ -1008,7 +879,7 @@ class AdminController extends Controller
 
         $summary = [
             'gross_revenue' => (float) Order::where('merchant_id', $merchant->id)->sum('total_paid'),
-            'paid_orders' => Order::where('merchant_id', $merchant->id)->where('payment_status', 'resolved_merchant_paid')->count(),
+            'paid_orders' => Order::where('merchant_id', $merchant->id)->where('payment_status', 'paid_out')->count(),
             'total_disputes' => (clone $disputesQuery)->count(),
             'open_disputes' => (clone $disputesQuery)->where('status', 'open')->count(),
             'pos_link_reports' => (clone $posLinkReportsQuery)->count(),
@@ -1016,18 +887,6 @@ class AdminController extends Controller
             'merchant_strikes' => $merchant->strikes_count,
             'retail_settings' => [
                 'disable_pos_payment_links' => filter_var($merchant->retail_settings['disable_pos_payment_links'] ?? false, FILTER_VALIDATE_BOOLEAN),
-                'payment_release_controls' => $merchant->retail_settings['payment_release_controls'] ?? [
-                    'overrides' => collect(PayoutPolicyService::BUCKETS)
-                        ->mapWithKeys(fn ($label, $bucket) => [$bucket => PayoutPolicyService::MODE_PLATFORM_DEFAULT])
-                        ->all(),
-                ],
-            ],
-            'release_policy' => [
-                'buckets' => PayoutPolicyService::BUCKETS,
-                'modes' => app(PayoutPolicyService::class)->labels(),
-                'platform_defaults' => collect(PayoutPolicyService::BUCKETS)
-                    ->mapWithKeys(fn ($label, $bucket) => [$bucket => app(PayoutPolicyService::class)->platformMode($bucket)])
-                    ->all(),
             ],
             'recent_strikes' => $merchant->strikes->map(fn (MerchantStrike $strike) => [
                 'id' => $strike->id,
@@ -1167,27 +1026,6 @@ class AdminController extends Controller
     private function merchantDisplayName(\App\Models\Merchant $merchant): string
     {
         return $merchant->display_name ?: $merchant->username ?: "Business #{$merchant->id}";
-    }
-
-    private function releasePolicyChangeMessage(\App\Models\Merchant $merchant, array $controls, ?string $reason): string
-    {
-        $labels = app(PayoutPolicyService::class)->labels();
-        $changed = collect($controls['overrides'] ?? [])
-            ->filter(fn (string $mode) => $mode !== PayoutPolicyService::MODE_PLATFORM_DEFAULT)
-            ->map(fn (string $mode, string $bucket) => (PayoutPolicyService::BUCKETS[$bucket] ?? $bucket) . ': ' . ($labels[$mode] ?? $mode))
-            ->values();
-
-        $summary = $changed->isEmpty()
-            ? 'Your payment release controls now follow Takeer platform defaults.'
-            : 'Current payment release controls: ' . $changed->implode('; ') . '.';
-
-        $message = "Takeer has updated payment release controls for {$merchant->display_name}. {$summary}";
-
-        if ($reason) {
-            $message .= " Reason: {$reason}";
-        }
-
-        return $message;
     }
 
     /**
@@ -2127,7 +1965,7 @@ class AdminController extends Controller
     {
         $days = min(max((int) $request->input('days', 30), 1), 180);
         $from = now()->subDays($days);
-        $paidStatuses = ['escrow_locked', 'resolved_merchant_paid'];
+        $paidStatuses = ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'release_requested', 'payout_processing', 'paid_out'];
 
         $events = $this->analyticsEventQuery()->where('created_at', '>=', $from);
         $paidOrders = Order::query()
@@ -2414,7 +2252,7 @@ class AdminController extends Controller
     {
         $days = min(max((int) $request->input('days', 90), 30), 180);
         $from = now()->subDays($days);
-        $paidStatuses = ['escrow_locked', 'resolved_merchant_paid'];
+        $paidStatuses = ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'release_requested', 'payout_processing', 'paid_out'];
 
         $events = $this->analyticsEventQuery()
             ->whereNotNull('user_id')
@@ -2517,7 +2355,7 @@ class AdminController extends Controller
     {
         $days = min(max((int) $request->input('days', 30), 1), 180);
         $from = now()->subDays($days);
-        $paidStatuses = ['escrow_locked', 'resolved_merchant_paid'];
+        $paidStatuses = ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'release_requested', 'payout_processing', 'paid_out'];
         $events = $this->analyticsEventQuery()->where('created_at', '>=', $from);
         $paidOrders = Order::query()
             ->whereIn('payment_status', $paidStatuses)

@@ -1,8 +1,10 @@
 import { Link } from '@inertiajs/react';
 import { BadgeCheck, ShoppingBag } from 'lucide-react';
 import FollowStoreButton from './FollowStoreButton';
+import { useLocale } from '@/lib/i18n';
 
 export default function MerchantHoverCard({ merchant, align = 'left' }) {
+    const { copy } = useLocale();
     const username = merchant?.username || merchant?.slug;
     const displayName = merchant?.display_name || merchant?.name || 'Store';
     const avatarUrl = merchant?.avatar_url;
@@ -55,7 +57,7 @@ export default function MerchantHoverCard({ merchant, align = 'left' }) {
                         className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 text-sm font-black text-white transition-colors hover:bg-neutral-800"
                     >
                         <ShoppingBag className="h-4 w-4" />
-                        <span>Shop</span>
+                        <span>{copy('Shop', 'Duka')}</span>
                     </Link>
                     <FollowStoreButton
                         merchantSlug={username}
@@ -63,7 +65,7 @@ export default function MerchantHoverCard({ merchant, align = 'left' }) {
                         initialCount={merchant?.followers_count}
                         isOwner={merchant?.is_owner}
                         showCount={false}
-                        labelFollow="Follow"
+                        labelFollow={copy('Follow', 'Fuata')}
                         className="h-10 w-full rounded-lg"
                     />
                 </div>

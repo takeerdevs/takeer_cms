@@ -3,13 +3,15 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowLeft, Shield } from 'lucide-react';
 import TotpSecurityPanel from '@/Components/Profile/TotpSecurityPanel';
+import { useLocale } from '@/lib/i18n';
 
 export default function ProfileSecurity() {
+    const { t } = useLocale();
     const { auth } = usePage().props;
 
     return (
         <AppLayout>
-            <Head title="Usalama wa Akaunti | Takeer" />
+            <Head title={`${t('accountSettings.securityTitle')} | Takeer`} />
             <div className="mx-auto max-w-3xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex items-center gap-3">
                     <Link
@@ -23,8 +25,8 @@ export default function ProfileSecurity() {
                             <Shield className="h-5 w-5" />
                         </div>
                         <div className="min-w-0">
-                            <h1 className="truncate text-2xl font-black tracking-tight text-foreground">Usalama wa Akaunti</h1>
-                            <p className="text-sm text-muted-foreground">Linda akaunti ya mmiliki kwa authenticator na recovery codes.</p>
+                            <h1 className="truncate text-2xl font-black tracking-tight text-foreground">{t('accountSettings.securityTitle')}</h1>
+                            <p className="text-sm text-muted-foreground">{t('accountSettings.securityDescription')}</p>
                         </div>
                     </div>
                 </div>

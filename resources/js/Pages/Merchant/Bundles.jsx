@@ -9,6 +9,7 @@ import { AlertTriangle, Boxes, FileUp, Filter, Image, Info, Loader2, Plus, Save,
 import axios from 'axios';
 import { toast } from 'sonner';
 import AutoPostTargetsPanel, { defaultAutoPostTargets } from '@/Components/Merchant/AutoPostTargetsPanel';
+import { useLocale } from '@/lib/i18n';
 
 const initialBundleForm = {
     id: null,
@@ -52,6 +53,7 @@ const initialFormForScope = (moduleScope = null) => ({
 });
 
 export default function MerchantBundles({ merchantUsername = '', itemPickerDefaultLimit = 5, moduleScope = null }) {
+    const { copy } = useLocale();
     const courseModuleMode = moduleScope === 'courses';
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -73,45 +75,45 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
     const [commerceSummary, setCommerceSummary] = useState(null);
     const selectableItemsLimit = Math.min(20, Math.max(1, Number(itemPickerDefaultLimit) || 5));
     const pageCopy = courseModuleMode ? {
-        head: 'Courses & Workshops',
-        loading: 'Inapakia courses...',
-        summaryTitle: 'Learning Summary',
-        summaryDescription: 'Useful performance snapshot for courses, workshops, cohorts, and enrollments.',
-        createTitle: bundleForm.id ? 'Edit Course / Workshop' : 'Create Course / Workshop',
-        createDescription: 'Build a course, short course, cohort, workshop, or training package with enrollment-ready details.',
-        nameLabel: 'Course / Workshop Name',
-        namePlaceholder: 'Mf. Practical Accounting Short Course',
-        descriptionPlaceholder: 'Explain outcomes, target students, schedule, materials, and how enrollment works.',
-        catalogTitle: 'Learning Catalog',
-        catalogDescription: 'All courses and workshops in your merchant catalog.',
-        emptyTitle: 'Hakuna courses bado',
-        emptyBody: 'Create a course or workshop with lessons, cohorts, pricing, and enrollment rules.',
-        saveLabel: bundleForm.id ? 'Update Course' : 'Save Course',
-        newLabel: 'New Course',
+        head: copy('Courses & workshops', 'Kozi na warsha'),
+        loading: copy('Loading courses...', 'Inapakia kozi...'),
+        summaryTitle: copy('Learning summary', 'Muhtasari wa kujifunza'),
+        summaryDescription: copy('Useful performance snapshot for courses, workshops, cohorts, and enrollments.', 'Muhtasari wa utendaji wa kozi, warsha, makundi na usajili.'),
+        createTitle: bundleForm.id ? copy('Edit course / workshop', 'Hariri kozi / warsha') : copy('Create course / workshop', 'Unda kozi / warsha'),
+        createDescription: copy('Build a course, short course, cohort, workshop, or training package with enrollment-ready details.', 'Unda kozi, kozi fupi, kundi, warsha au kifurushi cha mafunzo chenye taarifa tayari kwa usajili.'),
+        nameLabel: copy('Course / workshop name', 'Jina la kozi / warsha'),
+        namePlaceholder: copy('E.g. Practical accounting short course', 'Mfano: Kozi fupi ya uhasibu wa vitendo'),
+        descriptionPlaceholder: copy('Explain outcomes, target students, schedule, materials, and how enrollment works.', 'Eleza matokeo, wanafunzi walengwa, ratiba, vifaa na jinsi usajili unavyofanya kazi.'),
+        catalogTitle: copy('Learning catalog', 'Katalogi ya kujifunza'),
+        catalogDescription: copy('All courses and workshops in your merchant catalog.', 'Kozi na warsha zote kwenye katalogi yako.'),
+        emptyTitle: copy('No courses yet', 'Hakuna kozi bado'),
+        emptyBody: copy('Create a course or workshop with lessons, cohorts, pricing, and enrollment rules.', 'Unda kozi au warsha yenye masomo, makundi, bei na kanuni za usajili.'),
+        saveLabel: bundleForm.id ? copy('Update course', 'Sasisha kozi') : copy('Save course', 'Hifadhi kozi'),
+        newLabel: copy('New course', 'Kozi mpya'),
     } : {
-        head: 'Bundles',
-        loading: 'Inapakia bundles...',
-        summaryTitle: 'Bundles Summary',
-        summaryDescription: commerceSummary?.date ? `Daily metrics for ${commerceSummary.date}` : 'Useful performance snapshot for bundles.',
-        createTitle: bundleForm.id ? 'Edit Bundle' : 'Create Bundle',
-        createDescription: 'Group products and post content into one sellable offer.',
-        nameLabel: 'Bundle Name',
-        namePlaceholder: 'Mf. Retail Starter Pack',
-        descriptionPlaceholder: 'Explain what the buyer gets inside this bundle.',
-        catalogTitle: 'Bundle Catalog',
-        catalogDescription: 'All bundles in your merchant catalog.',
-        emptyTitle: 'Hakuna bundles bado',
-        emptyBody: 'Anza kwa kuunganisha bidhaa na content kwenye offer moja.',
-        saveLabel: bundleForm.id ? 'Update Bundle' : 'Save Bundle',
-        newLabel: 'New Bundle',
+        head: copy('Bundles', 'Vifurushi'),
+        loading: copy('Loading bundles...', 'Inapakia vifurushi...'),
+        summaryTitle: copy('Bundles summary', 'Muhtasari wa vifurushi'),
+        summaryDescription: commerceSummary?.date ? `${copy('Daily metrics for', 'Vipimo vya kila siku vya')} ${commerceSummary.date}` : copy('Useful performance snapshot for bundles.', 'Muhtasari wa utendaji wa vifurushi.'),
+        createTitle: bundleForm.id ? copy('Edit bundle', 'Hariri kifurushi') : copy('Create bundle', 'Unda kifurushi'),
+        createDescription: copy('Group products and post content into one sellable offer.', 'Unganisha bidhaa na maudhui ya chapisho kuwa ofa moja ya kuuzwa.'),
+        nameLabel: copy('Bundle name', 'Jina la kifurushi'),
+        namePlaceholder: copy('E.g. Retail starter pack', 'Mfano: Kifurushi cha kuanzia rejareja'),
+        descriptionPlaceholder: copy('Explain what the buyer gets inside this bundle.', 'Eleza mnunuzi anachopata ndani ya kifurushi hiki.'),
+        catalogTitle: copy('Bundle catalog', 'Katalogi ya vifurushi'),
+        catalogDescription: copy('All bundles in your merchant catalog.', 'Vifurushi vyote kwenye katalogi yako.'),
+        emptyTitle: copy('No bundles yet', 'Hakuna vifurushi bado'),
+        emptyBody: copy('Start by combining products and content into one offer.', 'Anza kwa kuunganisha bidhaa na maudhui kuwa ofa moja.'),
+        saveLabel: bundleForm.id ? copy('Update bundle', 'Sasisha kifurushi') : copy('Save bundle', 'Hifadhi kifurushi'),
+        newLabel: copy('New bundle', 'Kifurushi kipya'),
     };
 
     const bundleTypeFilters = [
-        { key: 'all', label: 'All' },
-        { key: 'physical', label: 'Physical' },
-        { key: 'digital', label: 'Digital' },
-        { key: 'service', label: 'Service' },
-        { key: 'content', label: 'Content' },
+        { key: 'all', label: copy('All', 'Zote') },
+        { key: 'physical', label: copy('Physical', 'Kimwili') },
+        { key: 'digital', label: copy('Digital', 'Kidijitali') },
+        { key: 'service', label: copy('Service', 'Huduma') },
+        { key: 'content', label: copy('Content', 'Maudhui') },
     ];
 
     useEffect(() => {
@@ -181,11 +183,11 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
     const typeLabel = (option) => {
         const type = optionFulfillmentType(option);
-        if (option.item_type === 'post') return 'Post';
-        if (type === 'content') return 'Content';
-        if (type === 'digital') return 'Digital';
-        if (type === 'service') return 'Service';
-        return 'Physical';
+        if (option.item_type === 'post') return copy('Post', 'Chapisho');
+        if (type === 'content') return copy('Content', 'Maudhui');
+        if (type === 'digital') return copy('Digital', 'Kidijitali');
+        if (type === 'service') return copy('Service', 'Huduma');
+        return copy('Physical', 'Kimwili');
     };
 
     const typeBadgeClass = (option) => {
@@ -302,10 +304,10 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
     const summaryCards = useMemo(() => {
         const data = commerceSummary?.sections?.bundles || {};
         return [
-            { label: courseModuleMode ? 'Courses' : 'Bundles', value: data.total_items ?? bundles.length },
-            { label: 'Published', value: data.published_items ?? 0 },
-            { label: 'Orders Today', value: data.today_orders ?? 0 },
-            { label: 'Sales Today', value: `TZS ${Number(data.today_sales ?? 0).toLocaleString()}` },
+            { label: courseModuleMode ? copy('Courses', 'Kozi') : copy('Bundles', 'Vifurushi'), value: data.total_items ?? bundles.length },
+            { label: copy('Published', 'Imechapishwa'), value: data.published_items ?? 0 },
+            { label: copy('Orders today', 'Oda za leo'), value: data.today_orders ?? 0 },
+            { label: copy('Sales today', 'Mauzo ya leo'), value: `TZS ${Number(data.today_sales ?? 0).toLocaleString()}` },
         ];
     }, [bundles.length, commerceSummary, courseModuleMode]);
     const visibleBundles = useMemo(() => (
@@ -331,7 +333,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
             setShippingProfiles(shippingProfilesRes.data?.data || []);
             setCommerceSummary(summaryRes.data || null);
         } catch (error) {
-            toast.error('Imeshindwa kupakia bundles page.');
+            toast.error(copy('Failed to load bundles page.', 'Imeshindikana kupakia ukurasa wa vifurushi.'));
         } finally {
             setLoading(false);
         }
@@ -524,8 +526,9 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         }
 
         const grouped = new Map();
+        const defaultModuleTitle = copy('Section 1', 'Sehemu ya 1');
         (bundle?.items || []).forEach((item, itemIndex) => {
-            const title = item.section_title || 'Sehemu ya 1';
+            const title = item.section_title || defaultModuleTitle;
             if (!grouped.has(title)) {
                 grouped.set(title, {
                     id: `${Date.now()}-${grouped.size}-${title}`,
@@ -558,7 +561,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                         role: 'supporting',
                         asset_type: 'file',
                         asset_id: null,
-                        name: material.name || 'Material',
+                        name: material.name || copy('Material', 'Materiali'),
                         url: material.url || '',
                         mime: material.mime || null,
                         size: material.size ?? null,
@@ -569,7 +572,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         });
 
         if (grouped.size === 0) {
-            grouped.set('Sehemu ya 1', { id: `${Date.now()}-module`, title: 'Sehemu ya 1', sort_order: 0, lessons: [] });
+            grouped.set(defaultModuleTitle, { id: `${Date.now()}-module`, title: defaultModuleTitle, sort_order: 0, lessons: [] });
         }
 
         return Array.from(grouped.values());
@@ -577,13 +580,13 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
     function ensureCourseModuleExists() {
         if (courseModules.length > 0) return;
-        setCourseModules([{ id: `${Date.now()}-module`, title: 'Sehemu ya 1', sort_order: 0, lessons: [] }]);
+        setCourseModules([{ id: `${Date.now()}-module`, title: copy('Section 1', 'Sehemu ya 1'), sort_order: 0, lessons: [] }]);
     }
 
     async function saveBundle() {
         const needsPublishConfirmation = bundleForm.status === 'published'
             && bundleExperienceWarnings.some((warning) => warning.confirmOnPublish);
-        if (needsPublishConfirmation && !window.confirm('Bundle hii ina service inayohitaji maelezo/uthibitisho wa ziada. Una uhakika unataka kuipublish sasa?')) {
+        if (needsPublishConfirmation && !window.confirm(copy('This bundle includes a service that needs additional details or confirmation. Publish it now?', 'Bundle hii ina service inayohitaji maelezo/uthibitisho wa ziada. Una uhakika unataka kuipublish sasa?'))) {
             return;
         }
 
@@ -635,31 +638,31 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
             if (bundleForm.id) {
                 await axios.put(`/merchant/${merchantUsername}/bundles/${bundleForm.id}/api`, payload);
-                toast.success('Bundle imesasishwa.');
+                toast.success(copy('Bundle updated.', 'Bundle imesasishwa.'));
             } else {
                 await axios.post(`/merchant/${merchantUsername}/bundles/api`, payload);
-                toast.success('Bundle imeundwa.');
+                toast.success(copy('Bundle created.', 'Bundle imeundwa.'));
             }
 
             resetForm();
             await loadPage();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kuhifadhi bundle.');
+            toast.error(error.response?.data?.message || copy('Could not save the bundle.', 'Imeshindwa kuhifadhi bundle.'));
         } finally {
             setSaving(false);
         }
     }
 
     async function destroyBundle(id) {
-        if (!window.confirm('Una uhakika unataka kufuta bundle hii?')) return;
+        if (!window.confirm(copy('Are you sure you want to delete this bundle?', 'Una uhakika unataka kufuta bundle hii?'))) return;
 
         try {
             await axios.delete(`/merchant/${merchantUsername}/bundles/${id}/api`);
-            toast.success('Bundle imefutwa.');
+            toast.success(copy('Bundle deleted.', 'Bundle imefutwa.'));
             if (bundleForm.id === id) resetForm();
             await loadPage();
         } catch (error) {
-            toast.error('Imeshindwa kufuta bundle.');
+            toast.error(copy('Could not delete bundle.', 'Imeshindwa kufuta bundle.'));
         }
     }
 
@@ -760,7 +763,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         const module = courseModules.find((entry) => entry.id === moduleId);
         if (!module) return;
         const moduleLessons = module.lessons || [];
-        if (moduleLessons.length > 0 && !window.confirm('Sehemu hii ina masomo. Ukifuta sehemu, masomo yake yataondolewa kwenye course. Endelea?')) return;
+        if (moduleLessons.length > 0 && !window.confirm(copy('This module has lessons. Deleting it will remove its lessons from the course. Continue?', 'Sehemu hii ina masomo. Ukifuta sehemu, masomo yake yataondolewa kwenye course. Endelea?'))) return;
 
         setCourseModules((current) => current.filter((entry) => entry.id !== moduleId));
         setCourseAttachSelection((current) => {
@@ -788,7 +791,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         const optionKey = courseAttachSelection[module.id];
         const option = availableCourseLessonOptions.find((entry) => entry.key === optionKey);
         if (!option) {
-            toast.error('Chagua post, digital download, au content ya kuunganisha na somo.');
+            toast.error(copy('Choose a post, digital download, or content to attach to the lesson.', 'Chagua post, digital download, au content ya kuunganisha na somo.'));
             return;
         }
 
@@ -838,7 +841,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         const optionKey = courseAttachSelection[attachKey];
         const option = availableCourseLessonOptions.find((entry) => entry.key === optionKey);
         if (!option) {
-            toast.error('Chagua content ya kuweka kama lesson content.');
+            toast.error(copy('Choose content to use as lesson content.', 'Chagua content ya kuweka kama lesson content.'));
             return;
         }
 
@@ -935,9 +938,9 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                 ...current,
                 course_cover_image_url: uploadRes.data.url,
             }));
-            toast.success('Course cover imepakiwa.');
+            toast.success(copy('Course cover uploaded.', 'Course cover imepakiwa.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kupakia course cover.');
+            toast.error(error.response?.data?.message || copy('Could not upload the course cover.', 'Imeshindwa kupakia course cover.'));
         } finally {
             setCourseCoverUpload({ uploading: false, progress: 0, name: '' });
         }
@@ -971,7 +974,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
             });
 
             const uploadedUrl = uploadRes.data?.url;
-            const title = file.name.replace(/\.[^.]+$/, '').trim() || 'Course lesson';
+            const title = file.name.replace(/\.[^.]+$/, '').trim() || copy('Course lesson', 'Somo la kozi');
             const contentRes = await axios.post(`/merchant/${merchantUsername}/content-items/api`, {
                 title,
                 excerpt: 'Lesson asset uploaded from course builder.',
@@ -1023,9 +1026,9 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                     : entry
             )));
 
-            toast.success('Somo limepakiwa na kuongezwa kwenye course.');
+            toast.success(copy('Lesson uploaded and added to the course.', 'Somo limepakiwa na kuongezwa kwenye course.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kupakia somo.');
+            toast.error(error.response?.data?.message || copy('Could not upload the lesson.', 'Imeshindwa kupakia somo.'));
         } finally {
             setCourseLessonUploads((current) => ({
                 ...current,
@@ -1090,9 +1093,9 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                     : module
             )));
 
-            toast.success('Supporting material imeongezwa.');
+            toast.success(copy('Supporting material added.', 'Supporting material imeongezwa.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kupakia supporting material.');
+            toast.error(error.response?.data?.message || copy('Could not upload the supporting material.', 'Imeshindwa kupakia supporting material.'));
         } finally {
             setSupportingMaterialUploads((current) => ({
                 ...current,
@@ -1148,13 +1151,13 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                     <Input value={bundleForm.title} onChange={(e) => setBundleForm({ ...bundleForm, title: e.target.value })} placeholder={pageCopy.namePlaceholder} />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Price (TZS)</label>
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Price (TZS)', 'Bei (TZS)')}</label>
                                     <Input type="number" min="0" value={bundleForm.price} onChange={(e) => setBundleForm({ ...bundleForm, price: e.target.value })} placeholder="25000" />
                                 </div>
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Description</label>
+                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Description', 'Maelezo')}</label>
                                 <Textarea rows={4} value={bundleForm.description} onChange={(e) => setBundleForm({ ...bundleForm, description: e.target.value })} placeholder={pageCopy.descriptionPlaceholder} />
                             </div>
 
@@ -1163,18 +1166,18 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                     <div className="flex items-start gap-2">
                                         <Clock3 className="mt-0.5 h-4 w-4 text-emerald-700" />
                                         <div>
-                                            <p className="text-xs font-black uppercase tracking-widest text-emerald-900">Muda wa bundle kufika</p>
-                                            <p className="text-xs text-emerald-800/80">Kwa bundle yenye bidhaa za kushikika, chagua template au weka muda maalum.</p>
+                                            <p className="text-xs font-black uppercase tracking-widest text-emerald-900">{copy('Bundle delivery timing', 'Muda wa bundle kufika')}</p>
+                                            <p className="text-xs text-emerald-800/80">{copy('For bundles with physical products, choose a template or set a custom time.', 'Kwa bundle yenye bidhaa za kushikika, chagua template au weka muda maalum.')}</p>
                                         </div>
                                     </div>
                                     <button type="button" onClick={() => setBundleForm({ ...bundleForm, delivery_promise_override_enabled: !bundleForm.delivery_promise_override_enabled })} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${bundleForm.delivery_promise_override_enabled ? 'border-emerald-200 bg-white text-emerald-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}>
-                                        {bundleForm.delivery_promise_override_enabled ? 'Muda maalum' : 'Tumia template'}
+                                        {bundleForm.delivery_promise_override_enabled ? copy('Custom timing', 'Muda maalum') : copy('Use template', 'Tumia template')}
                                     </button>
                                 </div>
                                 <select className="h-11 w-full rounded-xl border border-emerald-100 bg-white px-3 text-sm font-bold text-emerald-800" value={bundleForm.shipping_profile_id} onChange={(e) => setBundleForm({ ...bundleForm, shipping_profile_id: e.target.value })}>
-                                    <option value="">Use first physical item/default profile</option>
+                                    <option value="">{copy('Use first physical item/default profile', 'Tumia item ya kwanza ya kimwili/profile ya kawaida')}</option>
                                     {shippingProfiles.map(profile => (
-                                        <option key={profile.id} value={profile.id}>{profile.name}{profile.is_default ? ' (Default)' : ''}</option>
+                                        <option key={profile.id} value={profile.id}>{profile.name}{profile.is_default ? ` (${copy('Default', 'Chaguo-msingi')})` : ''}</option>
                                     ))}
                                 </select>
                                 {bundleForm.delivery_promise_override_enabled && (
@@ -1190,10 +1193,10 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                         {showBundleDeliveryDays ? (
                                             <div className="space-y-2">
                                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                                    <Input type="number" min="0" placeholder="Kuandaa kuanzia" value={bundleForm.delivery_handling_min_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_handling_min_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
-                                                    <Input type="number" min="0" placeholder="Kuandaa mpaka" value={bundleForm.delivery_handling_max_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_handling_max_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
-                                                    <Input type="number" min="0" placeholder="Safari kuanzia" value={bundleForm.delivery_transit_min_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_transit_min_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
-                                                    <Input type="number" min="0" placeholder="Safari mpaka" value={bundleForm.delivery_transit_max_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_transit_max_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                                    <Input type="number" min="0" placeholder={copy('Handling from', 'Kuandaa kuanzia')} value={bundleForm.delivery_handling_min_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_handling_min_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                                    <Input type="number" min="0" placeholder={copy('Handling to', 'Kuandaa mpaka')} value={bundleForm.delivery_handling_max_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_handling_max_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                                    <Input type="number" min="0" placeholder={copy('Transit from', 'Safari kuanzia')} value={bundleForm.delivery_transit_min_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_transit_min_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                                    <Input type="number" min="0" placeholder={copy('Transit to', 'Safari mpaka')} value={bundleForm.delivery_transit_max_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_transit_max_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
                                                 </div>
                                                 {showBundleDeliveryCutoff && (
                                                     <Input type="time" value={bundleForm.delivery_cutoff_time} onChange={(e) => setBundleForm({ ...bundleForm, delivery_cutoff_time: e.target.value })} className="h-10 bg-white text-xs font-bold" />
@@ -1201,21 +1204,21 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                             </div>
                                         ) : (
                                             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">
-                                                Siku na deadline zimefichwa kwa sababu muda utathibitishwa kwenye chat.
+                                                {copy('Days and deadline are hidden because timing will be confirmed in chat.', 'Siku na deadline zimefichwa kwa sababu muda utathibitishwa kwenye chat.')}
                                             </div>
                                         )}
                                         <div className="grid grid-cols-1 gap-2">
-                                            <Input placeholder="Maneno ya mteja, mf. Bundle delivery: siku 2-5" value={bundleForm.delivery_promise_label} onChange={(e) => setBundleForm({ ...bundleForm, delivery_promise_label: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                            <Input placeholder={copy('Customer-facing wording, e.g. Bundle delivery: 2–5 days', 'Maneno ya mteja, mf. Bundle delivery: siku 2-5')} value={bundleForm.delivery_promise_label} onChange={(e) => setBundleForm({ ...bundleForm, delivery_promise_label: e.target.value })} className="h-10 bg-white text-xs font-bold" />
                                         </div>
                                         <div className="flex flex-wrap gap-2">
                                             <button type="button" onClick={() => setBundleForm({ ...bundleForm, delivery_business_days_only: !bundleForm.delivery_business_days_only })} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${bundleForm.delivery_business_days_only ? 'border-emerald-200 bg-white text-emerald-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}>
-                                                {bundleForm.delivery_business_days_only ? 'Siku za kazi' : 'Kila siku'}
+                                                {bundleForm.delivery_business_days_only ? copy('Business days', 'Siku za kazi') : copy('Every day', 'Kila siku')}
                                             </button>
                                             <button type="button" onClick={() => setBundleForm({ ...bundleForm, delivery_requires_confirmation: !bundleForm.delivery_requires_confirmation, delivery_cutoff_time: bundleForm.delivery_requires_confirmation ? bundleForm.delivery_cutoff_time : '' })} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${bundleForm.delivery_requires_confirmation ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}>
-                                                {bundleForm.delivery_requires_confirmation ? 'Tuta-confirm kwa chat' : 'Mteja aone estimate'}
+                                                {bundleForm.delivery_requires_confirmation ? copy('Confirm in chat', 'Tuta-confirm kwa chat') : copy('Show customer the estimate', 'Mteja aone estimate')}
                                             </button>
                                         </div>
-                                        <Input placeholder="Ujumbe wa ziada, mf. Bundle nzito inaweza kuhitaji cargo" value={bundleForm.delivery_promise_note} onChange={(e) => setBundleForm({ ...bundleForm, delivery_promise_note: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                        <Input placeholder={copy('Extra note, e.g. a heavy bundle may require cargo', 'Ujumbe wa ziada, mf. Bundle nzito inaweza kuhitaji cargo')} value={bundleForm.delivery_promise_note} onChange={(e) => setBundleForm({ ...bundleForm, delivery_promise_note: e.target.value })} className="h-10 bg-white text-xs font-bold" />
                                     </div>
                                 )}
                             </div>
@@ -1223,8 +1226,8 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                             <div className="grid gap-3 md:grid-cols-2">
                                 <label className="min-h-[86px] rounded-2xl border border-slate-200 bg-white px-5 py-4 flex items-center justify-between gap-4 shadow-sm">
                                     <div>
-                                        <p className="text-base font-black">Sell individually</p>
-                                        <p className="mt-1 text-sm leading-5 text-muted-foreground">Buyer can purchase this bundle directly.</p>
+                                        <p className="text-base font-black">{copy('Sell individually', 'Uza moja kwa moja')}</p>
+                                        <p className="mt-1 text-sm leading-5 text-muted-foreground">{copy('Buyer can purchase this bundle directly.', 'Mteja anaweza kununua bundle hii moja kwa moja.')}</p>
                                     </div>
                                     <input type="checkbox" className="h-4 w-4" checked={bundleForm.is_individual_sale} onChange={(e) => setBundleForm({ ...bundleForm, is_individual_sale: e.target.checked })} />
                                 </label>
@@ -1250,30 +1253,30 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                             {bundleForm.is_course && (
                                 <div className="border-t border-indigo-100 pt-6 space-y-5">
                                     <div>
-                                        <p className="text-xs font-black uppercase tracking-widest text-indigo-700">Course Builder</p>
-                                        <p className="mt-1 text-sm text-muted-foreground">Set how students access this course, then build the curriculum below.</p>
+                                        <p className="text-xs font-black uppercase tracking-widest text-indigo-700">{copy('Course builder', 'Mjenzi wa kozi')}</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">{copy('Set how students access this course, then build the curriculum below.', 'Weka jinsi wanafunzi watakavyofikia kozi hii, kisha tengeneza mtaala hapa chini.')}</p>
                                     </div>
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
-                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">How will students learn?</label>
+                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('How will students learn?', 'Wanafunzi watajifunza vipi?')}</label>
                                             <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={bundleForm.course_format} onChange={(e) => setBundleForm({ ...bundleForm, course_format: e.target.value })}>
-                                                <option value="self_paced">Learn anytime</option>
-                                                <option value="cohort">Join a class group</option>
-                                                <option value="live">Attend live classes</option>
+                                                <option value="self_paced">{copy('Learn anytime', 'Jifunze wakati wowote')}</option>
+                                                <option value="cohort">{copy('Join a class group', 'Jiunge na kundi la darasa')}</option>
+                                                <option value="live">{copy('Attend live classes', 'Hudhuria madarasa mubashara')}</option>
                                             </select>
-                                            <p className="text-[11px] text-muted-foreground">This controls what extra setup fields appear below.</p>
+                                            <p className="text-[11px] text-muted-foreground">{copy('This controls which extra setup fields appear below.', 'Hii inadhibiti sehemu za ziada za usanidi zinazoonekana hapa chini.')}</p>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Course Cover</label>
+                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Course cover', 'Jalada la kozi')}</label>
                                             <div className="rounded-2xl border border-input bg-white p-3">
                                                 {bundleForm.course_cover_image_url ? (
                                                     <div className="mb-3 overflow-hidden rounded-xl border border-input bg-muted">
-                                                        <img src={bundleForm.course_cover_image_url} alt="Course cover preview" className="h-32 w-full object-cover" />
+                                                        <img src={bundleForm.course_cover_image_url} alt={copy('Course cover preview', 'Mwonekano wa jalada la kozi')} className="h-32 w-full object-cover" />
                                                     </div>
                                                 ) : (
                                                     <div className="mb-3 flex h-32 items-center justify-center rounded-xl border border-dashed border-blue-200 bg-blue-50/50 text-blue-700">
                                                         <Image className="mr-2 h-5 w-5" />
-                                                        <span className="text-sm font-bold">Upload course cover</span>
+                                                        <span className="text-sm font-bold">{copy('Upload course cover', 'Pakia jalada la kozi')}</span>
                                                     </div>
                                                 )}
                                                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -1297,14 +1300,14 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                             className="rounded-xl"
                                                             onClick={() => setBundleForm({ ...bundleForm, course_cover_image_url: '' })}
                                                         >
-                                                            Remove
+                                                            {copy('Remove', 'Ondoa')}
                                                         </Button>
                                                     )}
                                                 </div>
                                                 {courseCoverUpload.uploading && (
                                                     <div className="mt-3 space-y-1">
                                                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                                            <span className="truncate">{courseCoverUpload.name || 'Uploading...'}</span>
+                                                            <span className="truncate">{courseCoverUpload.name || copy('Uploading...', 'Inapakia...')}</span>
                                                             <span>{courseCoverUpload.progress || 0}%</span>
                                                         </div>
                                                         <div className="h-2 overflow-hidden rounded-full bg-blue-100">
@@ -1319,17 +1322,17 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                         <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
                                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                 <div>
-                                                    <p className="text-xs font-black uppercase tracking-widest text-amber-800">Class Groups</p>
-                                                    <p className="text-xs text-amber-900/75">Create the batch students will join, with start date, enrollment deadline, and capacity.</p>
+                                                    <p className="text-xs font-black uppercase tracking-widest text-amber-800">{copy('Class groups', 'Makundi ya darasa')}</p>
+                                                    <p className="text-xs text-amber-900/75">{copy('Create the batch students will join, with start date, enrollment deadline, and capacity.', 'Unda batch ambayo wanafunzi watajiunga, ikiwa na tarehe ya kuanza, deadline ya usajili, na uwezo.')}</p>
                                                 </div>
                                                 <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={addCourseCohort}>
                                                     <Plus className="mr-2 h-4 w-4" />
-                                                    Add Class Group
+                                                    {copy('Add class group', 'Ongeza kundi la darasa')}
                                                 </Button>
                                             </div>
                                             {(bundleForm.cohorts || []).length === 0 ? (
                                                 <div className="rounded-xl border border-dashed border-amber-200 bg-white/70 px-4 py-4 text-sm text-amber-900">
-                                                    No class group yet. Add one before publishing a cohort course.
+                                                    {copy('No class group yet. Add one before publishing a cohort course.', 'Hakuna kundi la darasa bado. Ongeza moja kabla ya kuchapisha kozi ya cohort.')}
                                                 </div>
                                             ) : (
                                                 <div className="space-y-3">
@@ -1337,21 +1340,21 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                         <div key={`cohort-${index}`} className="rounded-xl border border-amber-100 bg-white p-3 space-y-3">
                                                             <div className="grid gap-2 sm:grid-cols-2">
                                                                 <div className="space-y-1.5">
-                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Group Name</label>
-                                                                    <Input value={cohort.name || ''} onChange={(e) => updateCourseCohort(index, { name: e.target.value })} placeholder="Mf. May 2026 Batch" />
+                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Group name', 'Jina la kundi')}</label>
+                                                                    <Input value={cohort.name || ''} onChange={(e) => updateCourseCohort(index, { name: e.target.value })} placeholder={copy('E.g. May 2026 batch', 'Mf. May 2026 Batch')} />
                                                                 </div>
                                                                 <div className="space-y-1.5">
-                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Max Students</label>
-                                                                    <Input type="number" min="1" value={cohort.capacity ?? ''} onChange={(e) => updateCourseCohort(index, { capacity: e.target.value })} placeholder="Optional" />
+                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Max students', 'Wanafunzi wa juu')}</label>
+                                                                    <Input type="number" min="1" value={cohort.capacity ?? ''} onChange={(e) => updateCourseCohort(index, { capacity: e.target.value })} placeholder={copy('Optional', 'Si lazima')} />
                                                                 </div>
                                                             </div>
                                                             <div className="grid gap-2 sm:grid-cols-2">
                                                                 <div className="space-y-1.5">
-                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Start Date</label>
+                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Start date', 'Tarehe ya kuanza')}</label>
                                                                     <Input type="datetime-local" value={cohort.starts_at || ''} onChange={(e) => updateCourseCohort(index, { starts_at: e.target.value })} />
                                                                 </div>
                                                                 <div className="space-y-1.5">
-                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Enrollment Deadline</label>
+                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Enrollment deadline', 'Deadline ya usajili')}</label>
                                                                     <Input type="datetime-local" value={cohort.enrollment_deadline || ''} onChange={(e) => updateCourseCohort(index, { enrollment_deadline: e.target.value })} />
                                                                 </div>
                                                             </div>
@@ -1363,7 +1366,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                     )}
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
-                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Learning Outcomes</label>
+                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Learning outcomes', 'Matokeo ya kujifunza')}</label>
                                             <div className="rounded-2xl border border-input bg-white p-3 space-y-3">
                                                 {splitCourseList(bundleForm.course_outcomes_text).length > 0 ? (
                                                     <div className="space-y-2">
@@ -1372,7 +1375,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                 <Input
                                                                     value={outcome}
                                                                     onChange={(event) => updateCourseListItem('course_outcomes_text', index, event.target.value)}
-                                                                    placeholder="What will the buyer learn?"
+                                                                    placeholder={copy('What will the buyer learn?', 'Mnunuzi atajifunza nini?')}
                                                                 />
                                                                 <Button
                                                                     type="button"
@@ -1387,7 +1390,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <p className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">No outcomes added yet.</p>
+                                                    <p className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{copy('No outcomes added yet.', 'Hakuna matokeo yaliyoongezwa bado.')}</p>
                                                 )}
                                                 <div className="flex flex-col gap-2 sm:flex-row">
                                                     <Input
@@ -1396,25 +1399,25 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                         onKeyDown={(event) => {
                                                             if (event.key === 'Enter') {
                                                                 event.preventDefault();
-                                                                addCourseListItem('course_outcomes_text', courseOutcomeDraft, setCourseOutcomeDraft, 'Andika learning outcome kwanza.');
+                                                                addCourseListItem('course_outcomes_text', courseOutcomeDraft, setCourseOutcomeDraft, copy('Add a learning outcome first.', 'Andika learning outcome kwanza.'));
                                                             }
                                                         }}
-                                                        placeholder="Eg: Build a professional plumbing quote"
+                                                        placeholder={copy('E.g. Build a professional plumbing quote', 'Mf. Tengeneza nukuu ya kitaalamu ya plumbing')}
                                                     />
                                                     <Button
                                                         type="button"
                                                         variant="outline"
                                                         className="shrink-0 rounded-xl border-indigo-200 text-indigo-700"
-                                                        onClick={() => addCourseListItem('course_outcomes_text', courseOutcomeDraft, setCourseOutcomeDraft, 'Andika learning outcome kwanza.')}
+                                                        onClick={() => addCourseListItem('course_outcomes_text', courseOutcomeDraft, setCourseOutcomeDraft, copy('Add a learning outcome first.', 'Andika learning outcome kwanza.'))}
                                                     >
                                                         <Plus className="mr-2 h-4 w-4" />
-                                                        Add Outcome
+                                                        {copy('Add outcome', 'Ongeza matokeo')}
                                                     </Button>
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Requirements</label>
+                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Requirements', 'Mahitaji')}</label>
                                             <div className="rounded-2xl border border-input bg-white p-3 space-y-3">
                                                 {splitCourseList(bundleForm.course_requirements_text).length > 0 ? (
                                                     <div className="space-y-2">
@@ -1423,7 +1426,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                 <Input
                                                                     value={requirement}
                                                                     onChange={(event) => updateCourseListItem('course_requirements_text', index, event.target.value)}
-                                                                    placeholder="What should the buyer have?"
+                                                                    placeholder={copy('What should the buyer have?', 'Mnunuzi awe na nini?')}
                                                                 />
                                                                 <Button
                                                                     type="button"
@@ -1438,7 +1441,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <p className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">No requirements added yet.</p>
+                                                    <p className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{copy('No requirements added yet.', 'Hakuna mahitaji yaliyoongezwa bado.')}</p>
                                                 )}
                                                 <div className="flex flex-col gap-2 sm:flex-row">
                                                     <Input
@@ -1447,19 +1450,19 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                         onKeyDown={(event) => {
                                                             if (event.key === 'Enter') {
                                                                 event.preventDefault();
-                                                                addCourseListItem('course_requirements_text', courseRequirementDraft, setCourseRequirementDraft, 'Andika requirement kwanza.');
+                                                                addCourseListItem('course_requirements_text', courseRequirementDraft, setCourseRequirementDraft, copy('Add a requirement first.', 'Andika requirement kwanza.'));
                                                             }
                                                         }}
-                                                        placeholder="Eg: Basic smartphone skills"
+                                                                    placeholder={copy('E.g. Basic smartphone skills', 'Mf. Ujuzi wa msingi wa simu janja')}
                                                     />
                                                     <Button
                                                         type="button"
                                                         variant="outline"
                                                         className="shrink-0 rounded-xl border-indigo-200 text-indigo-700"
-                                                        onClick={() => addCourseListItem('course_requirements_text', courseRequirementDraft, setCourseRequirementDraft, 'Andika requirement kwanza.')}
+                                                        onClick={() => addCourseListItem('course_requirements_text', courseRequirementDraft, setCourseRequirementDraft, copy('Add a requirement first.', 'Andika requirement kwanza.'))}
                                                     >
                                                         <Plus className="mr-2 h-4 w-4" />
-                                                        Add Requirement
+                                                        {copy('Add requirement', 'Ongeza hitaji')}
                                                     </Button>
                                                 </div>
                                             </div>
@@ -1472,12 +1475,12 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                 <div className="border-t border-blue-100 pt-6 space-y-5">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
-                                            <p className="text-xs font-black uppercase tracking-widest text-blue-700">Mpangilio wa Kozi</p>
-                                            <p className="text-xs text-muted-foreground mt-1">Tengeneza sehemu, ongeza masomo, kisha ambatanisha bidhaa, downloads, huduma, au content kwenye kila somo.</p>
+                                            <p className="text-xs font-black uppercase tracking-widest text-blue-700">{copy('Course curriculum', 'Mpangilio wa kozi')}</p>
+                                            <p className="text-xs text-muted-foreground mt-1">{copy('Create sections, add lessons, then attach products, downloads, services, or content to each lesson.', 'Tengeneza sehemu, ongeza masomo, kisha ambatanisha bidhaa, downloads, huduma, au content kwenye kila somo.')}</p>
                                         </div>
                                         <Button variant="outline" className="rounded-xl border-blue-200 bg-white text-blue-700" onClick={addCourseModule}>
                                             <Plus className="mr-2 h-4 w-4" />
-                                            Ongeza sehemu
+                                            {copy('Add section', 'Ongeza sehemu')}
                                         </Button>
                                     </div>
 
@@ -1528,15 +1531,15 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                     <div className="mt-3 flex flex-wrap gap-2 sm:ml-9">
                                                         <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => addEmptyCourseLesson(module)}>
                                                             <Plus className="mr-2 h-4 w-4" />
-                                                            Add Blank Lesson
+                                                            {copy('Add blank lesson', 'Ongeza somo tupu')}
                                                         </Button>
                                                     </div>
 
                                                     <div className="mt-4 ml-0 space-y-3 sm:ml-9">
                                                         {moduleLessons.length === 0 && (
                                                             <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-5 text-center">
-                                                                <p className="text-sm font-bold text-blue-900">Hakuna somo kwenye {moduleTitle} bado.</p>
-                                                                <p className="text-xs text-blue-700/80 mt-1">Ongeza somo kwanza, kisha ambatisha content au materials kama zinahitajika.</p>
+                                                                <p className="text-sm font-bold text-blue-900">{copy(`No lessons in ${moduleTitle} yet.`, `Hakuna somo kwenye ${moduleTitle} bado.`)}</p>
+                                                                <p className="text-xs text-blue-700/80 mt-1">{copy('Add a lesson first, then attach content or materials if needed.', 'Ongeza somo kwanza, kisha ambatisha content au materials kama zinahitajika.')}</p>
                                                             </div>
                                                         )}
 
@@ -1564,13 +1567,13 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                                     </span>
                                                                                 )}
                                                                                 <span className="text-[11px] text-muted-foreground truncate">
-                                                                                    {primaryAsset ? `Attached: ${option?.label || primaryAsset.name || `${primaryAsset.asset_type} #${primaryAsset.asset_id || ''}`}` : 'No primary content attached'}
+                                                                                    {primaryAsset ? `${copy('Attached:', 'Imeambatanishwa:')} ${option?.label || primaryAsset.name || `${primaryAsset.asset_type} #${primaryAsset.asset_id || ''}`}` : copy('No primary content attached', 'Hakuna maudhui makuu yaliyoambatanishwa')}
                                                                                 </span>
                                                                             </div>
                                                                         </div>
                                                                         <div className="flex items-center gap-2">
                                                                             <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5">
-                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Preview?</span>
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">{copy('Preview?', 'Onyesha mwanzo?')}</span>
                                                                                 <input
                                                                                     type="checkbox"
                                                                                     className="sr-only peer"
@@ -1587,13 +1590,13 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
                                                                     {option?.item_type === 'product' && option.has_variants && primaryAsset && (
                                                                         <div className="space-y-1">
-                                                                            <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Product Variant</label>
+                                                                            <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Product variant', 'Variant ya bidhaa')}</label>
                                                                             <select
                                                                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                                                                                 value={primaryAsset.selected_variant_id ?? ''}
                                                                                 onChange={(e) => updateCourseLessonAsset(module.id, lesson.id, (lesson.assets || []).indexOf(primaryAsset), { selected_variant_id: e.target.value === '' ? null : Number(e.target.value) })}
                                                                             >
-                                                                                <option value="">Select variant</option>
+                                                                                <option value="">{copy('Select variant', 'Chagua variant')}</option>
                                                                                 {(option.variants || []).map((variant) => (
                                                                                     <option key={variant.id} value={variant.id}>
                                                                                         {variant.name}{variant.price !== null ? ` · TZS ${Number(variant.price).toLocaleString()}` : ''}
@@ -1604,7 +1607,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                     )}
 
                                                                     <div className="rounded-xl border border-blue-100 bg-white p-3">
-                                                                        <label className="text-[11px] font-black uppercase tracking-wider text-blue-700">Primary Lesson Content</label>
+                                                                        <label className="text-[11px] font-black uppercase tracking-wider text-blue-700">{copy('Primary lesson content', 'Maudhui makuu ya somo')}</label>
                                                                         <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
                                                                             <select
                                                                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -1627,33 +1630,33 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                             </Button>
                                                                         </div>
                                                                         <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
-                                                                            This is the main item students open for this lesson. Supporting materials below are optional extras.
+                                                                            {copy('This is the main item students open for this lesson. Supporting materials below are optional extras.', 'Hii ni item kuu ambayo wanafunzi watafungua kwa somo hili. Materials hapa chini ni za ziada na ni hiari.')}
                                                                         </p>
                                                                     </div>
 
                                                                     <div className="space-y-1.5">
-                                                                        <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Lesson Summary</label>
+                                                                            <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Lesson summary', 'Muhtasari wa somo')}</label>
                                                                         <Textarea
                                                                             rows={2}
                                                                             value={lesson.summary || ''}
                                                                             onChange={(e) => updateCourseLesson(module.id, lesson.id, { summary: e.target.value })}
-                                                                            placeholder="Maelezo mafupi ya somo hili"
+                                                                            placeholder={copy('Short description for this lesson', 'Maelezo mafupi ya somo hili')}
                                                                         />
                                                                     </div>
                                                                     <div className="grid gap-2 sm:grid-cols-2">
                                                                         <div className="space-y-1.5">
-                                                                            <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Duration (minutes)</label>
+                                                                            <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Duration (minutes)', 'Muda (dakika)')}</label>
                                                                             <Input
                                                                                 type="number"
                                                                                 min="1"
                                                                                 value={lesson.duration_minutes ?? ''}
                                                                                 onChange={(e) => updateCourseLesson(module.id, lesson.id, { duration_minutes: e.target.value })}
-                                                                                placeholder="Mf. 20"
+                                                                                placeholder={copy('E.g. 20', 'Mf. 20')}
                                                                             />
-                                                                            <p className="text-[10px] text-muted-foreground">Approximate time the student needs for this lesson.</p>
+                                                                            <p className="text-[10px] text-muted-foreground">{copy('Approximate time the student needs for this lesson.', 'Muda wa kukadiria ambao mwanafunzi anahitaji kwa somo hili.')}</p>
                                                                         </div>
                                                                         <div className="space-y-1.5">
-                                                                            <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Unlock After (days)</label>
+                                                                            <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Unlock after (days)', 'Fungua baada ya (siku)')}</label>
                                                                             <Input
                                                                                 type="number"
                                                                                 min="0"
@@ -1661,18 +1664,18 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                                 onChange={(e) => updateCourseLesson(module.id, lesson.id, { unlock_after_days: e.target.value })}
                                                                                 placeholder="0"
                                                                             />
-                                                                            <p className="text-[10px] text-muted-foreground">Use 0 to unlock immediately after purchase.</p>
+                                                                                <p className="text-[10px] text-muted-foreground">{copy('Use 0 to unlock immediately after purchase.', 'Tumia 0 kufungua mara moja baada ya ununuzi.')}</p>
                                                                         </div>
                                                                     </div>
                                                                     {['cohort', 'live'].includes(bundleForm.course_format) && (
                                                                         <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-3">
                                                                             <div>
-                                                                                <p className="text-xs font-black uppercase tracking-widest text-amber-800">Class Session</p>
-                                                                                <p className="mt-1 text-[11px] text-amber-900/75">Use meeting link for online classes, venue for offline classes, or both for hybrid.</p>
+                                                                                <p className="text-xs font-black uppercase tracking-widest text-amber-800">{copy('Class session', 'Kikao cha darasa')}</p>
+                                                                                <p className="mt-1 text-[11px] text-amber-900/75">{copy('Use a meeting link for online classes, a venue for offline classes, or both for hybrid.', 'Tumia meeting link kwa madarasa ya mtandaoni, venue kwa madarasa ya ana kwa ana, au vyote kwa hybrid.')}</p>
                                                                             </div>
                                                                             <div className="grid gap-2 sm:grid-cols-2">
                                                                                 <div className="space-y-1.5">
-                                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Session Date & Time</label>
+                                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Session date & time', 'Tarehe na muda wa kikao')}</label>
                                                                                     <Input
                                                                                         type="datetime-local"
                                                                                         value={lesson.live_session?.starts_at || ''}
@@ -1682,7 +1685,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                                     />
                                                                                 </div>
                                                                                 <div className="space-y-1.5">
-                                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Capacity</label>
+                                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Capacity', 'Uwezo')}</label>
                                                                                     <Input
                                                                                         type="number"
                                                                                         min="1"
@@ -1690,29 +1693,29 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                                         onChange={(e) => updateCourseLesson(module.id, lesson.id, {
                                                                                             live_session: { ...(lesson.live_session || {}), capacity: e.target.value },
                                                                                         })}
-                                                                                        placeholder="Optional"
+                                                                                        placeholder={copy('Optional', 'Si lazima')}
                                                                                     />
                                                                                 </div>
                                                                             </div>
                                                                             <div className="grid gap-2 sm:grid-cols-2">
                                                                                 <div className="space-y-1.5">
-                                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Online Meeting Link</label>
+                                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Online meeting link', 'Meeting link ya mtandaoni')}</label>
                                                                                     <Input
                                                                                         value={lesson.live_session?.meeting_url || ''}
                                                                                         onChange={(e) => updateCourseLesson(module.id, lesson.id, {
                                                                                             live_session: { ...(lesson.live_session || {}), meeting_url: e.target.value },
                                                                                         })}
-                                                                                        placeholder="Zoom, Google Meet, Teams..."
+                                                                                        placeholder={copy('Zoom, Google Meet, Teams...', 'Zoom, Google Meet, Teams...')}
                                                                                     />
                                                                                 </div>
                                                                                 <div className="space-y-1.5">
-                                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Offline Venue</label>
+                                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Offline venue', 'Venue ya ana kwa ana')}</label>
                                                                                     <Input
                                                                                         value={lesson.live_session?.venue || ''}
                                                                                         onChange={(e) => updateCourseLesson(module.id, lesson.id, {
                                                                                             live_session: { ...(lesson.live_session || {}), venue: e.target.value },
                                                                                         })}
-                                                                                        placeholder="Physical location if in-person"
+                                                                                        placeholder={copy('Physical location if in person', 'Eneo halisi ikiwa ana kwa ana')}
                                                                                     />
                                                                                 </div>
                                                                             </div>
@@ -1721,8 +1724,8 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                     <div className="rounded-xl border border-slate-200 bg-white p-3">
                                                                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                                             <div>
-                                                                                <p className="text-xs font-black text-slate-900">Supporting Materials</p>
-                                                                                <p className="text-[11px] text-muted-foreground">Optional files like photos, worksheets, Excel files, slides, or reference PDFs.</p>
+                                                                                <p className="text-xs font-black text-slate-900">{copy('Supporting materials', 'Materials za ziada')}</p>
+                                                                                <p className="text-[11px] text-muted-foreground">{copy('Optional files such as photos, worksheets, Excel files, slides, or reference PDFs.', 'Faili za hiari kama picha, worksheets, Excel, slides, au PDF za marejeo.')}</p>
                                                                             </div>
                                                                             <Button
                                                                                 type="button"
@@ -1742,13 +1745,13 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                                 ) : (
                                                                                     <FileUp className="mr-2 h-4 w-4" />
                                                                                 )}
-                                                                                Add Material
+                                                                                {copy('Add material', 'Ongeza material')}
                                                                             </Button>
                                                                         </div>
                                                                         {supportingMaterialUploads[`supporting-${lesson.id}`]?.uploading && (
                                                                             <div className="mt-3 space-y-1">
                                                                                 <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-blue-700">
-                                                                                    <span className="truncate">{supportingMaterialUploads[`supporting-${lesson.id}`]?.name || 'Uploading...'}</span>
+                                                                                    <span className="truncate">{supportingMaterialUploads[`supporting-${lesson.id}`]?.name || copy('Uploading...', 'Inapakia...')}</span>
                                                                                     <span>{supportingMaterialUploads[`supporting-${lesson.id}`]?.progress || 0}%</span>
                                                                                 </div>
                                                                                 <div className="h-1.5 overflow-hidden rounded-full bg-blue-100">
@@ -1763,7 +1766,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                                     return (
                                                                                         <div key={`${material.url || material.asset_id}-${materialIndex}`} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
                                                                                             <div className="min-w-0">
-                                                                                                <p className="truncate text-xs font-bold text-slate-900">{material.name || 'Material'}</p>
+                                                                                                <p className="truncate text-xs font-bold text-slate-900">{material.name || copy('Material', 'Materiali')}</p>
                                                                                                 <p className="text-[10px] text-muted-foreground">{material.mime || 'file'}{material.size ? ` · ${(Number(material.size) / 1024 / 1024).toFixed(1)} MB` : ''}</p>
                                                                                             </div>
                                                                                             <Button
@@ -1788,14 +1791,14 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                         })}
 
                                                         <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/50 p-3">
-                                                            <label className="text-[11px] font-black uppercase tracking-wider text-blue-700">Create lesson from content</label>
+                                                            <label className="text-[11px] font-black uppercase tracking-wider text-blue-700">{copy('Create lesson from content', 'Unda somo kutoka kwenye content')}</label>
                                                             <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
                                                                 <select
                                                                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                                                                     value={courseAttachSelection[module.id] || ''}
                                                                     onChange={(e) => setCourseAttachSelection((current) => ({ ...current, [module.id]: e.target.value }))}
                                                                 >
-                                                                    <option value="">Choose post, digital download, or content...</option>
+                                                                    <option value="">{copy('Choose post, digital download, or content...', 'Chagua post, digital download, au content...')}</option>
                                                                     {availableCourseLessonOptions.map((option) => (
                                                                         <option key={option.key} value={option.key}>
                                                                             {typeLabel(option)} · {option.label}
@@ -1804,15 +1807,15 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                 </select>
                                                                 <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => addCourseLesson(module)}>
                                                                     <Plus className="mr-2 h-4 w-4" />
-                                                                    Add Lesson
+                                                                    {copy('Add lesson', 'Ongeza somo')}
                                                                 </Button>
                                                             </div>
-                                                            <p className="mt-2 text-[11px] leading-5 text-blue-800/75">Use this to create a new lesson from an authored post, digital download, or content item. Physical products and services stay out of lessons so the course remains clear for students.</p>
+                                                                <p className="mt-2 text-[11px] leading-5 text-blue-800/75">{copy('Use this to create a new lesson from an authored post, digital download, or content item. Physical products and services stay out of lessons so the course remains clear for students.', 'Tumia hii kuunda somo kutoka kwenye post, digital download, au content item. Bidhaa za kimwili na huduma hazitawekwa kwenye masomo ili kozi ibaki wazi kwa wanafunzi.')}</p>
                                                             <div className="mt-3 rounded-xl border border-blue-100 bg-white p-3">
                                                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                                     <div>
-                                                                        <p className="text-xs font-black text-blue-900">Upload new lesson file</p>
-                                                                        <p className="text-[11px] text-blue-800/75">Video, PDF, document, audio, or presentation. It will be saved as draft content and attached here.</p>
+                                                                        <p className="text-xs font-black text-blue-900">{copy('Upload new lesson file', 'Pakia faili mpya ya somo')}</p>
+                                                                        <p className="text-[11px] text-blue-800/75">{copy('Video, PDF, document, audio, or presentation. It will be saved as draft content and attached here.', 'Video, PDF, hati, audio, au presentation. Itahifadhiwa kama content ya draft na kuambatanishwa hapa.')}</p>
                                                                     </div>
                                                                     <Button
                                                                         type="button"
@@ -1832,13 +1835,13 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                         ) : (
                                                                             <FileUp className="mr-2 h-4 w-4" />
                                                                         )}
-                                                                        Upload Lesson
+                                                                        {copy('Upload lesson', 'Pakia somo')}
                                                                     </Button>
                                                                 </div>
                                                                 {courseLessonUploads[module.id]?.uploading && (
                                                                     <div className="mt-3 space-y-1">
                                                                         <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-blue-700">
-                                                                            <span className="truncate">{courseLessonUploads[module.id]?.name || 'Uploading...'}</span>
+                                                                            <span className="truncate">{courseLessonUploads[module.id]?.name || copy('Uploading...', 'Inapakia...')}</span>
                                                                             <span>{courseLessonUploads[module.id]?.progress || 0}%</span>
                                                                         </div>
                                                                         <div className="h-1.5 overflow-hidden rounded-full bg-blue-100">
@@ -1857,21 +1860,21 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                             ) : (
                                 <div className="border-t border-slate-200 pt-6 space-y-5">
                                     <div className="space-y-1">
-                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Select Bundle Items</p>
-                                        <p className="text-sm leading-6 text-muted-foreground">Pick products, services, downloads, or content. The buyer experience should be clear before publishing.</p>
+                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Select bundle items', 'Chagua items za bundle')}</p>
+                                        <p className="text-sm leading-6 text-muted-foreground">{copy('Pick products, services, downloads, or content. The buyer experience should be clear before publishing.', 'Chagua bidhaa, huduma, downloads, au content. Uzoefu wa mteja uwe wazi kabla ya kuchapisha.')}</p>
                                     </div>
                                     <div className="space-y-3">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Search Items</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Search items', 'Tafuta items')}</label>
                                         <Input
                                             value={bundleItemSearch}
                                             onChange={(e) => setBundleItemSearch(e.target.value)}
-                                            placeholder="Search products, services, downloads, or content..."
+                                            placeholder={copy('Search products, services, downloads, or content...', 'Tafuta bidhaa, huduma, downloads, au content...')}
                                         />
                                     </div>
                                     <div className="space-y-3">
                                         <span className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-muted-foreground">
                                             <Filter className="h-3.5 w-3.5" />
-                                            Type
+                                            {copy('Type', 'Aina')}
                                         </span>
                                         <div className="flex flex-wrap items-center gap-2">
                                             {bundleTypeFilters.map((filter) => (
@@ -1893,7 +1896,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                     {bundleForm.items.length > 0 && (
                                         <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
                                             <div className="flex items-center justify-between gap-3">
-                                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Selected Items</p>
+                                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Selected items', 'Items zilizochaguliwa')}</p>
                                                 <span className="text-xs font-black text-foreground">{bundleForm.items.length}</span>
                                             </div>
                                             <div className="mt-3 flex flex-wrap gap-2">
@@ -1978,13 +1981,13 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                         <div className="mt-3 pt-3 border-t border-sky-200/70 space-y-2">
                                                             {option.item_type === 'product' && option.has_variants && (
                                                                 <div className="space-y-1">
-                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Product Variant</label>
+                                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Product variant', 'Variant ya bidhaa')}</label>
                                                                     <select
                                                                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                                                                         value={selectedItem?.selected_variant_id ?? ''}
                                                                         onChange={(e) => updateSelectedCourseItem(option, { selected_variant_id: e.target.value === '' ? null : Number(e.target.value) })}
                                                                     >
-                                                                        <option value="">Select variant</option>
+                                                                        <option value="">{copy('Select variant', 'Chagua variant')}</option>
                                                                         {(option.variants || []).map((variant) => (
                                                                             <option key={variant.id} value={variant.id}>
                                                                                 {variant.name}{variant.price !== null ? ` · TZS ${Number(variant.price).toLocaleString()}` : ''}
@@ -1997,19 +2000,19 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                 <Input
                                                                     value={selectedItem?.section_title || ''}
                                                                     onChange={(e) => updateSelectedCourseItem(option, { section_title: e.target.value })}
-                                                                    placeholder="Jina la sehemu (mf. Utangulizi)"
+                                                                    placeholder={copy('Section name (e.g. Introduction)', 'Jina la sehemu (mf. Utangulizi)')}
                                                                 />
                                                                 <Input
                                                                     value={selectedItem?.lesson_title || ''}
                                                                     onChange={(e) => updateSelectedCourseItem(option, { lesson_title: e.target.value })}
-                                                                    placeholder="Lesson title"
+                                                                placeholder={copy('Lesson title', 'Kichwa cha somo')}
                                                                 />
                                                             </div>
                                                             <Textarea
                                                                 rows={2}
                                                                 value={selectedItem?.lesson_summary || ''}
                                                                 onChange={(e) => updateSelectedCourseItem(option, { lesson_summary: e.target.value })}
-                                                                placeholder="Lesson summary"
+                                                                placeholder={copy('Lesson summary', 'Muhtasari wa somo')}
                                                             />
                                                             <div className="grid md:grid-cols-3 gap-2">
                                                                 <Input
@@ -2017,17 +2020,17 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                     min="1"
                                                                     value={selectedItem?.lesson_duration_minutes ?? ''}
                                                                     onChange={(e) => updateSelectedCourseItem(option, { lesson_duration_minutes: e.target.value })}
-                                                                    placeholder="Duration (min)"
+                                                                placeholder={copy('Duration (min)', 'Muda (dak)')}
                                                                 />
                                                                 <Input
                                                                     type="number"
                                                                     min="0"
                                                                     value={selectedItem?.unlock_after_days ?? 0}
                                                                     onChange={(e) => updateSelectedCourseItem(option, { unlock_after_days: e.target.value })}
-                                                                    placeholder="Unlock after days"
+                                                                placeholder={copy('Unlock after days', 'Fungua baada ya siku')}
                                                                 />
                                                                 <label className="rounded-xl border border-input bg-background px-3 py-2 flex items-center justify-between gap-2">
-                                                                    <span className="text-xs font-bold text-muted-foreground">Preview Lesson</span>
+                                                            <span className="text-xs font-bold text-muted-foreground">{copy('Preview lesson', 'Hakiki somo')}</span>
                                                                     <input
                                                                         type="checkbox"
                                                                         className="h-4 w-4"
@@ -2040,13 +2043,13 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                     )}
                                                     {!bundleForm.is_course && selected && option.item_type === 'product' && option.has_variants && (
                                                         <div className="mt-3 pt-3 border-t border-sky-200/70 space-y-1">
-                                                            <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Product Variant</label>
+                                                            <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Product variant', 'Variant ya bidhaa')}</label>
                                                             <select
                                                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                                                                 value={selectedItem?.selected_variant_id ?? ''}
                                                                 onChange={(e) => updateSelectedCourseItem(option, { selected_variant_id: e.target.value === '' ? null : Number(e.target.value) })}
                                                             >
-                                                                <option value="">Select variant</option>
+                                                                <option value="">{copy('Select variant', 'Chagua variant')}</option>
                                                                 {(option.variants || []).map((variant) => (
                                                                     <option key={variant.id} value={variant.id}>
                                                                         {variant.name}{variant.price !== null ? ` · TZS ${Number(variant.price).toLocaleString()}` : ''}
@@ -2060,7 +2063,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                         })}
                                         {bundleVisibleItems.length === 0 && (
                                             <p className="text-xs text-muted-foreground rounded-xl border border-dashed border-border px-3 py-2">
-                                                No items found for your search.
+                                                                {copy('No items found for your search.', 'Hakuna items zilizopatikana kwa utafutaji wako.')}
                                             </p>
                                         )}
                                     </div>
@@ -2076,11 +2079,11 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                     />
                                 </div>
                                 <div className="w-full sm:w-[220px] space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Status</label>
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Status', 'Hali')}</label>
                                     <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={bundleForm.status} onChange={(e) => setBundleForm({ ...bundleForm, status: e.target.value })}>
-                                        <option value="draft">Draft</option>
-                                        <option value="published">Published</option>
-                                        <option value="archived">Archived</option>
+                                        <option value="draft">{copy('Draft', 'Draft')}</option>
+                                        <option value="published">{copy('Published', 'Imechapishwa')}</option>
+                                        <option value="archived">{copy('Archived', 'Imewekwa archive')}</option>
                                     </select>
                                 </div>
                                 <Button className="bg-sky-600 hover:bg-sky-700 text-white rounded-xl" onClick={saveBundle} disabled={saving}>
@@ -2110,8 +2113,8 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-black text-foreground">{item.title}</p>
-                                        <p className="text-xs text-muted-foreground mt-1">{item.status} · {item.items?.length || 0} items {item.is_course ? '· Course' : ''}</p>
-                                        <p className="text-xs font-bold uppercase tracking-widest text-brand-700 mt-2">{item.price ? `TZS ${Number(item.price).toLocaleString()}` : 'No price'}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">{copy(item.status, item.status)} · {item.items?.length || 0} {copy('items', 'bidhaa')} {item.is_course ? `· ${copy('Course', 'Kozi')}` : ''}</p>
+                                        <p className="text-xs font-bold uppercase tracking-widest text-brand-700 mt-2">{item.price ? `TZS ${Number(item.price).toLocaleString()}` : copy('No price', 'Hakuna bei')}</p>
                                     </div>
                                     <div className="flex items-center gap-1">
                                         {item.is_course && (
@@ -2119,7 +2122,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                 href={`/merchant/${merchantUsername}/bundles/${item.id}/course`}
                                                 className="inline-flex h-9 items-center justify-center rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-700 hover:bg-sky-100"
                                             >
-                                                Manage
+                                                {copy('Manage', 'Simamia')}
                                             </Link>
                                         )}
                                         <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9" onClick={() => startEditBundle(item)}>

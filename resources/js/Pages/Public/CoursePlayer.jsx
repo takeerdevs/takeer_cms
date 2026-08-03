@@ -10,8 +10,11 @@ import { Button } from '@/Components/ui/Button';
 import EditorJsRenderer from '@/Components/EditorJsRenderer';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { useLocale } from '@/lib/i18n';
+import LanguageSwitcher from '@/Components/LanguageSwitcher';
 
 export default function CoursePlayer({ product, course, hasFullAccess }) {
+    const { copy } = useLocale();
     const [activeLesson, setActiveLesson] = useState(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [expandedModules, setExpandedModules] = useState({});
@@ -111,10 +114,10 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
             }
 
             if (isCompleted) {
-                toast.success('Hongera! Somo limekamilika.');
+                toast.success(copy('Congratulations! Lesson completed.', 'Hongera! Somo limekamilika.'));
             }
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindwa kuhifadhi hatua.');
+            toast.error(err.response?.data?.message || copy('Unable to save progress.', 'Imeshindwa kuhifadhi hatua.'));
         } finally {
             setIsToggling(false);
         }
@@ -123,14 +126,14 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
     const submitLiveCheckIn = async () => {
         if (!activeLesson?.live_session?.id || checkingIn) return;
         if (!checkInCode.trim()) {
-            toast.error('Weka PIN ya check-in.');
+            toast.error(copy('Enter the check-in PIN.', 'Weka PIN ya check-in.'));
             return;
         }
 
         setCheckingIn(true);
         try {
             await axios.post(`/learn/bundle-live-sessions/${activeLesson.live_session.id}/check-in`, { code: checkInCode.trim() });
-            toast.success('Umefanikiwa kufanya check-in.');
+            toast.success(copy('Check-in completed.', 'Umefanikiwa kufanya check-in.'));
             setCheckInCode('');
 
             setLocalCurriculum(prev => prev.map(module => ({
@@ -142,7 +145,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
             })));
             setActiveLesson(prev => ({ ...prev, live_session: { ...prev.live_session, checked_in: true } }));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Check-in imeshindikana.');
+            toast.error(error.response?.data?.message || copy('Check-in failed.', 'Check-in imeshindikana.'));
         } finally {
             setCheckingIn(false);
         }
@@ -202,7 +205,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                 window.open(res.data.url, '_blank', 'noopener,noreferrer');
             }
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kufungua faili la somo.');
+            toast.error(error.response?.data?.message || copy('Unable to open lesson file.', 'Imeshindwa kufungua faili la somo.'));
         }
     };
 
@@ -246,7 +249,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
         if (!contentItem?.body) {
             return (
                 <p className="text-base leading-8 text-muted-foreground">
-                    {contentItem?.excerpt || 'Content hii haina maelezo ya ziada bado.'}
+                    {contentItem?.excerpt || copy('This content does not have additional notes yet.', 'Content hii haina maelezo ya ziada bado.')}
                 </p>
             );
         }
@@ -267,7 +270,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
         const directPostMedia = Array.isArray(contentItem?.media) ? contentItem.media : [];
 
         return {
-            title: linkedPost.title || contentItem?.title || activeLesson?.title || 'Course reading',
+            title: linkedPost.title || contentItem?.title || activeLesson?.title || copy('Course reading', 'Usomaji wa kozi'),
             excerpt: linkedPost.excerpt || contentItem?.excerpt || '',
             body: linkedPost.body || contentItem?.body || '',
             format: linkedPost.body || primaryAsset?.asset_type === 'post' ? 'post' : contentItem?.format,
@@ -277,7 +280,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
 
     const displayContentTitle = (contentItem) => {
         const rawTitle = String(resolvedReading(contentItem).title || '').trim();
-        if (!rawTitle || rawTitle === '__short_locked__') return activeLesson?.title || 'Course reading';
+        if (!rawTitle || rawTitle === '__short_locked__') return activeLesson?.title || copy('Course reading', 'Usomaji wa kozi');
         return rawTitle;
     };
 
@@ -319,11 +322,11 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                         {isToggling ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                         ) : activeLesson.is_completed ? (
-                            <><CheckCircle className="mr-2 h-4 w-4" /> Completed</>
+                            <><CheckCircle className="mr-2 h-4 w-4" /> {copy('Completed', 'Imekamilika')}</>
                         ) : activeContentItem ? (
-                            <><Circle className="mr-2 h-4 w-4" /> Mark as Read</>
+                            <><Circle className="mr-2 h-4 w-4" /> {copy('Mark as read', 'Weka imesomwa')}</>
                         ) : (
-                            <><Circle className="mr-2 h-4 w-4" /> Mark as Complete</>
+                            <><Circle className="mr-2 h-4 w-4" /> {copy('Mark as complete', 'Weka imekamilika')}</>
                         )}
                     </Button>
                 )}
@@ -338,8 +341,8 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
         return (
             <div className="rounded-3xl border border-border bg-card p-5 md:p-6">
                 <div className="flex flex-col gap-1">
-                    <h4 className="font-black">Supporting Materials</h4>
-                    <p className="text-sm text-muted-foreground">Open extra files, worksheets, references, or examples attached to this lesson.</p>
+                    <h4 className="font-black">{copy('Supporting materials', 'Materials za kusaidia')}</h4>
+                    <p className="text-sm text-muted-foreground">{copy('Open extra files, worksheets, references, or examples attached to this lesson.', 'Fungua mafaili, worksheets, references au mifano iliyounganishwa na somo hili.')}</p>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     {assets.map((asset) => (
@@ -350,8 +353,8 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                             className="group flex items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-left hover:border-sky-200 hover:bg-sky-50"
                         >
                             <div className="min-w-0">
-                                <p className="truncate text-sm font-black text-sky-950">{asset.name || 'Material'}</p>
-                                <p className="mt-1 text-xs text-sky-800/70">{asset.mime || asset.asset_type || 'resource'}{asset.size ? ` · ${(Number(asset.size) / 1024 / 1024).toFixed(1)} MB` : ''}</p>
+                                <p className="truncate text-sm font-black text-sky-950">{asset.name || copy('Material', 'Materiali')}</p>
+                                <p className="mt-1 text-xs text-sky-800/70">{asset.mime || asset.asset_type || copy('resource', 'rasilimali')}{asset.size ? ` · ${(Number(asset.size) / 1024 / 1024).toFixed(1)} MB` : ''}</p>
                             </div>
                             <ExternalLink className="h-4 w-4 shrink-0 text-sky-700 transition-transform group-hover:translate-x-0.5" />
                         </button>
@@ -396,12 +399,12 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                     <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-sky-50">
                         <Lock className="h-8 w-8 text-sky-600" />
                     </div>
-                    <h3 className="mb-2 text-2xl font-black text-foreground">Somo Limerekodiwa (Locked)</h3>
+                    <h3 className="mb-2 text-2xl font-black text-foreground">{copy('Lesson recorded (Locked)', 'Somo Limerekodiwa (Locked)')}</h3>
                     <p className="mb-8 max-w-sm font-medium text-muted-foreground">
                         Nunua kozi hii kamili ili upate ufikiaji wa masomo yote na ujifunze kwa undani zaidi.
                     </p>
                     <Button className="h-12 rounded-2xl bg-sky-600 px-10 font-black text-white shadow-xl hover:bg-sky-700">
-                        UNLOCK FULL COURSE
+                        {copy('UNLOCK FULL COURSE', 'FUNGUA KOZI KAMILI')}
                     </Button>
                 </div>
             ) : isPrimaryVideo && activeLesson.content_url ? (
@@ -414,13 +417,13 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                 </div>
             ) : activeLesson.live_session ? (
                 <div className="flex min-h-[260px] flex-col justify-center bg-amber-50 p-6 md:p-8">
-                    <p className="text-xs font-black uppercase tracking-widest text-amber-700">Live Session</p>
+                    <p className="text-xs font-black uppercase tracking-widest text-amber-700">{copy('Live session', 'Session ya live')}</p>
                     <h3 className="mt-3 text-2xl font-black text-amber-950 md:text-3xl">{activeLesson.title}</h3>
                     <p className="mt-2 text-sm font-semibold text-amber-900/80 md:text-base">
-                        {activeLesson.live_session.starts_at ? new Date(activeLesson.live_session.starts_at).toLocaleString() : 'Muda bado haujawekwa'}
+                        {activeLesson.live_session.starts_at ? new Date(activeLesson.live_session.starts_at).toLocaleString() : copy('Time not set yet', 'Muda bado haujawekwa')}
                         {activeLesson.live_session.duration_minutes ? ` · ${activeLesson.live_session.duration_minutes} min` : ''}
                     </p>
-                    {activeLesson.live_session.venue && <p className="mt-1 text-sm text-amber-900/80">Mahali: {activeLesson.live_session.venue}</p>}
+                    {activeLesson.live_session.venue && <p className="mt-1 text-sm text-amber-900/80">{copy('Venue', 'Mahali')}: {activeLesson.live_session.venue}</p>}
                     <div className="mt-5 flex flex-wrap gap-3">
                         {activeLesson.live_session.meeting_url && (
                             <button type="button" onClick={() => window.open(activeLesson.live_session.meeting_url, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-2 rounded-2xl bg-amber-500 px-5 py-3 text-sm font-black text-white shadow-sm">
@@ -454,7 +457,8 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
 
     return (
         <div className="min-h-screen bg-background text-foreground selection:bg-sky-500/20">
-            <Head title={`${product.title} - Course Player`} />
+            <Head title={`${product.title} - ${copy('Course player', 'Mchezaji wa kozi')}`} />
+            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
 
             {/* Header */}
             <header className="h-16 border-b border-border bg-background/95 backdrop-blur-md flex items-center justify-between px-4 lg:px-6 sticky top-0 z-50">
@@ -487,7 +491,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                 {isSidebarOpen && (
                     <button
                         type="button"
-                        aria-label="Close curriculum"
+                        aria-label={copy('Close curriculum', 'Funga mtaala')}
                         className="fixed inset-x-0 top-16 bottom-0 z-30 bg-black/25 lg:hidden"
                         onClick={() => setIsSidebarOpen(false)}
                     />
@@ -498,14 +502,14 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                     <div className="p-4 space-y-6 w-full">
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
-                                <h2 className="font-black text-xs uppercase tracking-widest text-muted-foreground">Course Curriculum</h2>
+                        <h2 className="font-black text-xs uppercase tracking-widest text-muted-foreground">{copy('Course curriculum', 'Mtaala wa kozi')}</h2>
                                 {isSidebarOpen && <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden"><X className="h-4 w-4" /></button>}
                             </div>
 
                             {/* Progress Bar */}
                             <div className="bg-sky-50/70 rounded-2xl p-3 border border-sky-100">
                                 <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-2">
-                                    <span className="text-muted-foreground">Progress</span>
+                                    <span className="text-muted-foreground">{copy('Progress', 'Maendeleo')}</span>
                                     <span className="text-sky-700">{progressPercentage}%</span>
                                 </div>
                                 <div className="h-1.5 w-full bg-white rounded-full overflow-hidden">
@@ -558,7 +562,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                                                     </div>
                                                     <span className="flex-1 text-left line-clamp-1">{lesson.title}</span>
                                                     {lesson.is_preview && !hasFullAccess && (
-                                                        <span className="text-[8px] bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded-full font-black uppercase">Free</span>
+                                                        <span className="text-[8px] bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded-full font-black uppercase">{copy('Free', 'Bure')}</span>
                                                     )}
                                                 </button>
                                             ))}
@@ -583,7 +587,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
 
                                     {activeLesson.live_session?.check_in_enabled && (
                                         <div className="rounded-3xl border border-amber-100 bg-amber-50 p-5 space-y-2">
-                                            <h4 className="font-black text-amber-900">Class Check-In</h4>
+                                            <h4 className="font-black text-amber-900">{copy('Class check-in', 'Check-in ya darasa')}</h4>
                                             <div className="rounded-2xl border border-amber-200 bg-white p-3">
                                                 {activeLesson.live_session.checked_in ? (
                                                     <p className="inline-flex items-center gap-2 text-sm font-black text-emerald-700">
@@ -596,7 +600,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                                                             className="h-11 flex-1 rounded-xl border border-input bg-background px-4 text-sm font-bold text-foreground outline-none placeholder:text-muted-foreground"
                                                             value={checkInCode}
                                                             onChange={(event) => setCheckInCode(event.target.value)}
-                                                            placeholder="Weka PIN ya check-in"
+                                                            placeholder={copy('Enter check-in PIN', 'Weka PIN ya check-in')}
                                                         />
                                                         <button
                                                             type="button"
@@ -617,9 +621,9 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
 
                                     {!activeLesson.body && !primaryAsset && !activeLesson.live_session && (
                                         <div className="rounded-3xl border border-border bg-card p-8 text-center space-y-3">
-                                            <h4 className="font-bold">Maelezo ya ziada</h4>
+                        <h4 className="font-bold">{copy('Additional details', 'Maelezo ya ziada')}</h4>
                                             <p className="mx-auto max-w-lg text-sm text-muted-foreground">
-                                                Chagua lesson content au supporting material kwenye course builder ili somo hili liwe na maudhui ya kufungua.
+                                {copy('Choose lesson content or supporting material in the course builder to give this lesson content to open.', 'Chagua lesson content au supporting material kwenye course builder ili somo hili liwe na maudhui ya kufungua.')}
                                             </p>
                                         </div>
                                     )}
@@ -632,8 +636,8 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                                 <div className="h-20 w-20 bg-sky-50 rounded-[40px] flex items-center justify-center mx-auto mb-8 animate-pulse">
                                     <Layout className="h-10 w-10 text-sky-600" />
                                 </div>
-                                <h3 className="text-xl font-bold text-foreground">Tayarisha Somo lako...</h3>
-                                <p className="text-sm text-muted-foreground">Chagua somo kutoka kwenye curriculum ili uanze kujifunza.</p>
+                                <h3 className="text-xl font-bold text-foreground">{copy('Prepare your lesson...', 'Tayarisha somo lako...')}</h3>
+                                <p className="text-sm text-muted-foreground">{copy('Choose a lesson from the curriculum to start learning.', 'Chagua somo kutoka kwenye curriculum ili uanze kujifunza.')}</p>
                             </div>
                         </div>
                     )}

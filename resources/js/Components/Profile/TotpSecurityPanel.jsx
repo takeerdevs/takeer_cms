@@ -3,8 +3,10 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { CheckCircle2, Copy, KeyRound, Loader2, RefreshCw, ShieldCheck, ShieldX } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 export default function TotpSecurityPanel({ initialEnabled = false }) {
+    const { t } = useLocale();
     const [totpSetup, setTotpSetup] = useState(null);
     const [totpCode, setTotpCode] = useState('');
     const [totpBusy, setTotpBusy] = useState(false);
@@ -22,9 +24,9 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
         try {
             const res = await window.axios.post('/auth/2fa/totp/start');
             setTotpSetup(res.data);
-            setTotpMessage('Scan QR kwenye authenticator app, kisha weka code ya tarakimu 6.');
+            setTotpMessage(t('security.scanAndCode'));
         } catch (error) {
-            setTotpError(error.response?.data?.message || 'Imeshindwa kuanza setup ya authenticator.');
+            setTotpError(error.response?.data?.message || t('security.setupFailed'));
         } finally {
             setTotpBusy(false);
         }
@@ -43,9 +45,9 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
             setTotpSetup(null);
             setTotpCode('');
             setRecoveryCodes(res.data?.recovery_codes || []);
-            setTotpMessage(res.data?.message || 'Authenticator app imewashwa.');
+            setTotpMessage(res.data?.message || t('security.enabledMessage'));
         } catch (error) {
-            setTotpError(error.response?.data?.message || 'Authenticator code si sahihi.');
+            setTotpError(error.response?.data?.message || t('security.invalidCode'));
         } finally {
             setTotpBusy(false);
         }
@@ -62,9 +64,9 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
             });
             setRecoveryCodes(res.data?.recovery_codes || []);
             setTotpCode('');
-            setTotpMessage(res.data?.message || 'Recovery codes mpya zimetengenezwa.');
+            setTotpMessage(res.data?.message || t('security.newCodes'));
         } catch (error) {
-            setTotpError(error.response?.data?.message || 'Weka authenticator code sahihi.');
+            setTotpError(error.response?.data?.message || t('security.enterCode'));
         } finally {
             setTotpBusy(false);
         }
@@ -83,9 +85,9 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
             setTotpCode('');
             setTotpSetup(null);
             setRecoveryCodes([]);
-            setTotpMessage(res.data?.message || 'Authenticator app imezimwa.');
+            setTotpMessage(res.data?.message || t('security.disabledMessage'));
         } catch (error) {
-            setTotpError(error.response?.data?.message || 'Verification code si sahihi.');
+            setTotpError(error.response?.data?.message || t('security.verificationFailed'));
         } finally {
             setTotpBusy(false);
         }
@@ -94,7 +96,7 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
     const copyRecoveryCodes = async () => {
         if (!recoveryCodes.length || !navigator?.clipboard) return;
         await navigator.clipboard.writeText(recoveryCodes.join('\n'));
-        setTotpMessage('Recovery codes zimekopiwa.');
+        setTotpMessage(t('security.copied'));
     };
 
     return (
@@ -106,15 +108,15 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
                             <KeyRound className="h-5 w-5" />
                         </div>
                         <div>
-                            <h2 className="font-bold text-lg text-foreground">Authenticator App 2FA</h2>
+                            <h2 className="font-bold text-lg text-foreground">{t('security.title')}</h2>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Tumia Google Authenticator, Authy, 1Password, au Microsoft Authenticator kwa critical actions kama withdrawal.
+                                {t('security.description')}
                             </p>
                         </div>
                     </div>
                     <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wider ${totpEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                         {totpEnabled && <CheckCircle2 className="h-3.5 w-3.5" />}
-                        {totpEnabled ? 'Already set' : 'Not set'}
+                        {totpEnabled ? t('security.enabled') : t('security.disabled')}
                     </span>
                 </div>
 
@@ -132,7 +134,7 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
                 {!totpEnabled && !totpSetup && (
                     <Button type="button" disabled={totpBusy} onClick={startTotpSetup} className="mt-5 h-11 rounded-xl bg-brand-600 font-bold text-white hover:bg-brand-700">
                         {totpBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                        Washa Authenticator
+                        {t('security.enable')}
                     </Button>
                 )}
 
@@ -141,7 +143,7 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
                         <div className="rounded-2xl border border-input bg-white p-3" dangerouslySetInnerHTML={{ __html: totpSetup.qr_svg }} />
                         <div className="space-y-3">
                             <div>
-                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Manual secret</label>
+                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('security.manualSecret')}</label>
                                 <p className="mt-1 break-all rounded-xl bg-muted/40 px-3 py-2 font-mono text-sm font-bold">{totpSetup.secret}</p>
                             </div>
                             <Input
@@ -154,10 +156,10 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
                             <div className="flex flex-wrap gap-2">
                                 <Button type="button" disabled={totpBusy || totpCode.length !== 6} onClick={confirmTotpSetup} className="h-11 rounded-xl bg-brand-600 font-bold text-white hover:bg-brand-700">
                                     {totpBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Confirm
+                                    {t('security.confirm')}
                                 </Button>
                                 <Button type="button" variant="outline" disabled={totpBusy} onClick={() => { setTotpSetup(null); setTotpCode(''); }}>
-                                    Cancel
+                                    {t('security.cancel')}
                                 </Button>
                             </div>
                         </div>
@@ -168,7 +170,7 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
                     <div className="mt-5 space-y-3">
                         <Input
                             inputMode="numeric"
-                            placeholder="Authenticator or recovery code"
+                            placeholder={t('security.codePlaceholder')}
                             className="h-12 font-bold"
                             value={totpCode}
                             onChange={e => setTotpCode(e.target.value.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 32))}
@@ -176,11 +178,11 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
                         <div className="flex flex-wrap gap-2">
                             <Button type="button" variant="outline" disabled={totpBusy || !totpCode} onClick={regenerateRecoveryCodes} className="h-11 rounded-xl font-bold">
                                 {totpBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                                New recovery codes
+                                {t('security.newRecovery')}
                             </Button>
                             <Button type="button" variant="outline" disabled={totpBusy || !totpCode} onClick={disableTotp} className="h-11 rounded-xl border-red-200 font-bold text-red-700 hover:bg-red-50">
                                 {totpBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldX className="mr-2 h-4 w-4" />}
-                                Disable
+                                {t('security.disable')}
                             </Button>
                         </div>
                     </div>
@@ -190,12 +192,12 @@ export default function TotpSecurityPanel({ initialEnabled = false }) {
                     <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4">
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <p className="font-black text-amber-950">Recovery codes</p>
-                                <p className="mt-1 text-xs font-semibold text-amber-800">Hifadhi hizi sasa. Zitaonekana mara hii tu.</p>
+                                <p className="font-black text-amber-950">{t('security.recoveryCodes')}</p>
+                                <p className="mt-1 text-xs font-semibold text-amber-800">{t('security.recoveryWarning')}</p>
                             </div>
                             <Button type="button" variant="outline" className="h-9 shrink-0 rounded-xl bg-white" onClick={copyRecoveryCodes}>
                                 <Copy className="mr-2 h-4 w-4" />
-                                Copy
+                                {t('security.copy')}
                             </Button>
                         </div>
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">

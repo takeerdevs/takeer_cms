@@ -3,8 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Send, Loader2 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
+import { useLocale } from '@/lib/i18n';
 
 export default function SearchOverlay({ isOpen, onClose }) {
+    const { t } = useLocale();
     const [query, setQuery] = useState('');
     const [state, setState] = useState('idle'); // 'idle', 'searching'
     const inputRef = useRef(null);
@@ -73,7 +75,7 @@ export default function SearchOverlay({ isOpen, onClose }) {
                                     <div className="flex justify-center py-10">
                                         <div className="flex items-center gap-3 text-muted-foreground">
                                             <Loader2 className="h-6 w-6 animate-spin text-brand-500" />
-                                            <span className="font-medium">Inatafuta...</span>
+                                            <span className="font-medium">{t('components.searchLoading')}</span>
                                         </div>
                                     </div>
                                 )}
@@ -91,8 +93,8 @@ export default function SearchOverlay({ isOpen, onClose }) {
                         >
                             {state === 'idle' && (
                                 <motion.div layoutId="search-header" className="text-center mb-8">
-                                    <h2 className="text-3xl font-black text-foreground mb-2">Unatafuta nini?</h2>
-                                    <p className="text-muted-foreground">Tafuta nguo, viatu, urembo, vitabu, huduma nk.</p>
+                                    <h2 className="text-3xl font-black text-foreground mb-2">{t('components.searchHeading')}</h2>
+                                    <p className="text-muted-foreground">{t('components.searchIntro')}</p>
                                 </motion.div>
                             )}
 
@@ -103,7 +105,7 @@ export default function SearchOverlay({ isOpen, onClose }) {
                                     type="text"
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
-                                    placeholder="Andika hapa..."
+                                    placeholder={t('components.searchPlaceholder')}
                                     className="w-full pl-12 pr-14 py-4 rounded-3xl bg-accent/60 border-transparent focus:bg-background focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 transition-all text-lg shadow-sm"
                                 />
                                 {query.trim() && (

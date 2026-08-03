@@ -6,14 +6,16 @@ use Illuminate\Support\Facades\DB;
 return new class extends Migration {
     private const STATUSES = [
         'pending',
-        'paid_pending_confirmation',
-        'awaiting_merchant_confirmation',
-        'escrow_locked',
-        'shipped',
+        'payment_confirmed',
+        'pending_fulfillment',
+        'release_eligible',
+        'release_requested',
+        'payout_processing',
+        'paid_out',
         'disputed',
         'refund_pending',
-        'resolved_merchant_paid',
-        'resolved_buyer_refunded',
+        'refunded',
+        'compliance_hold',
         'failed',
     ];
 
@@ -26,18 +28,29 @@ return new class extends Migration {
     {
         $this->replaceConstraint([
             'pending',
-            'paid_pending_confirmation',
-            'awaiting_merchant_confirmation',
-            'escrow_locked',
+            'payment_confirmed',
+            'pending_fulfillment',
+            'release_eligible',
+            'release_requested',
+            'payout_processing',
+            'paid_out',
             'disputed',
-            'resolved_merchant_paid',
-            'resolved_buyer_refunded',
+            'refunded',
+            'compliance_hold',
             'failed',
         ]);
     }
 
     private function replaceConstraint(array $statuses): void
     {
+        // SQLite materializes the enum/check constraint from the original
+        // orders migration and does not support ALTER TABLE ... DROP
+        // CONSTRAINT. The original constraint already contains this exact
+        // status set, so there is nothing to rewrite for test databases.
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return;
+        }
+
         $quoted = collect($statuses)
             ->map(fn (string $status) => DB::getPdo()->quote($status))
             ->implode(', ');

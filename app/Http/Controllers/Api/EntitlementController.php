@@ -228,7 +228,7 @@ class EntitlementController extends Controller
             $inquiriesQuery = Order::with(['merchant', 'product', 'delivery.shippingZone', 'delivery.events.actor', 'returnRequest'])
                 ->where('buyer_id', $request->user()->id)
                 ->where('is_inquiry', true)
-                ->whereNotIn('payment_status', ['resolved_buyer_refunded']);
+                ->whereNotIn('payment_status', ['refunded']);
             
             if ($days > 0) {
                 $inquiriesQuery->where('created_at', '>=', now()->subDays($days));
@@ -775,7 +775,7 @@ class EntitlementController extends Controller
                         ->where('extra_items->parent_order_id', $order->id);
                 });
             })
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+                ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'])
             ->sum('total_paid');
     }
 
@@ -797,7 +797,7 @@ class EntitlementController extends Controller
             return;
         }
 
-        if (! $delivery->buyer_release_pin && in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed'], true)) {
+        if (! $delivery->buyer_release_pin && in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed', 'release_eligible', 'disputed'], true)) {
             $delivery->forceFill([
                 'buyer_release_pin' => str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
             ])->save();

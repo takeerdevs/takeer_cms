@@ -31,6 +31,7 @@ use App\Jobs\ProcessPromotableVideo;
 use App\Http\Resources\ProductResource;
 use App\Services\EntitlementService;
 use App\Services\GalleryImageService;
+use App\Services\LegalAcceptanceService;
 use App\Services\MediaUploadService;
 use App\Services\ProductIntelligenceService;
 use App\Services\PulseNotificationService;
@@ -702,8 +703,15 @@ class UploadController extends Controller
     /**
      * Finalize the product, store images, and create a social post.
      */
-    public function publishProduct(Request $request, MediaUploadService $mediaService, EntitlementService $entitlementService): JsonResponse
+    public function publishProduct(Request $request, MediaUploadService $mediaService, EntitlementService $entitlementService, LegalAcceptanceService $legalAcceptance): JsonResponse
     {
+        $merchantForLegal = $this->merchantFromRequest($request);
+        try {
+            $legalAcceptance->assertMerchantReady($request->user(), (int) $merchantForLegal->id);
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 503);
+        }
+
         $request->validate([
             'image_urls' => 'nullable|array',
             'media_items' => 'nullable|array',
@@ -891,10 +899,9 @@ class UploadController extends Controller
             'wholesale_deposit_mode' => 'nullable|string|in:quote_based,deposit_required,full_payment',
             'wholesale_deposit_percent' => 'nullable|numeric|min:0|max:100',
             'wholesale_balance_due' => 'nullable|string|in:before_production,before_delivery,on_delivery_confirmation,manual',
-            'safepay_mobile_money_enabled' => 'nullable|boolean',
-            'safepay_bank_transfer_enabled' => 'nullable|boolean',
-            'safepay_wallet_enabled' => 'nullable|boolean',
-            'safepay_card_enabled' => 'nullable|boolean',
+            'provider_mobile_money_enabled' => 'nullable|boolean',
+            'provider_bank_transfer_enabled' => 'nullable|boolean',
+            'provider_card_enabled' => 'nullable|boolean',
             'pricing_tiers' => 'nullable|array|max:20',
             'pricing_tiers.*.min_quantity' => 'required_with:pricing_tiers|numeric|min:0.001',
             'pricing_tiers.*.max_quantity' => 'nullable|numeric|min:0.001',
@@ -1151,13 +1158,12 @@ class UploadController extends Controller
                     return response()->json(['message' => 'Wholesale products need a minimum order quantity.'], 422);
                 }
 
-                $hasSafePayMethod = $request->boolean('safepay_mobile_money_enabled', true)
-                    || $request->boolean('safepay_bank_transfer_enabled', true)
-                    || $request->boolean('safepay_wallet_enabled', true)
-                    || $request->boolean('safepay_card_enabled', false);
+                $hasProviderMethod = $request->boolean('provider_mobile_money_enabled', true)
+                    || $request->boolean('provider_bank_transfer_enabled', true)
+                    || $request->boolean('provider_card_enabled', false);
 
-                if (! $hasSafePayMethod) {
-                    return response()->json(['message' => 'Enable at least one Takeer SafePay funding method for wholesale orders.'], 422);
+                if (! $hasProviderMethod) {
+                    return response()->json(['message' => 'Enable at least one licensed PSP payment method for wholesale orders.'], 422);
                 }
             }
 
@@ -1706,10 +1712,9 @@ class UploadController extends Controller
             'wholesale_deposit_mode' => $request->input('type') === 'physical' ? ($request->input('wholesale_deposit_mode') ?: 'quote_based') : 'quote_based',
             'wholesale_deposit_percent' => $request->input('type') === 'physical' && $request->filled('wholesale_deposit_percent') ? (float) $request->input('wholesale_deposit_percent') : null,
             'wholesale_balance_due' => $request->input('type') === 'physical' ? ($request->input('wholesale_balance_due') ?: 'before_delivery') : 'before_delivery',
-            'safepay_mobile_money_enabled' => $request->input('type') === 'physical' ? $request->boolean('safepay_mobile_money_enabled', true) : true,
-            'safepay_bank_transfer_enabled' => $request->input('type') === 'physical' ? $request->boolean('safepay_bank_transfer_enabled', true) : true,
-            'safepay_wallet_enabled' => $request->input('type') === 'physical' ? $request->boolean('safepay_wallet_enabled', true) : true,
-            'safepay_card_enabled' => $request->input('type') === 'physical' ? $request->boolean('safepay_card_enabled', false) : false,
+            'provider_mobile_money_enabled' => $request->input('type') === 'physical' ? $request->boolean('provider_mobile_money_enabled', true) : true,
+            'provider_bank_transfer_enabled' => $request->input('type') === 'physical' ? $request->boolean('provider_bank_transfer_enabled', true) : true,
+            'provider_card_enabled' => $request->input('type') === 'physical' ? $request->boolean('provider_card_enabled', false) : false,
             'url' => $productUrl,
             'download_link' => $request->input('type') === 'digital' ? $productUrl : null,
             'digital_delivery_type' => $request->input('type') === 'digital' ? $digitalDeliveryType : 'file',
@@ -2453,7 +2458,7 @@ class UploadController extends Controller
 
         // 2. Personal accounts follow threshold logic
         $mode = (string) AdminSetting::get('kyc_enforcement_mode', 'off');
-        if ($mode !== 'listings_and_withdrawals') {
+        if ($mode !== 'listings_and_provider_payouts') {
             return false;
         }
 

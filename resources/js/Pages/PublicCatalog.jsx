@@ -17,6 +17,7 @@ import {
     Wrench,
 } from 'lucide-react';
 import { productPriceLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 const fetcher = async (url) => {
     const response = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -32,6 +33,13 @@ const CATALOG_FILTERS = [
 ];
 
 export default function PublicCatalog({ merchantSlug, initialData }) {
+    const { t, copy } = useLocale();
+    const localizedFilters = [
+        { key: 'all', label: t('catalog.all'), statKey: 'catalog_total' },
+        { key: 'physical', label: t('catalog.products'), statKey: 'physical' },
+        { key: 'digital', label: t('catalog.digital'), statKey: 'digital' },
+        { key: 'service', label: t('catalog.services'), statKey: 'services' },
+    ];
     const sentinelRef = useRef(null);
     const getKey = (pageIndex, previousPageData) => {
         if (previousPageData && !previousPageData.products?.links?.next) return null;
@@ -74,7 +82,7 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
             .filter((product) => filter === 'all' || product.type === filter)
             .filter((product) => {
                 if (!needle) return true;
-                return `${product.title} ${productLabel(product)} ${product.description || ''}`.toLowerCase().includes(needle);
+                return `${product.title} ${productLabel(product, copy)} ${product.description || ''}`.toLowerCase().includes(needle);
             })
             .sort((a, b) => discoveryScore(b, productDiscovery) - discoveryScore(a, productDiscovery));
     }, [products, filter, query, productDiscovery]);
@@ -83,7 +91,7 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
         return (
             <AppLayout>
                 <div className="flex min-h-[60vh] items-center justify-center p-6 text-center">
-                    <p className="text-destructive">Catalog haipatikani au mtandao unasumbua.</p>
+                    <p className="text-destructive">{t('catalog.loadFailed')}</p>
                 </div>
             </AppLayout>
         );
@@ -91,7 +99,7 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
 
     return (
         <AppLayout>
-            <Head title={`${merchant?.name || 'Catalog'} | Catalog`} />
+            <Head title={`${merchant?.name || t('catalog.title')} | ${t('catalog.title')}`} />
 
             <main className="mx-auto max-w-5xl pb-24">
                 <header className="border-b border-neutral-200/80 bg-background">
@@ -103,7 +111,7 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
                                 <Link
                                     href={`/u/${slug}`}
                                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-neutral-100"
-                                    aria-label="Back to profile"
+                                    aria-label={t('common.backToProfile')}
                                 >
                                     <ArrowLeft className="h-5 w-5" />
                                 </Link>
@@ -119,7 +127,7 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
                                             )}
                                         </div>
                                         <p className="truncate text-xs text-muted-foreground">
-                                            Catalog · @{slug}
+                                            {t('catalog.title')} · @{slug}
                                         </p>
                                     </div>
                                 </Link>
@@ -127,22 +135,22 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
                                     href={`/u/${slug}/shop/all`}
                                     className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 px-3 text-[13px] font-semibold text-white transition-colors hover:bg-brand-700"
                                 >
-                                    Shop
+                                    {t('catalog.shop')}
                                 </Link>
                             </div>
 
                             {catalogStats && (
                                 <div className="grid grid-cols-3 gap-1 border-t border-neutral-100 px-4 py-2.5">
-                                    <CatalogStatPill label="Products" value={catalogStats.physical} />
-                                    <CatalogStatPill label="Digital" value={catalogStats.digital} />
-                                    <CatalogStatPill label="Services" value={catalogStats.services} />
+                                    <CatalogStatPill label={t('catalog.products')} value={catalogStats.physical} />
+                                    <CatalogStatPill label={t('catalog.digital')} value={catalogStats.digital} />
+                                    <CatalogStatPill label={t('catalog.services')} value={catalogStats.services} />
                                 </div>
                             )}
 
                             <p className="border-t border-neutral-100 px-4 py-2 text-xs text-muted-foreground">
-                                Products tagged on posts. For content, bundles & memberships see{' '}
+                                {t('catalog.taggedProducts')}{' '}
                                 <Link href={`/u/${slug}/shop/all`} className="font-semibold text-brand-700">
-                                    Shop
+                                    {t('catalog.shop')}
                                 </Link>
                                 .
                             </p>
@@ -154,11 +162,11 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
                                         value={query}
                                         onChange={(event) => setQuery(event.target.value)}
                                         className="h-9 w-full rounded-lg bg-neutral-100 pl-9 pr-3 text-sm text-foreground outline-none ring-brand-500/30 transition placeholder:text-muted-foreground focus:bg-white focus:ring-2"
-                                        placeholder="Search catalog..."
+                                        placeholder={t('catalog.searchPlaceholder')}
                                     />
                                 </div>
                                 <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-                                    {CATALOG_FILTERS.map((item) => {
+                                    {localizedFilters.map((item) => {
                                         const count = catalogStats?.[item.statKey];
                                         const isActive = filter === item.key;
 
@@ -197,8 +205,8 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
                         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-500">
                             <ShoppingBag className="h-7 w-7" />
                         </div>
-                        <p className="mt-4 text-base font-black text-slate-950">Hakuna bidhaa kwa sasa.</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-500">Try another filter or check the mini-store.</p>
+                        <p className="mt-4 text-base font-black text-slate-950">{t('catalog.empty')}</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-500">{t('catalog.emptyDescription')}</p>
                     </div>
                 ) : (
                     <>
@@ -216,7 +224,7 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
                                 {isLoadingMore ? (
                                     <Loader2 className="h-6 w-6 animate-spin text-brand-500" />
                                 ) : (
-                                    <span className="text-xs font-black uppercase tracking-widest text-slate-400">Loading more...</span>
+                                    <span className="text-xs font-black uppercase tracking-widest text-slate-400">{t('common.loadingMore')}</span>
                                 )}
                             </div>
                         )}
@@ -306,7 +314,7 @@ function CatalogCard({ product, badges = [] }) {
                 )}
                 <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-2xl bg-white/95 px-3 py-1.5 text-xs font-black text-slate-800 shadow-sm">
                     <Icon className="h-3.5 w-3.5 text-brand-600" />
-                    {productLabel(product)}
+                    {productLabel(product, copy)}
                 </span>
             </div>
             <div className="flex flex-1 flex-col p-4">
@@ -342,27 +350,27 @@ function productIcon(product) {
     return DownloadCloud;
 }
 
-function productLabel(product) {
-    if (product?.type === 'service') return 'Service';
-    if (product?.type !== 'digital') return 'Product';
+function productLabel(product, translate = (english) => english) {
+    if (product?.type === 'service') return translate('Service', 'Huduma');
+    if (product?.type !== 'digital') return translate('Product', 'Bidhaa');
 
     const map = {
-        video_stream: 'Premium video',
-        audio_stream: 'Premium audio',
-        gallery_pack: 'Gallery pack',
-        live_event: 'Live event',
-        custom_delivery: 'Custom work',
-        external_link: 'External access',
+        video_stream: translate('Premium video', 'Video ya premium'),
+        audio_stream: translate('Premium audio', 'Audio ya premium'),
+        gallery_pack: translate('Gallery pack', 'Kifurushi cha picha'),
+        live_event: translate('Live event', 'Tukio la moja kwa moja'),
+        custom_delivery: translate('Custom work', 'Kazi maalum'),
+        external_link: translate('External access', 'Ufikiaji wa nje'),
         file: product.digital_content_type === 'software'
-            ? 'Software'
+            ? translate('Software', 'Programu')
             : product.digital_content_type === 'document'
-                ? 'Document'
+                ? translate('Document', 'Hati')
                 : product.digital_content_type === 'ebook'
-                    ? 'E-book'
-                    : 'Digital download',
+                    ? translate('E-book', 'Kitabu pepe')
+                    : translate('Digital download', 'Upakuaji wa kidijitali'),
     };
 
-    return map[product.digital_delivery_type] || 'Digital download';
+    return map[product.digital_delivery_type] || translate('Digital download', 'Upakuaji wa kidijitali');
 }
 
 function discoveryScore(product, productDiscovery = {}) {

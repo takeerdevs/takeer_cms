@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\AdminSetting;
 use App\Models\PaymentProvider;
 use App\Models\PaymentProviderChannel;
 
@@ -67,7 +66,6 @@ class PaymentProviderCatalogService
             }
         }
 
-        $this->backfillLegacyWithdrawalChannels();
     }
 
     public function payoutChannelsForCountry(string $countryCode)
@@ -211,7 +209,7 @@ class PaymentProviderCatalogService
                         'method' => 'mobile_money',
                         'name' => 'Selcom Mobile Money',
                         'currencies' => ['TZS'],
-                        'limits' => ['min_withdrawal_amount' => 1000, 'max_withdrawal_amount' => null],
+                        'limits' => ['min_payout_amount' => 1000, 'max_payout_amount' => null],
                         'priority' => 10,
                         'supported_networks' => $tzNetworks,
                         'required_fields_schema' => $this->mobileMoneyPayoutFields($tzNetworks),
@@ -224,7 +222,7 @@ class PaymentProviderCatalogService
                         'method' => 'bank',
                         'name' => 'Selcom Bank Transfer',
                         'currencies' => ['TZS', 'USD'],
-                        'limits' => ['min_withdrawal_amount' => 5000, 'max_withdrawal_amount' => null],
+                        'limits' => ['min_payout_amount' => 5000, 'max_payout_amount' => null],
                         'priority' => 20,
                         'supported_banks' => $tzBanks,
                         'required_fields_schema' => $this->bankPayoutFields(),
@@ -270,7 +268,7 @@ class PaymentProviderCatalogService
                         'method' => 'mobile_money',
                         'name' => 'AzamPay Mobile Money',
                         'currencies' => ['TZS'],
-                        'limits' => ['min_withdrawal_amount' => 1000, 'max_withdrawal_amount' => null],
+                        'limits' => ['min_payout_amount' => 1000, 'max_payout_amount' => null],
                         'priority' => 30,
                         'supported_networks' => $tzNetworks,
                         'required_fields_schema' => $this->mobileMoneyPayoutFields($tzNetworks),
@@ -305,7 +303,7 @@ class PaymentProviderCatalogService
                         'method' => 'bank',
                         'name' => 'DPO Bank Transfer',
                         'currencies' => ['KES', 'USD'],
-                        'limits' => ['min_withdrawal_amount' => 500, 'max_withdrawal_amount' => null],
+                        'limits' => ['min_payout_amount' => 500, 'max_payout_amount' => null],
                         'priority' => 20,
                         'required_fields_schema' => $this->bankPayoutFields(),
                     ],
@@ -382,49 +380,4 @@ class PaymentProviderCatalogService
         return $this->displayDirectory->tanzaniaBanks();
     }
 
-    private function backfillLegacyWithdrawalChannels(): void
-    {
-        $raw = AdminSetting::get('withdrawal_payout_channels', null);
-        $legacyChannels = is_string($raw) ? json_decode($raw, true) : null;
-        if (! is_array($legacyChannels) || empty($legacyChannels)) {
-            return;
-        }
-
-        $provider = PaymentProvider::query()->firstOrCreate(
-            ['key' => 'manual'],
-            ['name' => 'Manual Provider', 'driver' => 'manual', 'status' => 'enabled']
-        );
-
-        foreach ($legacyChannels as $legacy) {
-            if (! is_array($legacy)) {
-                continue;
-            }
-            $key = (string) ($legacy['key'] ?? '');
-            if ($key === '') {
-                continue;
-            }
-
-            $channel = PaymentProviderChannel::query()->firstOrNew(['key' => $key]);
-            if ($channel->exists) {
-                continue;
-            }
-
-            $channel->payment_provider_id = $provider->id;
-            $channel->fill($this->channelPayload([
-                    'key' => $key,
-                    'country_code' => (string) ($legacy['country_code'] ?? 'TZ'),
-                    'direction' => 'payout',
-                    'method' => (string) ($legacy['method'] ?? 'bank'),
-                    'name' => (string) ($legacy['label'] ?? 'Payout channel'),
-                    'currencies' => [(string) ($legacy['currency_code'] ?? 'TZS')],
-                    'priority' => 90,
-                    'fee_type' => (string) ($legacy['fee_type'] ?? 'fixed_plus_percent'),
-                    'fee_fixed' => (float) ($legacy['fee_fixed'] ?? 0),
-                    'fee_percent_bps' => (int) ($legacy['fee_percent_bps'] ?? 0),
-                    'fee_min' => (float) ($legacy['fee_min'] ?? 0),
-                    'fee_max' => $legacy['fee_max'] ?? null,
-                    'fx_margin_bps' => (int) ($legacy['fx_margin_bps'] ?? 0),
-            ]))->save();
-        }
-    }
 }

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/Components/ui/Input';
 import { Textarea } from '@/Components/ui/Textarea';
 import AutoPostTargetsPanel, { defaultAutoPostTargets } from '@/Components/Merchant/AutoPostTargetsPanel';
+import { useLocale } from '@/lib/i18n';
 
 const templateIcon = {
     menu_board: Utensils,
@@ -17,11 +18,38 @@ const templateIcon = {
     itinerary: CalendarDays,
 };
 
-const labelFromKey = (value) => String(value || '')
+const labelFromKey = (value, copy = (english) => english) => {
+    const labels = {
+        classic_menu: ['Classic menu', 'Menyu ya kawaida'], photo_grid: ['Photo grid', 'Gridi ya picha'], price_board: ['Price board', 'Ubao wa bei'], room_service: ['Room service', 'Huduma ya chumba'],
+        package: ['Package', 'Kifurushi'], catalog_grid: ['Catalog grid', 'Gridi ya katalogi'], price_list: ['Price list', 'Orodha ya bei'], timeline: ['Timeline', 'Ratiba ya muda'], trip_package: ['Trip package', 'Kifurushi cha safari'], schedule: ['Schedule', 'Ratiba'],
+    };
+    if (labels[value]) return copy(...labels[value]);
+    return String(value || '')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+const templateLabel = (key, template, copy) => {
+    const labels = { menu_board: ['Menu board', 'Menyu'], service_package: ['Service package', 'Kifurushi cha huduma'], itinerary: ['Itinerary', 'Ratiba'] };
+    return labels[key] ? copy(...labels[key]) : template?.label || key;
+};
+
+const templateDescription = (key, template, copy) => {
+    const descriptions = {
+        menu_board: ['Group products and services into a clear menu.', 'Panga bidhaa na huduma kwenye menyu iliyo wazi.'],
+        service_package: ['Combine products and services into one offer.', 'Unganisha bidhaa na huduma kuwa ofa moja.'],
+        itinerary: ['Organise a trip or schedule into ordered sections.', 'Panga safari au ratiba kwa sehemu zinazofuatana.'],
+    };
+    return descriptions[key] ? copy(...descriptions[key]) : template?.description || '';
+};
+
+const sectionLabel = (value, copy) => {
+    const labels = { Main: ['Main', 'Kuu'], 'Main Menu': ['Main Menu', 'Menyu kuu'] };
+    return labels[value] ? copy(...labels[value]) : value;
+};
 
 export default function OfferingGroups({ merchantUsername }) {
+    const { copy } = useLocale();
     const { auth } = usePage().props;
     const currentMerchant = auth?.user?.merchant_profiles?.find(m => m.username === merchantUsername)
         || auth?.user?.merchant_profiles?.[0] || {};
@@ -50,9 +78,9 @@ export default function OfferingGroups({ merchantUsername }) {
         const url = `${window.location.origin}${publicOfferingUrl(group)}`;
         try {
             await navigator.clipboard.writeText(url);
-            toast.success('Public link copied.');
+            toast.success(copy('Public link copied.', 'Kiungo cha umma kimenakiliwa.'));
         } catch (error) {
-            toast.error('Could not copy the public link.');
+            toast.error(copy('Could not copy the public link.', 'Imeshindikana kunakili kiungo cha umma.'));
         }
     };
 
@@ -63,7 +91,7 @@ export default function OfferingGroups({ merchantUsername }) {
             setTemplates(response.data?.templates || {});
             setGroups(response.data?.groups?.data || []);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to load offering groups.');
+            toast.error(error.response?.data?.message || copy('Failed to load offering groups.', 'Imeshindikana kupakia makundi ya ofa.'));
         } finally {
             setLoading(false);
         }
@@ -132,7 +160,7 @@ export default function OfferingGroups({ merchantUsername }) {
             const response = await axios.get(`/api/merchant/offering-groups/catalog?${params.toString()}`);
             setCatalog(response.data?.items || []);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to load catalog.');
+            toast.error(error.response?.data?.message || copy('Failed to load catalog.', 'Imeshindwa kupakia catalog.'));
         } finally {
             setCatalogLoading(false);
         }
@@ -146,14 +174,14 @@ export default function OfferingGroups({ merchantUsername }) {
             setSelectedGroup(loaded);
             await loadCatalog(loaded.id, catalogSearch);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to open group.');
+            toast.error(error.response?.data?.message || copy('Failed to open group.', 'Imeshindwa kufungua kundi.'));
         }
     };
 
     const createGroup = async (event) => {
         event.preventDefault();
         if (!form.title.trim()) {
-            toast.error('Add a group name first.');
+            toast.error(copy('Add a group name first.', 'Ongeza jina la kundi kwanza.'));
             return;
         }
 
@@ -168,12 +196,12 @@ export default function OfferingGroups({ merchantUsername }) {
                 },
                 publish_targets: form.publish_targets,
             });
-            toast.success('Offering group created.');
+            toast.success(copy('Offering group created.', 'Kundi la ofa limeundwa.'));
             setCreateOpen(false);
             setForm({ title: '', template_key: 'service_package', description: '', publish_targets: defaultAutoPostTargets });
             await loadGroups();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to create offering group.');
+            toast.error(error.response?.data?.message || copy('Failed to create offering group.', 'Imeshindikana kuunda kundi la ofa.'));
         } finally {
             setSaving(false);
         }
@@ -255,7 +283,7 @@ export default function OfferingGroups({ merchantUsername }) {
             if (!current) return current;
             const exists = (current.items || []).some((item) => item.item_type === catalogItem.item_type && Number(item.item_id) === Number(catalogItem.item_id));
             if (exists) {
-                toast.info('That item is already in this group.');
+                toast.info(copy('That item is already in this group.', 'Item hiyo tayari ipo kwenye group hili.'));
                 return current;
             }
             return {
@@ -335,10 +363,10 @@ export default function OfferingGroups({ merchantUsername }) {
             };
             const response = await axios.put(`/api/merchant/offering-groups/${selectedGroup.id}`, payload);
             setSelectedGroup(response.data?.group || selectedGroup);
-            toast.success('Offering group saved.');
+            toast.success(copy('Offering group saved.', 'Kundi la ofa limehifadhiwa.'));
             await loadGroups();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to save offering group.');
+            toast.error(error.response?.data?.message || copy('Failed to save offering group.', 'Imeshindikana kuhifadhi kundi la ofa.'));
         } finally {
             setBuilderSaving(false);
         }
@@ -346,17 +374,17 @@ export default function OfferingGroups({ merchantUsername }) {
 
     return (
         <AppLayout>
-            <Head title="Offering Groups | Takeer" />
+            <Head title={`${copy('Offering groups', 'Makundi ya ofa')} | Takeer`} />
             <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                        <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Offering Groups</h1>
+                        <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">{copy('Offering groups', 'Makundi ya ofa')}</h1>
                         <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
-                            Build menus, packages, itineraries, and nested offerings from products, services, and other groups.
+                            {copy('Build menus, packages, itineraries, and nested offerings from products, services, and other groups.', 'Unda menyu, vifurushi, ratiba na ofa zilizopangiliwa kutoka bidhaa, huduma na makundi mengine.')}
                         </p>
                     </div>
                     <Button type="button" className="h-12 rounded-2xl px-5 font-black" onClick={() => setCreateOpen(true)}>
-                        <Plus className="mr-2 h-5 w-5" /> New Group
+                        <Plus className="mr-2 h-5 w-5" /> {copy('New group', 'Kundi jipya')}
                     </Button>
                 </div>
 
@@ -378,8 +406,8 @@ export default function OfferingGroups({ merchantUsername }) {
                                         <Icon className="h-5 w-5" />
                                     </div>
                                     <div>
-                                        <p className="text-sm font-black text-slate-950">{template.label}</p>
-                                        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{template.description}</p>
+                                        <p className="text-sm font-black text-slate-950">{templateLabel(key, template, copy)}</p>
+                                        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{templateDescription(key, template, copy)}</p>
                                     </div>
                                 </div>
                             </button>
@@ -392,13 +420,13 @@ export default function OfferingGroups({ merchantUsername }) {
                         <CardContent className="p-0">
                             {loading ? (
                                 <div className="flex items-center justify-center gap-2 p-12 text-sm font-bold text-slate-500">
-                                    <Loader2 className="h-4 w-4 animate-spin" /> Loading groups...
+                                    <Loader2 className="h-4 w-4 animate-spin" /> {copy('Loading groups...', 'Inapakia makundi...')}
                                 </div>
                             ) : groups.length === 0 ? (
                                 <div className="p-12 text-center">
                                     <ClipboardList className="mx-auto h-10 w-10 text-slate-300" />
-                                    <p className="mt-3 text-sm font-black text-slate-900">No offering groups yet.</p>
-                                    <p className="mt-1 text-xs font-semibold text-slate-500">Start with a menu board, service package, or itinerary.</p>
+                                    <p className="mt-3 text-sm font-black text-slate-900">{copy('No offering groups yet.', 'Hakuna makundi ya ofa bado.')}</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Start with a menu board, service package, or itinerary.', 'Anza na menyu, kifurushi cha huduma au ratiba.')}</p>
                                 </div>
                             ) : (
                                 <div className="divide-y divide-slate-100">
@@ -415,7 +443,7 @@ export default function OfferingGroups({ merchantUsername }) {
                                                     <div>
                                                         <p className="text-sm font-black text-slate-950">{group.title}</p>
                                                         <p className="mt-1 text-xs font-semibold text-slate-500">
-                                                            {template.label || group.template_key} · {layout ? `${labelFromKey(layout)} · ` : ''}{group.items_count || 0} item{Number(group.items_count || 0) === 1 ? '' : 's'} · {group.status}
+                                                    {templateLabel(group.template_key, template, copy)} · {layout ? `${labelFromKey(layout, copy)} · ` : ''}{group.items_count || 0} {copy(Number(group.items_count || 0) === 1 ? 'item' : 'items', Number(group.items_count || 0) === 1 ? 'bidhaa' : 'bidhaa')} · {copy(group.status, group.status === 'published' ? 'imechapishwa' : group.status === 'archived' ? 'imehifadhiwa' : 'rasimu')}
                                                         </p>
                                                         {group.description && (
                                                             <p className="mt-1 text-xs leading-5 text-slate-500">{group.description}</p>
@@ -424,7 +452,7 @@ export default function OfferingGroups({ merchantUsername }) {
                                                 </div>
                                                 <div className="flex flex-wrap items-center justify-end gap-2">
                                                     <span className="w-max rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-600">
-                                                        {group.checkout_mode?.replace(/_/g, ' ') || 'select items'}
+                                                        {group.checkout_mode ? copy(group.checkout_mode.replace(/_/g, ' '), group.checkout_mode === 'select_items' ? 'chagua bidhaa' : group.checkout_mode === 'buy_group' ? 'nunua kundi lote' : group.checkout_mode === 'book_group' ? 'weka booking ya kundi' : group.checkout_mode === 'request_quote' ? 'omba bei' : 'inaonekana tu') : copy('select items', 'chagua bidhaa')}
                                                     </span>
                                                     {group.status === 'published' && (
                                                         <>
@@ -435,14 +463,14 @@ export default function OfferingGroups({ merchantUsername }) {
                                                                 className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:border-brand-200 hover:text-brand-700"
                                                             >
                                                                 <ExternalLink className="mr-2 h-4 w-4" />
-                                                                Public
+                                                                {copy('Public', 'Umma')}
                                                             </a>
                                                             <Button type="button" variant="outline" size="icon" className="rounded-xl h-10 w-10" onClick={() => copyPublicLink(group)}>
                                                                 <Copy className="h-4 w-4" />
                                                             </Button>
                                                         </>
                                                     )}
-                                                    <Button type="button" variant="outline" className="rounded-xl" onClick={() => openBuilder(group)}>Edit</Button>
+                                                    <Button type="button" variant="outline" className="rounded-xl" onClick={() => openBuilder(group)}>{copy('Edit', 'Hariri')}</Button>
                                                 </div>
                                             </div>
                                         );
@@ -456,20 +484,20 @@ export default function OfferingGroups({ merchantUsername }) {
                             {!selectedGroup ? (
                                 <div className="p-10 text-center">
                                     <Layers className="mx-auto h-10 w-10 text-slate-300" />
-                                    <p className="mt-3 text-sm font-black text-slate-900">Select a group to build it.</p>
-                                    <p className="mt-1 text-xs font-semibold text-slate-500">Add menu items, services, products, or another group.</p>
+                                    <p className="mt-3 text-sm font-black text-slate-900">{copy('Select a group to build it.', 'Chagua kundi kulijenga.')}</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Add menu items, services, products, or another group.', 'Ongeza bidhaa za menyu, huduma, bidhaa au kundi jingine.')}</p>
                                 </div>
                             ) : (
                                 <div className="divide-y divide-slate-100">
                                     <div className="space-y-3 p-4">
                                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                             <div>
-                                                <p className="text-xs font-black uppercase tracking-wider text-brand-600">Builder</p>
+                                                <p className="text-xs font-black uppercase tracking-wider text-brand-600">{copy('Builder', 'Mjenzi')}</p>
                                                 <h2 className="text-xl font-black text-slate-950">{selectedGroup.title}</h2>
                                             </div>
                                             <Button type="button" className="rounded-xl" onClick={saveBuilder} disabled={builderSaving}>
                                                 {builderSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                                Save
+                                                {copy('Save', 'Hifadhi')}
                                             </Button>
                                         </div>
                                         {selectedGroup.status === 'published' && (
@@ -481,49 +509,49 @@ export default function OfferingGroups({ merchantUsername }) {
                                                     className="inline-flex h-9 items-center justify-center rounded-xl border border-brand-200 bg-brand-50 px-3 text-xs font-black text-brand-700 hover:bg-brand-100"
                                                 >
                                                     <ExternalLink className="mr-2 h-4 w-4" />
-                                                    View public offering
+                                                    {copy('View public offering', 'Tazama ofa ya umma')}
                                                 </a>
                                                 <Button type="button" variant="outline" className="h-9 rounded-xl text-xs" onClick={() => copyPublicLink(selectedGroup)}>
                                                     <Copy className="mr-2 h-4 w-4" />
-                                                    Copy link
+                                                    {copy('Copy link', 'Nakili kiungo')}
                                                 </Button>
                                             </div>
                                         )}
                                         <div className="grid gap-3 sm:grid-cols-2">
                                             <label className="space-y-1.5 block">
-                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">Name</span>
+                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">{copy('Name', 'Jina')}</span>
                                                 <Input value={selectedGroup.title || ''} onChange={(event) => updateSelectedGroup({ title: event.target.value })} />
                                             </label>
                                             <label className="space-y-1.5 block">
-                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">Status</span>
+                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">{copy('Status', 'Hali')}</span>
                                                 <select className="h-10 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={selectedGroup.status || 'draft'} onChange={(event) => updateSelectedGroup({ status: event.target.value })}>
-                                                    <option value="draft">Draft</option>
-                                                    <option value="published">Published</option>
-                                                    <option value="archived">Archived</option>
+                                                    <option value="draft">{copy('Draft', 'Rasimu')}</option>
+                                                    <option value="published">{copy('Published', 'Imechapishwa')}</option>
+                                                    <option value="archived">{copy('Archived', 'Imehifadhiwa')}</option>
                                                 </select>
                                             </label>
                                             <label className="space-y-1.5 block">
-                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">Pricing</span>
+                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">{copy('Pricing', 'Bei')}</span>
                                                 <select className="h-10 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={selectedGroup.pricing_mode || 'sum_children'} onChange={(event) => updateSelectedGroup({ pricing_mode: event.target.value })}>
-                                                    <option value="sum_children">Sum selected items</option>
-                                                    <option value="fixed">Fixed group price</option>
-                                                    <option value="fixed_or_sum">Fixed or selected total</option>
-                                                    <option value="quote_only">Quote only</option>
-                                                    <option value="free">Free</option>
+                                                    <option value="sum_children">{copy('Sum selected items', 'Jumlisha bidhaa zilizochaguliwa')}</option>
+                                                    <option value="fixed">{copy('Fixed group price', 'Bei iliyowekwa ya kundi')}</option>
+                                                    <option value="fixed_or_sum">{copy('Fixed or selected total', 'Jumla iliyowekwa au iliyochaguliwa')}</option>
+                                                    <option value="quote_only">{copy('Quote only', 'Bei kwa makubaliano')}</option>
+                                                    <option value="free">{copy('Free', 'Bure')}</option>
                                                 </select>
                                             </label>
                                             <label className="space-y-1.5 block">
-                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">Checkout</span>
+                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">{copy('Checkout', 'Malipo')}</span>
                                                 <select className="h-10 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={selectedGroup.checkout_mode || 'select_items'} onChange={(event) => updateSelectedGroup({ checkout_mode: event.target.value })}>
-                                                    <option value="select_items">Customer selects items</option>
-                                                    <option value="buy_group">Buy whole group</option>
-                                                    <option value="book_group">Book group</option>
-                                                    <option value="request_quote">Request quote</option>
-                                                    <option value="visible_only">Visible only</option>
+                                                    <option value="select_items">{copy('Customer selects items', 'Mteja anachagua bidhaa')}</option>
+                                                    <option value="buy_group">{copy('Buy whole group', 'Nunua kundi lote')}</option>
+                                                    <option value="book_group">{copy('Book group', 'Weka booking ya kundi')}</option>
+                                                    <option value="request_quote">{copy('Request quote', 'Omba bei')}</option>
+                                                    <option value="visible_only">{copy('Visible only', 'Inaonekana tu')}</option>
                                                 </select>
                                             </label>
                                             <label className="space-y-1.5 block">
-                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">Display layout</span>
+                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">{copy('Display layout', 'Mpangilio wa kuonyesha')}</span>
                                                 <select
                                                     className="h-10 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
                                                     value={selectedLayoutFor(selectedGroup)}
@@ -535,19 +563,19 @@ export default function OfferingGroups({ merchantUsername }) {
                                                     })}
                                                 >
                                                     {layoutOptionsFor(selectedGroup).map((layout) => (
-                                                        <option key={layout} value={layout}>{labelFromKey(layout)}</option>
+                                                        <option key={layout} value={layout}>{labelFromKey(layout, copy)}</option>
                                                     ))}
                                                 </select>
                                             </label>
                                         </div>
                                         <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                                             <div>
-                                                <p className="text-xs font-black uppercase tracking-wider text-slate-700">Inapatikana kwenye shop gani?</p>
-                                                <p className="mt-1 text-xs font-semibold text-slate-500">Empty selection means this offering group is available at all active shop locations.</p>
+                                                <p className="text-xs font-black uppercase tracking-wider text-slate-700">{copy('Where is this shop available?', 'Inapatikana kwenye duka gani?')}</p>
+                                                <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Empty selection means this offering group is available at all active shop locations.', 'Usipochagua, kundi hili linapatikana kwenye maduka yote yaliyo hai.')}</p>
                                             </div>
                                             {servingLocations.length === 0 ? (
                                                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                                                    Add shop locations in Settings when this group should be served by specific branches.
+                                                    {copy('Add shop locations in Settings when this group should be served by specific branches.', 'Ongeza maeneo ya duka kwenye Mipangilio ikiwa kundi hili litolewe na matawi maalum.')}
                                                 </p>
                                             ) : (
                                                 <>
@@ -557,14 +585,14 @@ export default function OfferingGroups({ merchantUsername }) {
                                                             className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${availabilityLocationIds.length === 0 ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
                                                             onClick={() => setAvailabilityLocationIds([])}
                                                         >
-                                                            All active shop locations
+                                                            {copy('All active shop locations', 'Maeneo yote ya duka yaliyo hai')}
                                                         </button>
                                                         <button
                                                             type="button"
                                                             className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${availabilityLocationIds.length > 0 ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
                                                             onClick={() => setAvailabilityLocationIds([String(servingLocations[0].id)])}
                                                         >
-                                                            Selected locations only
+                                                            {copy('Selected locations only', 'Maeneo yaliyochaguliwa tu')}
                                                         </button>
                                                     </div>
                                                     {availabilityLocationIds.length > 0 && (
@@ -590,7 +618,7 @@ export default function OfferingGroups({ merchantUsername }) {
                                         </div>
                                         {['fixed', 'fixed_or_sum'].includes(selectedGroup.pricing_mode) && (
                                             <label className="space-y-1.5 block">
-                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">Base price</span>
+                                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">{copy('Base price', 'Bei ya msingi')}</span>
                                                 <Input type="number" min="0" value={selectedGroup.base_price ?? ''} onChange={(event) => updateSelectedGroup({ base_price: event.target.value })} />
                                             </label>
                                         )}
@@ -602,20 +630,20 @@ export default function OfferingGroups({ merchantUsername }) {
 
                                     <div className="space-y-3 p-4">
                                         <div className="flex items-center justify-between gap-3">
-                                            <p className="text-sm font-black text-slate-950">Items</p>
-                                            <span className="text-xs font-bold text-slate-500">{selectedGroup.items?.length || 0} total</span>
+                                            <p className="text-sm font-black text-slate-950">{copy('Items', 'Bidhaa')}</p>
+                                            <span className="text-xs font-bold text-slate-500">{selectedGroup.items?.length || 0} {copy('total', 'jumla')}</span>
                                         </div>
                                         {Object.keys(groupedItems).length === 0 ? (
                                             <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs font-bold text-slate-500">
-                                                No items in this group yet.
+                                                {copy('No items in this group yet.', 'Hakuna bidhaa kwenye kundi hili bado.')}
                                             </div>
                                         ) : Object.entries(groupedItems).map(([section, items]) => (
                                             <div key={section} className="space-y-2">
                                                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                         <div>
-                                                            <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">Section</p>
-                                                            <p className="text-sm font-black text-slate-950">{section}</p>
+                                                            <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">{copy('Section', 'Sehemu')}</p>
+                                                            <p className="text-sm font-black text-slate-950">{sectionLabel(section, copy)}</p>
                                                         </div>
                                                         <div className="grid grid-cols-2 gap-2 sm:w-72">
                                                             <Input
@@ -623,14 +651,14 @@ export default function OfferingGroups({ merchantUsername }) {
                                                                 min="0"
                                                                 value={sectionRuleFor(section).min_selected ?? ''}
                                                                 onChange={(event) => updateSectionRule(section, { min_selected: event.target.value === '' ? null : Number(event.target.value) })}
-                                                                placeholder="Min choices"
+                                                                placeholder={copy('Min choices', 'Chaguo za chini')}
                                                             />
                                                             <Input
                                                                 type="number"
                                                                 min="0"
                                                                 value={sectionRuleFor(section).max_selected ?? ''}
                                                                 onChange={(event) => updateSectionRule(section, { max_selected: event.target.value === '' ? null : Number(event.target.value) })}
-                                                                placeholder="Max choices"
+                                                                placeholder={copy('Max choices', 'Chaguo za juu')}
                                                             />
                                                         </div>
                                                     </div>
@@ -649,8 +677,8 @@ export default function OfferingGroups({ merchantUsername }) {
                                                                         )}
                                                                     </div>
                                                                     <div className="min-w-0">
-                                                                        <p className="truncate text-sm font-black text-slate-950">{item.title || 'Untitled item'}</p>
-                                                                        <p className="mt-1 text-xs font-semibold text-slate-500">{item.item_type.replace('_', ' ')} · {item.kind || 'item'}</p>
+                                                                        <p className="truncate text-sm font-black text-slate-950">{item.title || copy('Untitled item', 'Bidhaa isiyo na jina')}</p>
+                                                                        <p className="mt-1 text-xs font-semibold text-slate-500">{item.item_type.replace('_', ' ')} · {item.kind || copy('item', 'bidhaa')}</p>
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex items-center gap-1">
@@ -666,53 +694,53 @@ export default function OfferingGroups({ merchantUsername }) {
                                                                 </div>
                                                             </div>
                                                             <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                                                                <Input value={item.section || ''} onChange={(event) => updateItem(index, { section: event.target.value })} placeholder="Section, e.g. Lunch" />
+                                                                <Input value={item.section || ''} onChange={(event) => updateItem(index, { section: event.target.value })} placeholder={copy('Section, e.g. Lunch', 'Sehemu, mfano Chakula cha mchana')} />
                                                                 <select className="h-10 rounded-xl border border-input bg-white px-3 text-sm font-bold" value={item.role || 'optional'} onChange={(event) => updateItem(index, { role: event.target.value })}>
-                                                                    <option value="included">Included</option>
-                                                                    <option value="optional">Optional</option>
-                                                                    <option value="add_on">Add-on</option>
-                                                                    <option value="required_choice">Required choice</option>
-                                                                    <option value="choose_one">Choose one</option>
-                                                                    <option value="choose_many">Choose many</option>
-                                                                    <option value="visible_only">Visible only</option>
+                                                                    <option value="included">{copy('Included', 'Imejumuishwa')}</option>
+                                                                    <option value="optional">{copy('Optional', 'Si lazima')}</option>
+                                                                    <option value="add_on">{copy('Add-on', 'Nyongeza')}</option>
+                                                                    <option value="required_choice">{copy('Required choice', 'Chaguo la lazima')}</option>
+                                                                    <option value="choose_one">{copy('Choose one', 'Chagua moja')}</option>
+                                                                    <option value="choose_many">{copy('Choose many', 'Chagua nyingi')}</option>
+                                                                    <option value="visible_only">{copy('Visible only', 'Inaonekana tu')}</option>
                                                                 </select>
                                                                 <select className="h-10 rounded-xl border border-input bg-white px-3 text-sm font-bold" value={item.pricing_behavior || 'separate'} onChange={(event) => updateItem(index, { pricing_behavior: event.target.value })}>
-                                                                    <option value="separate">Use item price</option>
-                                                                    <option value="included">Included in group</option>
-                                                                    <option value="override">Override price</option>
-                                                                    <option value="quote_only">Quote only</option>
+                                                                    <option value="separate">{copy('Use item price', 'Tumia bei ya bidhaa')}</option>
+                                                                    <option value="included">{copy('Included in group', 'Imejumuishwa kwenye kundi')}</option>
+                                                                    <option value="override">{copy('Override price', 'Badilisha bei')}</option>
+                                                                    <option value="quote_only">{copy('Quote only', 'Bei kwa makubaliano')}</option>
                                                                 </select>
-                                                                <Input type="number" min="0" value={item.price_override ?? ''} onChange={(event) => updateItem(index, { price_override: event.target.value })} placeholder="Override price" disabled={item.pricing_behavior !== 'override'} />
-                                                                <Input type="number" min="0" value={item.quantity_min ?? ''} onChange={(event) => updateItem(index, { quantity_min: event.target.value })} placeholder="Min quantity" />
-                                                                <Input type="number" min="0" value={item.quantity_max ?? ''} onChange={(event) => updateItem(index, { quantity_max: event.target.value })} placeholder="Max quantity" />
+                                                                <Input type="number" min="0" value={item.price_override ?? ''} onChange={(event) => updateItem(index, { price_override: event.target.value })} placeholder={copy('Override price', 'Badilisha bei')} disabled={item.pricing_behavior !== 'override'} />
+                                                                <Input type="number" min="0" value={item.quantity_min ?? ''} onChange={(event) => updateItem(index, { quantity_min: event.target.value })} placeholder={copy('Min quantity', 'Kiasi cha chini')} />
+                                                                <Input type="number" min="0" value={item.quantity_max ?? ''} onChange={(event) => updateItem(index, { quantity_max: event.target.value })} placeholder={copy('Max quantity', 'Kiasi cha juu')} />
                                                             </div>
                                                             <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600 sm:grid-cols-3">
                                                                 <label className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
                                                                     <input type="checkbox" checked={Boolean(item.is_required)} onChange={(event) => updateItem(index, { is_required: event.target.checked })} />
-                                                                    Required
+                                                                    {copy('Required', 'Lazima')}
                                                                 </label>
                                                                 <label className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
                                                                     <input type="checkbox" checked={Boolean(item.is_default_selected)} onChange={(event) => updateItem(index, { is_default_selected: event.target.checked })} />
-                                                                    Preselected
+                                                                    {copy('Preselected', 'Kimechaguliwa awali')}
                                                                 </label>
                                                                 <label className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
                                                                     <input type="checkbox" checked={item.is_orderable_in_group !== false} onChange={(event) => updateItem(index, { is_orderable_in_group: event.target.checked })} />
-                                                                    Orderable here
+                                                                    {copy('Orderable here', 'Agizika hapa')}
                                                                 </label>
                                                             </div>
                                                             <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                                                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                                                     <div>
-                                                                        <p className="text-xs font-black uppercase tracking-wider text-slate-500">Add-ons</p>
+                                                                        <p className="text-xs font-black uppercase tracking-wider text-slate-500">{copy('Add-ons', 'Nyongeza')}</p>
                                                                         {Array.isArray(item.add_ons) && item.add_ons.length > 0 && (
                                                                             <p className="mt-1 text-[11px] font-semibold text-slate-500">
-                                                                                Inherited: {item.add_ons.map((row) => row.name).join(', ')}
+                                                                                {copy('Inherited:', 'Imerithiwa:')} {item.add_ons.map((row) => row.name).join(', ')}
                                                                             </p>
                                                                         )}
                                                                     </div>
                                                                     <Button type="button" variant="outline" className="h-9 rounded-xl text-xs" onClick={() => addItemAddOn(index)}>
                                                                         <Plus className="mr-2 h-4 w-4" />
-                                                                        Add add-on
+                                                                        {copy('Add add-on', 'Ongeza nyongeza')}
                                                                     </Button>
                                                                 </div>
                                                                 {itemAddOns(item).length > 0 && (
@@ -722,14 +750,14 @@ export default function OfferingGroups({ merchantUsername }) {
                                                                                 <Input
                                                                                     value={addOn.name || ''}
                                                                                     onChange={(event) => updateItemAddOn(index, addOnIndex, { name: event.target.value })}
-                                                                                    placeholder="Add-on name"
+                                                                                    placeholder={copy('Add-on name', 'Jina la nyongeza')}
                                                                                 />
                                                                                 <Input
                                                                                     type="number"
                                                                                     min="0"
                                                                                     value={addOn.price ?? ''}
                                                                                     onChange={(event) => updateItemAddOn(index, addOnIndex, { price: event.target.value })}
-                                                                                    placeholder="Price"
+                                                                                    placeholder={copy('Price', 'Bei')}
                                                                                 />
                                                                                 <Button type="button" variant="ghost" size="icon" className="rounded-xl text-red-500" onClick={() => removeItemAddOn(index, addOnIndex)}>
                                                                                     <Trash2 className="h-4 w-4" />
@@ -750,10 +778,10 @@ export default function OfferingGroups({ merchantUsername }) {
                                         <div className="flex items-center gap-2">
                                             <div className="relative flex-1">
                                                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                                                <Input className="pl-9" value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="Search products or groups..." />
+                                                <Input className="pl-9" value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder={copy('Search products or groups...', 'Tafuta bidhaa au makundi...')} />
                                             </div>
                                             <Button type="button" variant="outline" className="rounded-xl" onClick={() => loadCatalog(selectedGroup.id, catalogSearch)} disabled={catalogLoading}>
-                                                {catalogLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
+                                                {catalogLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : copy('Search', 'Tafuta')}
                                             </Button>
                                         </div>
                                         <div className="grid max-h-72 gap-2 overflow-y-auto pr-1">
@@ -788,31 +816,31 @@ export default function OfferingGroups({ merchantUsername }) {
                 <DialogContent className="max-w-xl rounded-2xl">
                     <form onSubmit={createGroup}>
                         <DialogHeader>
-                            <DialogTitle>Create offering group</DialogTitle>
+                            <DialogTitle>{copy('Create offering group', 'Unda kundi la ofa')}</DialogTitle>
                             <DialogDescription>
-                                Choose the merchant-facing template now. Items and nested groups will be added from the builder.
+                                {copy('Choose the merchant-facing template now. Items and nested groups will be added from the builder.', 'Chagua kiolezo kinachoonekana kwa mfanyabiashara. Bidhaa na makundi ya ndani yataongezwa kwenye mjenzi.')}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="mt-4 space-y-4">
                             <label className="space-y-1.5 block">
-                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">Template</span>
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">{copy('Template', 'Kiolezo')}</span>
                                 <select
                                     className="h-12 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
                                     value={form.template_key}
                                     onChange={(event) => setForm((current) => ({ ...current, template_key: event.target.value }))}
                                 >
                                     {Object.entries(templates).map(([key, template]) => (
-                                        <option key={key} value={key}>{template.label}</option>
+                                        <option key={key} value={key}>{templateLabel(key, template, copy)}</option>
                                     ))}
                                 </select>
                             </label>
                             <label className="space-y-1.5 block">
-                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">Name</span>
-                                <Input className="h-12" value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} placeholder="Lunch Menu, Bridal Package, 3 Day Safari..." />
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">{copy('Name', 'Jina')}</span>
+                                <Input className="h-12" value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} placeholder={copy('Lunch Menu, Bridal Package, 3 Day Safari...', 'Menyu ya chakula, Kifurushi cha harusi, Safari ya siku 3...')} />
                             </label>
                             <label className="space-y-1.5 block">
-                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">Description</span>
-                                <Textarea className="min-h-24" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Short merchant-facing description..." />
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-500">{copy('Description', 'Maelezo')}</span>
+                                <Textarea className="min-h-24" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder={copy('Short merchant-facing description...', 'Maelezo mafupi yanayoonekana kwa mfanyabiashara...')} />
                             </label>
                             <AutoPostTargetsPanel
                                 value={form.publish_targets}
@@ -820,10 +848,10 @@ export default function OfferingGroups({ merchantUsername }) {
                             />
                         </div>
                         <DialogFooter className="mt-5">
-                            <Button type="button" variant="outline" className="rounded-xl" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" className="rounded-xl" onClick={() => setCreateOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="submit" className="rounded-xl" disabled={saving}>
                                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                                Create
+                                {copy('Create', 'Unda')}
                             </Button>
                         </DialogFooter>
                     </form>

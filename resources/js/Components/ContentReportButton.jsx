@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const DEFAULT_REASONS = [
     { value: 'misleading', label: 'Misleading or scam' },
@@ -19,11 +20,12 @@ export default function ContentReportButton({
     itemId,
     merchantId = null,
     context = 'marketplace',
-    label = 'Report',
+    label = null,
     compact = false,
     className = '',
     reasons = DEFAULT_REASONS,
 }) {
+    const { t, copy } = useLocale();
     const [open, setOpen] = useState(false);
     const [reason, setReason] = useState(reasons[0]?.value || 'misleading');
     const [notes, setNotes] = useState('');
@@ -32,11 +34,11 @@ export default function ContentReportButton({
 
     const canSubmit = Boolean(itemType && itemId && reason && !submitting);
     const modalTitle = useMemo(() => {
-        if (context === 'custom_work') return 'Report Custom Work';
-        if (context === 'license_abuse') return 'Report License Issue';
-        if (context === 'order') return 'Report Purchase';
-        return 'Report Content';
-    }, [context]);
+        if (context === 'custom_work') return t('sharedUi.reportCustomWork');
+        if (context === 'license_abuse') return t('sharedUi.reportLicense');
+        if (context === 'order') return t('sharedUi.reportPurchase');
+        return t('sharedUi.reportContent');
+    }, [context, t]);
 
     const submitReport = async () => {
         if (!canSubmit) return;
@@ -52,13 +54,13 @@ export default function ContentReportButton({
                 notes: notes.trim() || null,
                 evidence_url: evidenceUrl.trim() || null,
             });
-            toast.success('Report submitted.');
+            toast.success(t('sharedUi.reportSubmitted'));
             setOpen(false);
             setReason(reasons[0]?.value || 'misleading');
             setNotes('');
             setEvidenceUrl('');
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to submit report.');
+            toast.error(error.response?.data?.message || t('sharedUi.submitFailed'));
         } finally {
             setSubmitting(false);
         }
@@ -72,7 +74,7 @@ export default function ContentReportButton({
                 className={className || `inline-flex items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100 ${compact ? '' : 'w-full'}`}
             >
                 <AlertTriangle className="h-4 w-4" />
-                {label}
+                {label || t('sharedUi.report')}
             </button>
 
             {open && (
@@ -81,7 +83,7 @@ export default function ContentReportButton({
                         <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
                             <div>
                                 <h3 className="text-sm font-black uppercase tracking-wider">{modalTitle}</h3>
-                                <p className="mt-1 text-xs text-muted-foreground">Takeer will review this and may restrict the item while investigating.</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{t('sharedUi.reportHint')}</p>
                             </div>
                             <button type="button" onClick={() => setOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-accent">
                                 <X className="h-4 w-4" />
@@ -90,7 +92,7 @@ export default function ContentReportButton({
 
                         <div className="space-y-4 p-4">
                             <div className="space-y-2">
-                                <label htmlFor="content-report-reason" className="text-xs font-black uppercase tracking-wider text-muted-foreground">Reason</label>
+                                <label htmlFor="content-report-reason" className="text-xs font-black uppercase tracking-wider text-muted-foreground">{t('sharedUi.reason')}</label>
                                 <select
                                     id="content-report-reason"
                                     value={reason}
@@ -106,30 +108,30 @@ export default function ContentReportButton({
                             </div>
 
                             <div className="space-y-2">
-                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Evidence link (Optional)</p>
+                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">{t('sharedUi.evidenceOptional')}</p>
                                 <input
                                     value={evidenceUrl}
                                     onChange={(e) => setEvidenceUrl(e.target.value)}
                                     className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
-                                    placeholder="https://..."
+                                    placeholder={copy('Evidence URL (optional)', 'URL ya ushahidi (si lazima)')}
                                     type="url"
                                 />
                             </div>
 
                             <div className="space-y-2">
-                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Notes (Optional)</p>
+                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">{t('sharedUi.notesOptional')}</p>
                                 <textarea
                                     value={notes}
                                     onChange={(e) => setNotes(e.target.value)}
                                     className="min-h-[96px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
-                                    placeholder="Tell us what happened..."
+                                    placeholder={t('sharedUi.notesPlaceholder')}
                                     maxLength={2000}
                                 />
                             </div>
 
                             <div className="flex items-center justify-end gap-2">
                                 <button type="button" onClick={() => setOpen(false)} className="h-10 rounded-xl border border-border px-4 text-sm font-bold hover:bg-accent">
-                                    Cancel
+                                    {t('sharedUi.cancel')}
                                 </button>
                                 <button
                                     type="button"
@@ -137,7 +139,7 @@ export default function ContentReportButton({
                                     disabled={!canSubmit}
                                     className="h-10 rounded-xl bg-brand-600 px-4 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-60"
                                 >
-                                    {submitting ? 'Submitting...' : 'Submit Report'}
+                                    {submitting ? t('sharedUi.submitting') : t('sharedUi.submit')}
                                 </button>
                             </div>
                         </div>

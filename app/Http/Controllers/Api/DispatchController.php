@@ -71,7 +71,7 @@ class DispatchController extends Controller
         $busCompany = $busCompany !== '' ? $busCompany : ($isForwarderDropOff ? 'Domestic courier / cargo' : 'Intercity Bus');
 
         $order->update([
-            'payment_status' => 'escrow_locked',
+            'payment_status' => 'pending_fulfillment',
             'merchant_dispatch_video_url' => $videoUrl,
             'merchant_confirmed_at' => $order->merchant_confirmed_at ?: now(),
         ]);
@@ -157,7 +157,7 @@ class DispatchController extends Controller
         $videoUrl = Storage::disk('public')->url($videoPath);
 
         $order->update([
-            'payment_status' => 'escrow_locked',
+            'payment_status' => 'pending_fulfillment',
             'merchant_dispatch_video_url' => $videoUrl,
             'merchant_confirmed_at' => $order->merchant_confirmed_at ?: now(),
         ]);
@@ -231,7 +231,7 @@ class DispatchController extends Controller
     private function ensurePaidDispatchableOrder(Order $order): void
     {
         abort_unless(
-            in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true),
+            in_array($order->payment_status, ['pending_fulfillment', 'payment_confirmed'], true),
             422,
             'Order must be paid before dispatch.'
         );

@@ -23,6 +23,7 @@ import RentalProductTemplate from '@/Components/public-templates/RentalProductTe
 import CustomOrderProductTemplate from '@/Components/public-templates/CustomOrderProductTemplate';
 import { trackAttributionEvent } from '@/lib/attribution';
 import { formatQuantity, productCardPriceLabel, productPriceLabel, productStockLabel, productUnitLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 function hotspotLinkDomain(value) {
     if (!value) return '';
@@ -44,6 +45,7 @@ const certificateTypeLabel = (value) => ({
 }[value] || value);
 
 export default function ProductDetail({ product }) {
+    const { t, copy } = useLocale();
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [activeHotspot, setActiveHotspot] = useState(null);
     const [selectedVariantId, setSelectedVariantId] = useState('');
@@ -134,13 +136,13 @@ export default function ProductDetail({ product }) {
     const attributes = product?.attributes || {};
     const isServiceProduct = product?.type === 'service';
     const description = attributes?.suggested_description
-        || (isServiceProduct ? 'Maelezo ya huduma hayajapatikana.' : 'Maelezo ya bidhaa hayajapatikana.');
+        || (isServiceProduct ? t('product.serviceDescriptionMissing') : t('product.productDescriptionMissing'));
     const merchantUsername = merchantProfile?.username || merchant?.username || '';
     const merchantDisplayName = merchantProfile?.display_name
         || merchantProfile?.name
         || merchant?.display_name
         || merchant?.name
-        || (isServiceProduct ? 'Mtoa huduma' : 'Muuzaji');
+        || (isServiceProduct ? t('product.serviceProvider') : t('product.seller'));
     const merchantSlug = merchantProfile?.username || merchant?.username || merchantProfile?.id || merchant?.id;
     const merchantRatingAverage = Number(merchant?.rating_average || 0);
     const merchantRatingsCount = Number(merchant?.ratings_count || 0);
@@ -184,17 +186,17 @@ export default function ProductDetail({ product }) {
         const a = min !== null && min !== undefined && min !== '' ? Number(min) : null;
         const b = max !== null && max !== undefined && max !== '' ? Number(max) : null;
         if (a === null && b === null) return '';
-        if (a !== null && b !== null && a !== b) return `${a}-${b} days`;
+        if (a !== null && b !== null && a !== b) return `${a}-${b} ${t('product.days')}`;
         const value = b ?? a;
-        if (value === 0) return 'same day';
-        if (value === 1) return '1 day';
-        return `${value} days`;
+        if (value === 0) return t('product.sameDay');
+        if (value === 1) return `1 ${t('product.day')}`;
+        return `${value} ${t('product.days')}`;
     };
     const productDeliveryPromise = product?.delivery_promise || {};
     const productDeliveryPromiseText = (() => {
         if (product?.type !== 'physical' || !productDeliveryPromise.override_enabled) return '';
         if (productDeliveryPromise.label) return productDeliveryPromise.label;
-        if (productDeliveryPromise.requires_confirmation) return 'Delivery time will be confirmed in order chat';
+        if (productDeliveryPromise.requires_confirmation) return t('product.deliveryConfirm');
         const handling = formatPromiseDayRange(productDeliveryPromise.handling_min_days, productDeliveryPromise.handling_max_days);
         const transit = formatPromiseDayRange(productDeliveryPromise.transit_min_days, productDeliveryPromise.transit_max_days);
         if (handling && transit) return `${handling} preparation + ${transit} delivery`;
@@ -234,51 +236,51 @@ export default function ProductDetail({ product }) {
                     : 'pay_now'
     );
     const serviceModeLabels = {
-        showcase_only: 'Showcase only',
-        request_quote: 'Request quote',
-        book_appointment: 'Book appointment',
-        pay_now: 'Pay / reserve',
-        external_booking: 'External booking',
+        showcase_only: t('product.show'),
+        request_quote: t('product.requestQuote'),
+        book_appointment: t('product.bookInstantly'),
+        pay_now: t('product.payReserve'),
+        external_booking: t('product.open'),
     };
     const serviceSchedulingType = product?.service_scheduling_type || (serviceMode === 'external_booking' ? 'external' : 'none');
     const serviceBookingType = product?.service_booking_type || 'instant';
     const serviceBookingTypeLabels = {
-        request: 'Request first',
-        manual_confirm: 'Manual confirmation',
-        instant: 'Instant booking',
+        request: t('product.startEnquiry'),
+        manual_confirm: t('product.requestConfirmation'),
+        instant: t('product.bookInstantly'),
     };
     const serviceLocationLabels = {
-        provider_location: 'At provider location',
-        customer_location: 'At client location',
-        remote: 'Remote/online',
-        hybrid: 'Hybrid',
+        provider_location: copy('At provider location', 'Eneo la mtoa huduma'),
+        customer_location: copy('At client location', 'Eneo la mteja'),
+        remote: copy('Remote/online', 'Mtandaoni'),
+        hybrid: copy('Hybrid', 'Mchanganyiko'),
     };
     const servicePriceUnitLabels = {
-        hourly: 'hour',
-        daily: 'day',
-        nightly: 'night',
-        weekly: 'week',
-        monthly: 'month',
-        yearly: 'year',
-        per_person: 'person',
-        per_visit: 'visit',
-        per_session: 'session',
-        per_project: 'project',
+        hourly: copy('hour', 'saa'),
+        daily: copy('day', 'siku'),
+        nightly: copy('night', 'usiku'),
+        weekly: copy('week', 'wiki'),
+        monthly: copy('month', 'mwezi'),
+        yearly: copy('year', 'mwaka'),
+        per_person: copy('person', 'mtu'),
+        per_visit: copy('visit', 'ziara'),
+        per_session: copy('session', 'session'),
+        per_project: copy('project', 'mradi'),
     };
     const serviceChargeUnitLabels = {
-        fixed: 'fixed',
-        hourly: 'per hour',
-        daily: 'per day',
-        nightly: 'per night',
-        weekly: 'per week',
-        monthly: 'per month',
-        yearly: 'per year',
-        per_person: 'per person',
-        per_visit: 'per visit',
-        per_session: 'per session',
-        per_project: 'per project',
-        optional: 'optional',
-        refundable_deposit: 'refundable deposit',
+        fixed: copy('fixed', 'bei maalum'),
+        hourly: copy('per hour', 'kwa saa'),
+        daily: copy('per day', 'kwa siku'),
+        nightly: copy('per night', 'kwa usiku'),
+        weekly: copy('per week', 'kwa wiki'),
+        monthly: copy('per month', 'kwa mwezi'),
+        yearly: copy('per year', 'kwa mwaka'),
+        per_person: copy('per person', 'kwa mtu'),
+        per_visit: copy('per visit', 'kwa ziara'),
+        per_session: copy('per session', 'kwa session'),
+        per_project: copy('per project', 'kwa mradi'),
+        optional: copy('optional', 'si lazima'),
+        refundable_deposit: copy('refundable deposit', 'deposit inayorejeshwa'),
     };
     const hasProductSpecifications = Boolean(
         attributes.category
@@ -319,25 +321,25 @@ export default function ProductDetail({ product }) {
     const productCertificates = Array.isArray(product?.product_certificates) ? product.product_certificates : [];
     const serviceTrustBlocksBooking = product?.type === 'service' && !Boolean(serviceTrust.trust_ready);
     const serviceTrustBlockReason = serviceTrust.credential_required && !serviceTrust.credential_verified
-        ? 'Huduma hii inasubiri uhakiki wa leseni/cheti cha mtoa huduma.'
-        : 'Huduma hii inasubiri uhakiki wa Takeer kabla ya kupokea booking au malipo.';
+        ? copy('This service is waiting for the provider licence/certificate to be verified.', 'Huduma hii inasubiri uhakiki wa leseni/cheti cha mtoa huduma.')
+        : copy('This service is waiting for Takeer review before it can receive bookings or payments.', 'Huduma hii inasubiri uhakiki wa Takeer kabla ya kupokea booking au malipo.');
     const serviceTrustRows = [
         {
-            label: 'Mtoa huduma amethibitishwa',
+            label: copy('Provider verified', 'Mtoa huduma amethibitishwa'),
             ok: Boolean(serviceTrust.identity_verified),
-            detail: serviceTrust.identity_verified ? 'KYC imehakikiwa' : 'KYC haijakamilika',
+            detail: serviceTrust.identity_verified ? copy('KYC verified', 'KYC imehakikiwa') : copy('KYC incomplete', 'KYC haijakamilika'),
         },
         {
-            label: 'Leseni/cheti cha Ujuzi',
+            label: copy('Professional licence/certificate', 'Leseni/cheti cha Ujuzi'),
             ok: !serviceTrust.credential_required || Boolean(serviceTrust.credential_verified),
             detail: serviceTrust.credential_required
-                ? (serviceTrust.credential_verified ? (serviceTrust.credential_label || 'Imethibitishwa') : 'Inahitajika')
-                : 'Hakihitajiki kwa huduma hii',
+                ? (serviceTrust.credential_verified ? (serviceTrust.credential_label || copy('Verified', 'Imethibitishwa')) : copy('Required', 'Inahitajika'))
+                : copy('Not required for this service', 'Hakihitajiki kwa huduma hii'),
         },
         {
-            label: 'Takeer SafePay',
-            ok: Boolean(serviceTrust.safepay_enabled),
-            detail: serviceTrust.payout_hold_days ? `Malipo hushikiliwa siku ${serviceTrust.payout_hold_days}` : 'Malipo hulindwa',
+            label: copy('Licensed PSP payment', 'Malipo kupitia PSP mwenye leseni'),
+            ok: Boolean(serviceTrust.provider_payment_enabled),
+            detail: serviceTrust.payout_hold_days ? copy(`PSP settlement rule: ${serviceTrust.payout_hold_days} days`, `Kanuni ya settlement ya PSP: siku ${serviceTrust.payout_hold_days}`) : copy('Provider settlement applies', 'Settlement ya mtoa huduma inatumika'),
         },
     ];
     const providerServiceLocation = product?.service_provider_location || null;
@@ -360,23 +362,23 @@ export default function ProductDetail({ product }) {
     const softwareLicenseKey = product?.software_license_key || null;
     const hasSoftwareAccessPanel = hasSoftwareReleases || (product?.type === 'digital' && product?.digital_content_type === 'software' && product?.has_access && softwareLicenseKey?.key);
     const digitalContentLabel = {
-        file: 'Digital file',
-        ebook: 'E-book / PDF',
-        template_asset: 'Template',
-        creative_asset: 'Creative asset',
-        audio: 'Audio',
-        video: 'Video',
-        gallery: 'Gallery',
-        software: 'Software / Code',
-        document: 'Document pack',
-        live_event: 'Live event',
+        file: copy('Digital file', 'Faili ya kidijitali'),
+        ebook: copy('E-book / PDF', 'E-book / PDF'),
+        template_asset: copy('Template', 'Template'),
+        creative_asset: copy('Creative asset', 'Kipengele cha ubunifu'),
+        audio: copy('Audio', 'Audio'),
+        video: copy('Video', 'Video'),
+        gallery: copy('Gallery', 'Gallery'),
+        software: copy('Software / Code', 'Software / Code'),
+        document: copy('Document pack', 'Kifurushi cha nyaraka'),
+        live_event: copy('Live event', 'Tukio la live'),
     }[product?.digital_content_type] || null;
     const digitalLicenseLabel = {
-        personal: 'Personal use',
-        commercial: 'Commercial use',
-        extended_commercial: 'Extended commercial use',
-        exclusive: 'Exclusive license',
-        custom: 'Custom license',
+        personal: copy('Personal use', 'Matumizi binafsi'),
+        commercial: copy('Commercial use', 'Matumizi ya kibiashara'),
+        extended_commercial: copy('Extended commercial use', 'Matumizi ya kibiashara yaliyopanuliwa'),
+        exclusive: copy('Exclusive license', 'Leseni ya kipekee'),
+        custom: copy('Custom license', 'Leseni maalum'),
     }[product?.digital_usage_license] || null;
     const payableServiceRequest = product?.service_request_payment || null;
     const payableServiceRequestStatus = payableServiceRequest?.payment_status || null;
@@ -478,50 +480,50 @@ export default function ProductDetail({ product }) {
     const requiresOwnedStock = product.type === 'physical' && !isWholesaleOnlyProduct && physicalFulfillmentMode === 'own_stock';
     const groupSaleReservationMode = product.type === 'physical' && physicalFulfillmentMode === 'group_sale' && groupSaleOffer && !groupSaleCheckoutOpen;
     const fulfillmentModeLabels = {
-        own_stock: 'In stock',
-        supplier_sourced: 'Availability confirmed after request',
-        made_to_order: 'Made after order',
-        farm_harvest: 'Harvest / farm stock',
-        preorder: 'Preorder',
-        group_sale: 'Group sale preorder',
+        own_stock: copy('In stock', 'Ipo stoo'),
+        supplier_sourced: copy('Availability confirmed after request', 'Upatikanaji utathibitishwa baada ya ombi'),
+        made_to_order: copy('Made after order', 'Imetengenezwa baada ya oda'),
+        farm_harvest: copy('Harvest / farm stock', 'Mavuno / stock ya shamba'),
+        preorder: copy('Preorder', 'Preorder'),
+        group_sale: copy('Group sale preorder', 'Preorder ya mauzo ya kikundi'),
     };
     const fulfillmentLeadTimeLabel = physicalFulfillmentMode === 'supplier_sourced' && product.availability_lead_time_hours
-        ? `Estimated confirmation: ${product.availability_lead_time_hours} hour${Number(product.availability_lead_time_hours) === 1 ? '' : 's'}`
+        ? copy(`Estimated confirmation: ${product.availability_lead_time_hours} hour${Number(product.availability_lead_time_hours) === 1 ? '' : 's'}`, `Makadirio ya uthibitisho: saa ${product.availability_lead_time_hours}`)
         : product.availability_lead_time_days
-            ? `Estimated preparation: ${product.availability_lead_time_days} day${Number(product.availability_lead_time_days) === 1 ? '' : 's'}`
+            ? copy(`Estimated preparation: ${product.availability_lead_time_days} day${Number(product.availability_lead_time_days) === 1 ? '' : 's'}`, `Makadirio ya maandalizi: siku ${product.availability_lead_time_days}`)
             : null;
     const fulfillmentAvailableFromLabel = product.available_from
-        ? `Expected availability: ${product.available_from}`
+        ? copy(`Expected availability: ${product.available_from}`, `Upatikanaji unaotarajiwa: ${product.available_from}`)
         : null;
     const fulfillmentGuidance = {
         supplier_sourced: {
-            title: 'Availability will be confirmed',
-            body: 'This seller sources the item after your order. Takeer keeps the payment protected while the seller confirms availability and fulfillment.',
-            steps: ['Place the order', 'Seller confirms source and timing', 'You receive the item and confirm receipt'],
+            title: copy('Availability will be confirmed', 'Upatikanaji utathibitishwa'),
+            body: copy('This seller sources the item after your order. Takeer keeps the payment protected while the seller confirms availability and fulfilment.', 'Muuzaji huyu anatafuta bidhaa baada ya oda yako. Takeer inalinda malipo wakati muuzaji anathibitisha upatikanaji na utimilishaji.'),
+            steps: [copy('Place the order', 'Weka oda'), copy('Seller confirms source and timing', 'Muuzaji athibitishe chanzo na muda'), copy('You receive the item and confirm receipt', 'Pokea bidhaa na uthibitishe kuipokea')],
             accent: 'blue',
         },
         made_to_order: {
-            title: 'Made after order',
-            body: 'This item is prepared by the seller after your order is confirmed. It is ideal for handmade, custom, crafted, or freshly prepared products.',
-            steps: ['Place the order', 'Seller prepares or crafts the item', 'Delivery happens when it is ready'],
+            title: copy('Made after order', 'Imetengenezwa baada ya oda'),
+            body: copy('This item is prepared by the seller after your order is confirmed. It is ideal for handmade, custom, crafted, or freshly prepared products.', 'Bidhaa hii inaandaliwa na muuzaji baada ya oda yako kuthibitishwa. Inafaa kwa bidhaa za mikono, maalum, zilizotengenezwa, au zilizoandaliwa hivi karibuni.'),
+            steps: [copy('Place the order', 'Weka oda'), copy('Seller prepares or crafts the item', 'Muuzaji aandae au atengeneze bidhaa'), copy('Delivery happens when it is ready', 'Delivery ifanyike ikiwa tayari')],
             accent: 'purple',
         },
         farm_harvest: {
-            title: 'Harvest / farm stock',
-            body: 'This item comes from harvest or farm stock. The seller will fulfill it around the expected availability date.',
-            steps: ['Reserve or order', 'Seller prepares harvest stock', 'Delivery or pickup is completed'],
+            title: copy('Harvest / farm stock', 'Mavuno / stock ya shamba'),
+            body: copy('This item comes from harvest or farm stock. The seller will fulfil it around the expected availability date.', 'Bidhaa hii inatoka kwenye mavuno au stock ya shamba. Muuzaji ataitimiza karibu na tarehe inayotarajiwa ya upatikanaji.'),
+            steps: [copy('Reserve or order', 'Hifadhi au oda'), copy('Seller prepares harvest stock', 'Muuzaji aandae stock ya mavuno'), copy('Delivery or pickup is completed', 'Delivery au pickup ikamilike')],
             accent: 'emerald',
         },
         preorder: {
-            title: 'Preorder',
-            body: 'This item is ordered before it is ready. The seller will fulfill it around the expected availability date.',
-            steps: ['Preorder now', 'Seller prepares availability', 'Delivery happens after release'],
+            title: copy('Preorder', 'Preorder'),
+            body: copy('This item is ordered before it is ready. The seller will fulfil it around the expected availability date.', 'Bidhaa hii inaagizwa kabla haijawa tayari. Muuzaji ataitimiza karibu na tarehe inayotarajiwa ya upatikanaji.'),
+            steps: [copy('Preorder now', 'Weka preorder sasa'), copy('Seller prepares availability', 'Muuzaji aandae upatikanaji'), copy('Delivery happens after release', 'Delivery ifanyike baada ya kutolewa')],
             accent: 'amber',
         },
         group_sale: {
-            title: 'Group sale preorder',
-            body: 'This item depends on a group target. If the target is reached, checkout or fulfillment continues based on the campaign terms.',
-            steps: ['Join the group sale', 'Target quantity is reached', 'Seller fulfills the orders'],
+            title: copy('Group sale preorder', 'Preorder ya mauzo ya kikundi'),
+            body: copy('This item depends on a group target. If the target is reached, checkout or fulfilment continues based on the campaign terms.', 'Bidhaa hii inategemea lengo la kikundi. Lengo likifikiwa, checkout au utimilishaji utaendelea kulingana na masharti ya kampeni.'),
+            steps: [copy('Join the group sale', 'Jiunge na mauzo ya kikundi'), copy('Target quantity is reached', 'Kiasi lengwa kifikiwe'), copy('Seller fulfils the orders', 'Muuzaji atimize oda')],
             accent: 'blue',
         },
     }[physicalFulfillmentMode] || null;
@@ -588,10 +590,9 @@ export default function ProductDetail({ product }) {
     const productDetailSections = Array.isArray(product.detail_sections) ? product.detail_sections : [];
     const supplyCapacity = product.supply_capacity || {};
     const wholesalePaymentTerms = product.wholesale_payment_terms || {};
-    const safepayMethodLabels = {
+    const providerPaymentMethodLabels = {
         mobile_money: 'Mobile money',
-        bank_transfer: 'Official Takeer bank transfer',
-        wallet: 'Takeer wallet',
+        bank_transfer: 'Provider bank transfer',
         card: 'Card',
     };
     const productFaqs = Array.isArray(product?.faqs)
@@ -644,7 +645,7 @@ export default function ProductDetail({ product }) {
                     required={Boolean(field.required)}
                     onChange={(e) => updateIntakeAnswer(field.id, e.target.value)}
                 >
-                    <option value="">Chagua...</option>
+                    <option value="">{copy('Choose...', 'Chagua...')}</option>
                     {(field.options || []).map((option) => (
                         <option key={option} value={option}>{option}</option>
                     ))}
@@ -661,7 +662,7 @@ export default function ProductDetail({ product }) {
                         required={Boolean(field.required)}
                         onChange={(e) => updateIntakeAnswer(field.id, e.target.checked)}
                     />
-                    Ndiyo
+                    {copy('Yes', 'Ndiyo')}
                 </label>
             );
         }
@@ -676,11 +677,11 @@ export default function ProductDetail({ product }) {
                     <label className="relative flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl border border-input bg-background px-3 text-sm">
                         <span className="font-semibold text-foreground">
                             {uploadedFiles.length > 0
-                                ? field.type === 'image' ? 'Ongeza picha nyingine' : 'Ongeza faili nyingine'
-                                : field.type === 'image' ? 'Chagua picha' : 'Chagua faili'}
+                                ? field.type === 'image' ? copy('Add another image', 'Ongeza picha nyingine') : copy('Add another file', 'Ongeza faili nyingine')
+                                : field.type === 'image' ? copy('Choose image', 'Chagua picha') : copy('Choose file', 'Chagua faili')}
                         </span>
                         <span className="shrink-0 rounded-lg bg-muted px-2.5 py-1 text-xs font-bold text-muted-foreground">
-                            Pakia
+                            {copy('Upload', 'Pakia')}
                         </span>
                         <input
                             type="file"
@@ -694,7 +695,7 @@ export default function ProductDetail({ product }) {
                             }}
                         />
                     </label>
-                    {intakeUploadingField === field.id && <p className="text-xs text-muted-foreground">Inapakia...</p>}
+                    {intakeUploadingField === field.id && <p className="text-xs text-muted-foreground">{copy('Uploading...', 'Inapakia...')}</p>}
                     {uploadedFiles.length > 0 && (
                         <div className="space-y-1.5">
                             {uploadedFiles.map((file, index) => (
@@ -705,7 +706,7 @@ export default function ProductDetail({ product }) {
                                         onClick={() => removeIntakeFile(field.id, index)}
                                         className="shrink-0 font-black text-emerald-700 hover:text-red-600"
                                     >
-                                        Ondoa
+                                        {copy('Remove', 'Ondoa')}
                                     </button>
                                 </div>
                             ))}
@@ -725,7 +726,7 @@ export default function ProductDetail({ product }) {
                         onClick={() => setIntakeLocationPicker(field.id)}
                     >
                         <MapPin className="h-4 w-4 mr-2" />
-                        {value?.address || field.placeholder || 'Chagua eneo kwenye ramani'}
+                        {value?.address || field.placeholder || copy('Choose a location on the map', 'Chagua eneo kwenye ramani')}
                     </Button>
                     {value?.extraDetails && <p className="text-xs text-muted-foreground">{value.extraDetails}</p>}
                     <input className="sr-only" required={Boolean(field.required)} value={value?.address || ''} onChange={() => { }} />
@@ -747,62 +748,62 @@ export default function ProductDetail({ product }) {
 
     const getCheckoutButtonText = () => {
         if (isPremiumVideoProduct && product.has_access) {
-            return 'Tazama Video';
+            return t('product.watchVideo');
         }
         if (isPremiumAudioProduct && product.has_access) {
-            return 'Sikiliza Audio';
+            return t('product.listenAudio');
         }
         if (isGalleryPackProduct && product.has_access) {
-            return 'Fungua Gallery';
+            return t('product.openGallery');
         }
         if (canReadDocumentOnline) {
-            return 'Soma Online';
+            return t('product.readOnline');
         }
         if (product.type === 'digital' && product.has_access) {
-            return 'Fungua Faili';
+            return t('components.downloadFile');
         }
         if (payableServiceRequest) {
-            return 'Pay Service Quote';
+            return t('product.quoteAfterRequest');
         }
         if (groupSaleReservationMode) {
-            return 'Join group sale';
+            return t('publicCommerce.joinedGroup');
         }
         if (hasProductVariants) {
             if (!isVariantSelectionComplete) {
                 const missing = variantAttributeKeys.find(key => !(variantFilters[key] || '').toString().trim());
-                return `Chagua ${formatAttributeLabel(missing)}`;
+                return copy(`Choose ${formatAttributeLabel(missing)}`, `Chagua ${formatAttributeLabel(missing)}`);
             }
-            if (!selectedVariant?.id) return "Chagua Chaguo";
-            if (requiresOwnedStock && Number(selectedVariant?.inventory_count || 0) <= 0) return "Bidhaa Imeisha";
+            if (!selectedVariant?.id) return t('product.options');
+            if (requiresOwnedStock && Number(selectedVariant?.inventory_count || 0) <= 0) return t('product.outOfStock');
         } else {
-            if (requiresOwnedStock && Number(product.available_stock || 0) <= 0) return "Bidhaa Imeisha";
+            if (requiresOwnedStock && Number(product.available_stock || 0) <= 0) return t('product.outOfStock');
         }
 
         if (product.type === 'service' && servicePricingModel === 'deposit_required') {
-            return 'Lipa Advance';
+            return t('product.buyNow');
         }
         if (serviceNeedsManagedRequest) {
-            if (serviceBookingType === 'manual_confirm') return 'Request Confirmation';
-            if (serviceBookingType === 'request') return serviceMode === 'request_quote' ? 'Request Quote' : 'Send Request';
-            if (serviceMode === 'book_appointment') return 'Book Instantly';
-            return 'Start Enquiry';
+            if (serviceBookingType === 'manual_confirm') return t('product.requestConfirmation');
+            if (serviceBookingType === 'request') return serviceMode === 'request_quote' ? t('product.requestQuote') : t('product.sendRequest');
+            if (serviceMode === 'book_appointment') return t('product.bookInstantly');
+            return t('product.startEnquiry');
         }
         if (product.type === 'service' && serviceMode === 'book_appointment') {
-            return 'Book Appointment';
+            return t('product.requestAppointment');
         }
         if (product.type === 'service') {
-            return 'Pay / Reserve';
+            return t('product.payReserve');
         }
         if (groupSaleCheckoutOpen) {
-            return 'Buy Group Deal';
+            return t('product.buyGroupDeal');
         }
         if (isWholesaleEnabled) {
-            return 'Request wholesale quote';
+            return t('product.wholesaleQuote');
         }
         if (product.type === 'digital') {
-            return 'Lipa Sasa';
+            return t('product.buyNow');
         }
-        return 'Nunua Kwenye Mtandao';
+        return t('product.buyOnline');
     };
 
     const serviceRequestType = (() => {
@@ -857,9 +858,9 @@ export default function ProductDetail({ product }) {
                         : [];
                 return { ...prev, [field.id]: [...existing, ...uploadedFiles] };
             });
-            toast.success(uploadedFiles.length > 1 ? 'Mafaili yameambatanishwa.' : 'Faili limeambatanishwa.');
+            toast.success(uploadedFiles.length > 1 ? t('product.filesAttached') : t('product.fileAttached'));
         } catch (error) {
-            toast.error(error.message || 'Imeshindikana kuambatanisha faili.');
+            toast.error(error.message || t('product.attachFailed'));
         } finally {
             setIntakeUploadingField(null);
         }
@@ -916,19 +917,19 @@ export default function ProductDetail({ product }) {
         if (serviceRequestSubmitting) return;
 
         if (!serviceRequestForm.customer_name.trim()) {
-            toast.error('Tafadhali weka jina lako.');
+            toast.error(t('product.nameRequired'));
             return;
         }
         if (!serviceRequestForm.customer_phone.trim() && !serviceRequestForm.customer_email.trim()) {
-            toast.error('Tafadhali weka simu au email.');
+            toast.error(t('product.phoneEmailRequired'));
             return;
         }
         if (serviceAreaGatingEnabled && !serviceAreaMatches) {
-            toast.error('Tafadhali chagua au weka eneo ambalo huduma hii inapatikana.');
+            toast.error(t('product.areaRequired'));
             return;
         }
         if (serviceRequestType === 'appointment_request' && product.service_scheduling_type === 'fixed_sessions' && !serviceRequestForm.selected_session_id) {
-            toast.error('Tafadhali chagua session inayopatikana.');
+            toast.error(t('product.slotRequired'));
             return;
         }
 
@@ -954,7 +955,7 @@ export default function ProductDetail({ product }) {
                 throw new Error(data.message || 'Imeshindwa kutuma ombi.');
             }
             const paymentUrl = data?.data?.payment_url;
-            toast.success(paymentUrl ? 'Booking imethibitishwa. Tunaelekeza kwenye malipo.' : (data.message || 'Ombi limetumwa.'));
+            toast.success(paymentUrl ? copy('Booking confirmed. Redirecting to payment.', 'Booking imethibitishwa. Tunaelekeza kwenye malipo.') : (data.message || copy('Request submitted.', 'Ombi limetumwa.')));
             setServiceRequestOpen(false);
             setServiceRequestForm((prev) => ({
                 ...prev,
@@ -971,7 +972,7 @@ export default function ProductDetail({ product }) {
                 window.location.href = paymentUrl;
             }
         } catch (error) {
-            toast.error(error.message || 'Imeshindwa kutuma ombi.');
+            toast.error(error.message || t('product.requestFailed'));
         } finally {
             setServiceRequestSubmitting(false);
         }
@@ -1010,7 +1011,7 @@ export default function ProductDetail({ product }) {
 
     const toggleWaitlist = async () => {
         if (!auth.user) {
-            toast.error("Tafadhali ingia kwenye akaunti yako kwanza.");
+            toast.error(t('product.loginFirst'));
             return;
         }
         setIsWaitlistLoading(true);
@@ -1027,9 +1028,9 @@ export default function ProductDetail({ product }) {
             });
             const data = await res.json();
             setIsOnWaitlist(data.status === 'added');
-            toast.success(data.message);
+            toast.success(data.message || copy('Waitlist updated.', 'Orodha ya kusubiri imesasishwa.'));
         } catch (error) {
-            toast.error("Imeshindwa kubadili waitlist. Jaribu tena.");
+            toast.error(t('product.waitlistFailed'));
         } finally {
             setIsWaitlistLoading(false);
         }
@@ -1245,11 +1246,11 @@ export default function ProductDetail({ product }) {
                                             </button>
                                             {spot.type !== 'text' && (
                                                 <p className="text-[10px] font-black uppercase text-brand-600 tracking-widest">
-                                                    {spot.type === 'link' ? hotspotLinkDomain(spot.data) || 'Link' : 'Bidhaa'}
+                                                    {spot.type === 'link' ? hotspotLinkDomain(spot.data) || 'Link' : t('catalog.products')}
                                                 </p>
                                             )}
                                             <p className={`${spot.type === 'text' ? 'text-xs font-medium leading-relaxed text-foreground/80' : 'text-sm font-bold text-foreground'} break-words`}>
-                                                {spot.type === 'product' ? (spot.product?.title || `Bidhaa #${spot.data}`) : spot.type === 'link' ? spot.data : spot.data}
+                                                {spot.type === 'product' ? (spot.product?.title || `${copy('Product', 'Bidhaa')} #${spot.data}`) : spot.type === 'link' ? spot.data : spot.data}
                                             </p>
                                             {spot.type !== 'text' && (
                                                 <Button
@@ -1266,7 +1267,7 @@ export default function ProductDetail({ product }) {
                                                         }
                                                     }}
                                                 >
-                                                    {spot.type === 'product' ? 'Ione' : 'Fungua'}
+                                                    {spot.type === 'product' ? t('product.show') : t('product.open')}
                                                 </Button>
                                             )}
                                         </div>
@@ -1282,14 +1283,14 @@ export default function ProductDetail({ product }) {
                                 <button
                                     onClick={goToPreviousMedia}
                                     className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 h-10 w-10 bg-black/35 backdrop-blur-md text-white rounded-full flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                                    aria-label="Previous media"
+                                    aria-label={t('product.previousMedia')}
                                 >
                                     <ChevronLeft className="h-6 w-6" />
                                 </button>
                                 <button
                                     onClick={goToNextMedia}
                                     className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 h-10 w-10 bg-black/35 backdrop-blur-md text-white rounded-full flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                                    aria-label="Next media"
+                                    aria-label={t('product.nextMedia')}
                                 >
                                     <ChevronRight className="h-6 w-6" />
                                 </button>
@@ -1308,7 +1309,7 @@ export default function ProductDetail({ product }) {
                                             setActiveHotspot(null);
                                         }}
                                         className={`h-1.5 rounded-full transition-all duration-300 ${i === currentImageIndex ? 'w-6 bg-white' : 'w-1.5 bg-white/40'}`}
-                                        aria-label={`Show media ${i + 1}`}
+                                        aria-label={t('product.showMedia', { number: i + 1 })}
                                     />
                                 ))}
                             </div>
@@ -1323,10 +1324,10 @@ export default function ProductDetail({ product }) {
                         <div className="rounded-2xl border border-border bg-card overflow-hidden">
                             <div className="px-4 py-3 border-b border-border/70">
                                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-600">
-                                    Premium Video
+                                    {t('product.premiumVideo')}
                                 </p>
                                 <h2 className="text-lg font-black leading-tight mt-1">
-                                    {product.has_access ? 'Full video unlocked' : 'Buy to watch the full video'}
+                                    {product.has_access ? t('product.fullVideoUnlocked') : t('product.buyFullVideo')}
                                 </h2>
                             </div>
                             {product.has_access && premiumVideo?.url ? (
@@ -1359,7 +1360,7 @@ export default function ProductDetail({ product }) {
                                     </p>
                                     {!product.allow_download && (
                                         <p className="mt-2 text-xs font-bold text-foreground">
-                                            Downloads are disabled by the creator.
+                                            {t('product.noReleases')}
                                         </p>
                                     )}
                                 </div>
@@ -1373,10 +1374,10 @@ export default function ProductDetail({ product }) {
                         <div className="rounded-2xl border border-border bg-card overflow-hidden">
                             <div className="px-4 py-3 border-b border-border/70">
                                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-600">
-                                    Premium Audio
+                                    {t('product.premiumAudio')}
                                 </p>
                                 <h2 className="text-lg font-black leading-tight mt-1">
-                                    {product.has_access ? 'Full audio unlocked' : 'Buy to listen to the full audio'}
+                                    {product.has_access ? t('product.fullAudioUnlocked') : t('product.buyFullAudio')}
                                 </h2>
                             </div>
                             {product.has_access && premiumAudio?.url ? (
@@ -1398,7 +1399,7 @@ export default function ProductDetail({ product }) {
                                     </p>
                                     {!product.allow_download && (
                                         <p className="mt-2 text-xs font-bold text-foreground">
-                                            Downloads are disabled by the creator.
+                                            {t('product.noReleases')}
                                         </p>
                                     )}
                                 </div>
@@ -1412,10 +1413,10 @@ export default function ProductDetail({ product }) {
                         <div className="rounded-2xl border border-border bg-card overflow-hidden">
                             <div className="px-4 py-3 border-b border-border/70">
                                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-600">
-                                    Gallery Pack
+                                    {t('product.galleryPack')}
                                 </p>
                                 <h2 className="text-lg font-black leading-tight mt-1">
-                                    {product.has_access ? 'Gallery unlocked' : 'Buy to unlock the gallery'}
+                                    {product.has_access ? t('product.galleryUnlocked') : t('product.buyGallery')}
                                 </h2>
                             </div>
                             {product.has_access && galleryPack?.items?.length ? (
@@ -1496,13 +1497,13 @@ export default function ProductDetail({ product }) {
                                     Live Event
                                 </p>
                                 <h2 className="text-lg font-black leading-tight mt-1">
-                                    {product.has_access ? 'Event access unlocked' : 'Buy to unlock event access'}
+                                    {product.has_access ? t('product.eventUnlocked') : t('product.buyEvent')}
                                 </h2>
                             </div>
                             <div className="p-5 space-y-4">
                                 <div className="grid gap-3 sm:grid-cols-2">
                                     <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
-                                        <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Starts</p>
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">{t('product.starts')}</p>
                                         <p className="mt-1 text-sm font-black text-slate-900">
                                             {liveEvent?.starts_at ? new Date(liveEvent.starts_at).toLocaleString() : 'To be announced'}
                                         </p>
@@ -1511,9 +1512,9 @@ export default function ProductDetail({ product }) {
                                         )}
                                     </div>
                                     <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
-                                        <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Capacity</p>
+                                        <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">{copy('Capacity', 'Uwezo')}</p>
                                         <p className="mt-1 text-sm font-black text-slate-900">
-                                            {liveEvent?.capacity ? `${liveEvent.capacity} seats` : 'Open access'}
+                                            {liveEvent?.capacity ? `${liveEvent.capacity} ${t('product.seats')}` : t('product.openAccess')}
                                         </p>
                                         {liveEvent?.seats_remaining !== null && liveEvent?.seats_remaining !== undefined && (
                                             <p className="mt-1 text-xs font-semibold text-slate-600">{liveEvent.seats_remaining} remaining</p>
@@ -1535,12 +1536,12 @@ export default function ProductDetail({ product }) {
                                                 className="flex items-center justify-center gap-2 rounded-2xl bg-brand-600 px-4 py-3 text-sm font-black text-white"
                                             >
                                                 <ExternalLink className="h-4 w-4" />
-                                                Join live event
+                                                {t('product.joinEvent')}
                                             </a>
                                         )}
                                         {liveEvent?.venue && (
                                             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-600">Venue</p>
+                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-600">{t('product.venue')}</p>
                                                 <p className="mt-1 text-sm font-bold text-slate-900 whitespace-pre-line">{liveEvent.venue}</p>
                                             </div>
                                         )}
@@ -1556,7 +1557,7 @@ export default function ProductDetail({ product }) {
                                                 className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-800"
                                             >
                                                 <PlayCircle className="h-4 w-4" />
-                                                Watch replay
+                                                {t('product.watchReplay')}
                                             </a>
                                         )}
                                         {liveEvent?.instructions && (
@@ -1580,7 +1581,7 @@ export default function ProductDetail({ product }) {
                         <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
                             <div className="flex items-center gap-2">
                                 <Info className="h-4 w-4 text-blue-700" />
-                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">Digital Asset</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">{t('product.digitalAsset')}</p>
                             </div>
                             <div className="mt-3 flex flex-wrap gap-2">
                                 {digitalContentLabel && (
@@ -1605,7 +1606,7 @@ export default function ProductDetail({ product }) {
                             <div className="px-4 py-3 border-b border-border/70 flex items-center justify-between gap-3">
                                 <div>
                                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-600">
-                                        Read Online
+                                        {t('product.readOnline')}
                                     </p>
                                     <h2 className="text-lg font-black leading-tight mt-1">
                                         {documentReader.name || 'PDF document'}
@@ -1622,7 +1623,7 @@ export default function ProductDetail({ product }) {
                                     className="h-10 px-3 rounded-xl bg-brand-50 text-brand-700 border border-brand-100 inline-flex items-center gap-2 text-xs font-black"
                                 >
                                     <BookOpen className="h-4 w-4" />
-                                    Open
+                                    {t('product.open')}
                                 </a>
                             </div>
                             <div className="h-[70vh] min-h-[480px] bg-slate-100">
@@ -1648,12 +1649,12 @@ export default function ProductDetail({ product }) {
                                     Releases
                                 </p>
                                 <h2 className="text-lg font-black leading-tight mt-1">
-                                    {product.has_access ? 'Software downloads unlocked' : 'Buy to access releases'}
+                                    {product.has_access ? t('product.softwareUnlocked') : t('product.buyReleases')}
                                 </h2>
                             </div>
                             {product.has_access && softwareLicenseKey?.key && (
                                 <div className="m-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">License Key</p>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">{t('components.licenseKey')}</p>
                                     <div className="mt-2 flex items-center gap-2">
                                         <code className="min-w-0 flex-1 rounded-xl bg-white px-3 py-2 text-sm font-black text-emerald-900 break-all">
                                             {softwareLicenseKey.key}
@@ -1662,7 +1663,7 @@ export default function ProductDetail({ product }) {
                                             type="button"
                                             onClick={() => {
                                                 navigator.clipboard?.writeText(softwareLicenseKey.key);
-                                                toast.success('License key copied.');
+                                                toast.success(t('components.copied'));
                                             }}
                                             className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white"
                                         >
@@ -1679,7 +1680,7 @@ export default function ProductDetail({ product }) {
                                             className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-black text-emerald-800 border border-emerald-100"
                                         >
                                             <DownloadCloud className="h-4 w-4" />
-                                            Download offline license file
+                                            {t('components.offlineLicense')}
                                         </a>
                                     )}
                                 </div>
@@ -1694,7 +1695,7 @@ export default function ProductDetail({ product }) {
                                                         <p className="text-sm font-black text-foreground">v{release.version}</p>
                                                         {release.is_latest && (
                                                             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">
-                                                                Latest
+                                                                {t('product.latest')}
                                                             </span>
                                                         )}
                                                     </div>
@@ -1717,7 +1718,7 @@ export default function ProductDetail({ product }) {
                                                         className="shrink-0 rounded-xl bg-brand-600 px-3 py-2 text-xs font-black text-white inline-flex items-center gap-2"
                                                     >
                                                         <DownloadCloud className="h-4 w-4" />
-                                                        Download
+                                                        {t('product.download')}
                                                     </a>
                                                 )}
                                             </div>
@@ -1726,7 +1727,7 @@ export default function ProductDetail({ product }) {
                                 </div>
                             ) : (
                                 <div className="p-4 text-sm font-semibold text-muted-foreground">
-                                    No release downloads have been published yet.
+                                    {t('product.noReleases')}
                                 </div>
                             )}
                         </div>
@@ -1740,12 +1741,12 @@ export default function ProductDetail({ product }) {
                         <div className="flex items-center gap-2 mb-2">
                             {product.type === 'digital' && (
                                 <span className="bg-brand-100 text-brand-700 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 w-max uppercase tracking-widest">
-                                    <DownloadCloud className="h-3 w-3" /> Mtandaoni
+                                    <DownloadCloud className="h-3 w-3" /> {t('product.online')}
                                 </span>
                             )}
                             {product.type === 'service' && (
                                 <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 w-max uppercase tracking-widest">
-                                    <CalendarClock className="h-3 w-3" /> Huduma / Booking
+                                    <CalendarClock className="h-3 w-3" /> {t('product.serviceBooking')}
                                 </span>
                             )}
                         </div>
@@ -1793,13 +1794,13 @@ export default function ProductDetail({ product }) {
                             )}
                             {product.discounted_price > 0 && Number(product.discounted_price) < Number(product.price) && (
                                 <div className="bg-red-100 text-red-700 text-[10px] font-black px-2 py-0.5 rounded-full mb-1 border border-red-200 uppercase tracking-widest">
-                                    OFA
+                                    {copy('OFFER', 'OFA')}
                                 </div>
                             )}
                         </div>
                         {product.type === 'service' && servicePricingModel === 'hourly_rate' && (
                             <p className="mt-2 text-xs font-bold uppercase tracking-wider text-purple-700">
-                                Bei kwa saa · Minimum {Number(product?.service_min_hours || 1)}h
+                                {copy('Hourly price · Minimum', 'Bei kwa saa · Kima cha chini')} {Number(product?.service_min_hours || 1)}h
                             </p>
                         )}
                         {product.type === 'physical' && unitLabel && (
@@ -1810,7 +1811,7 @@ export default function ProductDetail({ product }) {
                         {product.type === 'service' && (
                             <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-purple-800">
                                 <span className="rounded-full bg-purple-50 border border-purple-100 px-2 py-1">
-                                    {serviceModeLabels[serviceMode] || 'Service'}
+                                    {serviceModeLabels[serviceMode] || t('product.serviceBooking')}
                                 </span>
                                 {product.service_category && (
                                     <span className="rounded-full bg-purple-50 border border-purple-100 px-2 py-1">
@@ -1831,17 +1832,17 @@ export default function ProductDetail({ product }) {
                         )}
                         {product.type === 'service' && servicePricingModel === 'contract_quote' && (
                             <p className="mt-2 text-xs font-bold uppercase tracking-wider text-purple-700">
-                                Bei kwa makubaliano (Quote/Contract)
+                                {copy('Price by agreement (quote/contract)', 'Bei kwa makubaliano (quote/contract)')}
                             </p>
                         )}
                         {product.type === 'service' && (serviceIsShowcase || servicePricingModel === 'showcase_only') && (
                             <p className="mt-2 text-xs font-bold uppercase tracking-wider text-purple-700">
-                                Showcase only · Wateja wawasiliane moja kwa moja
+                                {copy('Showcase only · Customers should contact the provider directly', 'Showcase tu · Wateja wawasiliane moja kwa moja')}
                             </p>
                         )}
                         {product.type === 'service' && serviceOptions.length > 0 && (
                             <div className="mt-4 rounded-2xl border border-purple-100 bg-purple-50/40 p-3">
-                                <p className="text-xs font-black uppercase tracking-widest text-purple-900">Choose option</p>
+                                <p className="text-xs font-black uppercase tracking-widest text-purple-900">{copy('Choose option', 'Chagua option')}</p>
                                 <div className="mt-2 grid gap-2">
                                     {serviceOptions.map((option) => {
                                         const selected = String(selectedServiceOption?.id || '') === String(option.id || '');
@@ -1865,16 +1866,16 @@ export default function ProductDetail({ product }) {
                                                             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{option.description}</p>
                                                         )}
                                                         <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] font-bold uppercase tracking-wider text-purple-700">
-                                                            {option.capacity_type === 'unlimited' ? <span>Open capacity</span> : option.capacity ? <span>{option.capacity} units</span> : null}
-                                                            {option.max_guests ? <span>{option.max_guests} guests</span> : null}
-                                                            {option.checkin_time ? <span>In {option.checkin_time}</span> : null}
-                                                            {option.checkout_time ? <span>Out {option.checkout_time}</span> : null}
+                                                            {option.capacity_type === 'unlimited' ? <span>{copy('Open capacity', 'Uwezo wazi')}</span> : option.capacity ? <span>{option.capacity} {copy('units', 'vitengo')}</span> : null}
+                                                            {option.max_guests ? <span>{option.max_guests} {copy('guests', 'wageni')}</span> : null}
+                                                            {option.checkin_time ? <span>{copy('In', 'Kuingia')} {option.checkin_time}</span> : null}
+                                                            {option.checkout_time ? <span>{copy('Out', 'Kutoka')} {option.checkout_time}</span> : null}
                                                         </div>
                                                     </div>
                                                     <div className="text-right shrink-0">
                                                         <p className="text-sm font-black text-purple-900">{optionPrice}</p>
                                                         <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700">
-                                                            {servicePriceUnitLabels[option.price_display] ? `per ${servicePriceUnitLabels[option.price_display]}` : option.price_display || 'fixed'}
+                                                            {servicePriceUnitLabels[option.price_display] ? `${copy('per', 'kwa')} ${servicePriceUnitLabels[option.price_display]}` : option.price_display || copy('fixed', 'bei maalum')}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -1886,7 +1887,7 @@ export default function ProductDetail({ product }) {
                         )}
                         {product.type === 'service' && serviceRelatedProducts.length > 0 && (
                             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
-                                <p className="text-xs font-black uppercase tracking-widest text-slate-900">Products this provider makes or brings</p>
+                                <p className="text-xs font-black uppercase tracking-widest text-slate-900">{copy('Products this provider makes or brings', 'Bidhaa anazotengeneza au kuleta mtoa huduma huyu')}</p>
                                 <p className="mt-1 text-xs text-muted-foreground">
                                     Related items from the same provider. View or buy them separately from the service.
                                 </p>
@@ -1953,7 +1954,7 @@ export default function ProductDetail({ product }) {
                             {merchantUsername ? (
                                 <p className="text-sm text-muted-foreground truncate">@{merchantUsername}</p>
                             ) : (
-                                <p className="text-sm text-muted-foreground truncate">Takeer merchant</p>
+                                <p className="text-sm text-muted-foreground truncate">{copy('Takeer merchant', 'Muuzaji wa Takeer')}</p>
                             )}
                         </div>
                         {merchantRatingsCount > 0 && (
@@ -1987,17 +1988,17 @@ export default function ProductDetail({ product }) {
                                 <div>
                                     <h2 className="font-black text-base text-emerald-950 flex items-center gap-2">
                                         <ShieldCheck className="h-5 w-5 text-emerald-700" />
-                                        Ulinzi wa Takeer
+                                        {t('product.takerProtection')}
                                     </h2>
                                     <p className="text-xs font-semibold text-emerald-800 mt-1">
-                                        Tunakagua watoa huduma na kushikilia malipo kupitia SafePay.
+                                        {t('product.protectionDescription')}
                                     </p>
                                 </div>
                                 <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${serviceTrust.trust_ready
                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                     : 'bg-amber-100 text-amber-800 border border-amber-200'
                                     }`}>
-                                    {serviceTrust.trust_ready ? 'Imekaguliwa' : 'Inakaguliwa'}
+                                    {serviceTrust.trust_ready ? t('product.reviewed') : t('product.reviewing')}
                                 </span>
                             </div>
                             <div className="mt-4 grid gap-2">
@@ -2017,11 +2018,11 @@ export default function ProductDetail({ product }) {
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-2">
                                 <div className="rounded-xl bg-white/40 border border-white px-3 py-2">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Huduma zilizokamilika</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('product.completedServices')}</p>
                                     <p className="text-lg font-black text-slate-950">{serviceTrust.completed_services_count || 0}</p>
                                 </div>
                                 <div className="rounded-xl bg-white/40 border border-white px-3 py-2">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Migogoro</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('product.disputes')}</p>
                                     <p className="text-lg font-black text-slate-950">{serviceTrust.disputes_count || 0}</p>
                                 </div>
                             </div>
@@ -2032,7 +2033,7 @@ export default function ProductDetail({ product }) {
                     <div className="space-y-4 mb-8">
                         <h2 className="font-bold text-lg flex items-center gap-2">
                             <Info className="h-5 w-5 text-brand-500" />
-                            {isServiceProduct ? 'Maelezo ya Huduma' : 'Maelezo ya Bidhaa'}
+                            {isServiceProduct ? t('product.serviceDescription') : t('product.productDescription')}
                         </h2>
                         <p className="text-sm leading-relaxed whitespace-pre-line text-muted-foreground">
                             {description}
@@ -2045,25 +2046,25 @@ export default function ProductDetail({ product }) {
                             <div className="grid grid-cols-2 gap-3">
                                 {attributes.category && (
                                     <div className="bg-accent/20 rounded-2xl border border-border/10">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Kategoria</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">{t('product.category')}</span>
                                         <span className="font-bold text-sm text-foreground">{attributes.category}</span>
                                     </div>
                                 )}
                                 {attributes.brand_name && (
                                     <div className="bg-accent/20 p-3.5 rounded-2xl border border-border/10">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Brand</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">{t('product.brand')}</span>
                                         <span className="font-bold text-sm text-foreground">{attributes.brand_name}</span>
                                     </div>
                                 )}
                                 {attributes.model_name && (
                                     <div className="bg-accent/20 p-3.5 rounded-2xl border border-border/10">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Model</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">{t('product.model')}</span>
                                         <span className="font-bold text-sm text-foreground">{attributes.model_name}</span>
                                     </div>
                                 )}
                                 {attributes.material && (
                                     <div className="bg-accent/20 p-3.5 rounded-2xl border border-border/10">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Material</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">{t('product.material')}</span>
                                         <span className="font-bold text-sm text-foreground">{attributes.material}</span>
                                     </div>
                                 )}
@@ -2072,12 +2073,12 @@ export default function ProductDetail({ product }) {
                             {/* Dynamic Facets (Entered Attributes) */}
                             {product.category_attribute_values && product.category_attribute_values.length > 0 && (
                                 <div className="space-y-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Sifa na Usalama wa Bidhaa</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">{copy('Product quality and safety', 'Sifa na usalama wa bidhaa')}</p>
                                     <div className="grid gap-2 sm:grid-cols-2">
                                         {product.category_attribute_values.map((val, idx) => {
                                             let displayValue = '';
                                             if (val.value_boolean !== null) {
-                                                displayValue = val.value_boolean ? 'Ndiyo' : 'Hapana';
+                                                displayValue = val.value_boolean ? copy('Yes', 'Ndiyo') : copy('No', 'Hapana');
                                             } else if (val.value_number !== null) {
                                                 displayValue = val.value_number;
                                                 if (val.value_json?.unit) displayValue += ` ${val.value_json.unit}`;
@@ -2103,7 +2104,7 @@ export default function ProductDetail({ product }) {
                             {/* Static Attributes (Colors) */}
                             {attributes.colors && attributes.colors.length > 0 && (
                                 <div className="space-y-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Rangi Zinazopatikana</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{t('product.availableColors')}</p>
                                     <div className="flex flex-wrap gap-2">
                                         {attributes.colors.map((color, i) => (
                                             <span key={i} className="px-3 py-1 rounded-lg bg-muted text-xs font-bold border border-border/50">
@@ -2118,7 +2119,7 @@ export default function ProductDetail({ product }) {
 
                     {hasProductVariants && (
                         <div className="mb-6 rounded-2xl border border-brand-100 bg-brand-50/40 p-3.5 space-y-3">
-                            <p className="text-[11px] font-black uppercase tracking-wider text-brand-700">Chaguo</p>
+                            <p className="text-[11px] font-black uppercase tracking-wider text-brand-700">{t('product.options')}</p>
                             {variantAttributeKeys.map((key) => {
                                 const options = variantOptionsByKey[key] || [];
                                 const availableOptions = availableOptionsByKey[key] || [];
@@ -2149,7 +2150,7 @@ export default function ProductDetail({ product }) {
                                                                 {swatch ? (
                                                                     <img src={swatch} alt={option} className="h-full w-full object-cover" />
                                                                 ) : (
-                                                                    <div className="h-full w-full flex items-center justify-center text-[10px] text-slate-500">No swatch</div>
+                                                                    <div className="h-full w-full flex items-center justify-center text-[10px] text-slate-500">{t('product.noSwatch')}</div>
                                                                 )}
                                                             </div>
                                                             <p className="px-2 py-1 text-xs font-semibold text-left truncate">{option}</p>
@@ -2225,41 +2226,41 @@ export default function ProductDetail({ product }) {
                                     <div>
                                         <h2 className="flex items-center gap-2 text-lg font-black text-foreground">
                                             <Factory className="h-5 w-5 text-brand-700" />
-                                            Wholesale & industry supply
+                                            {copy('Wholesale & industry supply', 'Ugavi wa jumla na viwandani')}
                                         </h2>
                                         <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                                            Protected B2B orders are paid through Takeer SafePay. Terms, deposit, production, delivery, and release are confirmed on the official Takeer order.
+                                            {copy('Protected B2B orders are paid through the licensed PSP. Terms, deposit, production, delivery, and provider payout eligibility are confirmed on the official Takeer order.', 'Order za B2B zinalindwa na kulipwa kupitia PSP mwenye leseni. Masharti, amana, uzalishaji, delivery, na ustahiki wa malipo ya provider huthibitishwa kwenye order rasmi ya Takeer.')}
                                         </p>
                                     </div>
                                     <span className="shrink-0 rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
-                                        {product.selling_style === 'both' ? 'Retail + wholesale' : 'Wholesale'}
+                                        {product.selling_style === 'both' ? copy('Retail + wholesale', 'Retail + jumla') : copy('Wholesale', 'Jumla')}
                                     </span>
                                 </div>
                                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                                     {product.min_order_quantity && (
                                         <div className="rounded-xl bg-white p-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">MOQ</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Minimum order', 'Order ya chini')}</p>
                                             <p className="mt-1 text-lg font-black text-slate-950">{formatQuantity(product.min_order_quantity)} {unitLabel}</p>
                                         </div>
                                     )}
                                     {supplyCapacity.quantity && (
                                         <div className="rounded-xl bg-white p-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Supply capacity</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Supply capacity', 'Uwezo wa supply')}</p>
                                             <p className="mt-1 text-lg font-black text-slate-950">
                                                 {formatQuantity(supplyCapacity.quantity)} / {supplyCapacity.period || 'period'}
                                             </p>
                                         </div>
                                     )}
                                     <div className="rounded-xl bg-white p-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Payment protection</p>
-                                        <p className="mt-1 text-sm font-black text-emerald-700">Takeer SafePay required</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Payment protection', 'Ulinzi wa malipo')}</p>
+                                            <p className="mt-1 text-sm font-black text-emerald-700">{copy('Licensed PSP payment required', 'Malipo kupitia PSP mwenye leseni yanahitajika')}</p>
                                     </div>
                                 </div>
                             </div>
 
                             {pricingTiers.length > 0 && (
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                    <h3 className="mb-3 text-sm font-black uppercase tracking-widest text-slate-700">Pricing tiers</h3>
+                                    <h3 className="mb-3 text-sm font-black uppercase tracking-widest text-slate-700">{copy('Pricing tiers', 'Viwango vya bei')}</h3>
                                     <div className="overflow-hidden rounded-xl border border-slate-200">
                                         {pricingTiers.map((tier) => (
                                             <div key={tier.id || `${tier.min_quantity}-${tier.unit_price}`} className="grid grid-cols-2 border-b border-slate-100 last:border-b-0">
@@ -2281,7 +2282,7 @@ export default function ProductDetail({ product }) {
                                         <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                             <h3 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-widest text-slate-700">
                                                 <Clock3 className="h-4 w-4" />
-                                                Lead time
+                                                {copy('Lead time', 'Muda wa maandalizi')}
                                             </h3>
                                             <div className="space-y-2">
                                                 {leadTimeTiers.map((tier) => (
@@ -2297,12 +2298,12 @@ export default function ProductDetail({ product }) {
                                         <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                             <h3 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-widest text-slate-700">
                                                 <Package className="h-4 w-4" />
-                                                Packaging & delivery
+                                                {copy('Packaging & delivery', 'Ufungashaji na delivery')}
                                             </h3>
                                             <div className="space-y-2">
                                                 {packagingDetails.map((detail) => (
                                                     <div key={detail.id || detail.selling_units} className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
-                                                        <p className="font-black text-slate-950">{detail.selling_units || 'Packaging'}</p>
+                                                <p className="font-black text-slate-950">{detail.selling_units || copy('Packaging', 'Ufungashaji')}</p>
                                                         <p className="text-slate-600">
                                                             {[detail.package_quantity && `${formatQuantity(detail.package_quantity)} ${detail.package_unit || ''}`, detail.package_weight_kg && `${detail.package_weight_kg} kg`, detail.notes].filter(Boolean).join(' · ')}
                                                         </p>
@@ -2316,7 +2317,7 @@ export default function ProductDetail({ product }) {
 
                             {customizationOptions.length > 0 && (
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                    <h3 className="mb-3 text-sm font-black uppercase tracking-widest text-slate-700">Customization options</h3>
+                                    <h3 className="mb-3 text-sm font-black uppercase tracking-widest text-slate-700">{copy('Customization options', 'Chaguo za marekebisho')}</h3>
                                     <div className="grid gap-2 sm:grid-cols-2">
                                         {customizationOptions.map((option) => (
                                             <div key={option.id || option.name} className="rounded-xl bg-slate-50 px-3 py-2">
@@ -2350,16 +2351,16 @@ export default function ProductDetail({ product }) {
                             <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
                                 <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-emerald-900">
                                     <CreditCard className="h-4 w-4" />
-                                    SafePay order protection
+                                    PSP order protection
                                 </h3>
                                 <p className="mt-2 text-sm leading-relaxed text-emerald-900">
-                                    Pay only through Takeer. For bank transfer, use the official Takeer account and order reference so your order remains protected.
+                                    Pay only through the named licensed PSP and keep the provider order reference for support and reconciliation.
                                 </p>
-                                {(wholesalePaymentTerms.safepay_methods || []).length > 0 && (
+                                {(wholesalePaymentTerms.provider_payment_methods || []).length > 0 && (
                                     <div className="mt-3 flex flex-wrap gap-2">
-                                        {wholesalePaymentTerms.safepay_methods.map((method) => (
+                                        {wholesalePaymentTerms.provider_payment_methods.map((method) => (
                                             <span key={method} className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-emerald-800 border border-emerald-100">
-                                                {safepayMethodLabels[method] || method}
+                                                {providerPaymentMethodLabels[method] || method}
                                             </span>
                                         ))}
                                     </div>
@@ -2370,7 +2371,7 @@ export default function ProductDetail({ product }) {
 
                     {productDetailSections.length > 0 && (
                         <div className="mb-8 border-t border-border/40 pt-5">
-                            <h2 className="mb-4 text-lg font-black text-foreground">In-depth product details</h2>
+                                    <h2 className="mb-4 text-lg font-black text-foreground">{copy('In-depth product details', 'Maelezo ya kina ya bidhaa')}</h2>
                             <div className="space-y-4">
                                 {productDetailSections.map((section) => (
                                     <section key={section.id || `${section.title}-${section.sort_order}`} className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -2434,7 +2435,7 @@ export default function ProductDetail({ product }) {
 
                     {productFaqs.length > 0 && (
                         <div className="mb-8 border-t border-border/40 pt-5">
-                            <h2 className="mb-3 text-lg font-black text-foreground">Questions & Answers</h2>
+                            <h2 className="mb-3 text-lg font-black text-foreground">{copy('Questions & Answers', 'Maswali na majibu')}</h2>
                             <div className="space-y-3">
                                 {productFaqs.map((faq, index) => (
                                     <details key={faq.id || `${faq.question}-${index}`} className="rounded-2xl border border-border bg-card px-4 py-3" open={index === 0}>
@@ -2493,7 +2494,7 @@ export default function ProductDetail({ product }) {
                             <div className="space-y-4">
                                 {serviceTemplateKey === 'tour' && (
                                     <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5">
-                                        <p className="text-[11px] font-black uppercase tracking-wider text-emerald-900">Trip plan</p>
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-emerald-900">{copy('Trip plan', 'Mpango wa safari')}</p>
                                         {(serviceDetails.destination || serviceDetails.duration_label) && (
                                             <p className="text-sm font-black mt-1 text-emerald-950">
                                                 {[serviceDetails.destination, serviceDetails.duration_label].filter(Boolean).join(' · ')}
@@ -2511,20 +2512,20 @@ export default function ProductDetail({ product }) {
                                         )}
                                         {(serviceDetails.pickup_point || serviceDetails.dropoff_point) && (
                                             <p className="text-xs text-emerald-800 mt-3">
-                                                {[serviceDetails.pickup_point && `Pickup: ${serviceDetails.pickup_point}`, serviceDetails.dropoff_point && `Drop-off: ${serviceDetails.dropoff_point}`].filter(Boolean).join(' · ')}
+                                                {[serviceDetails.pickup_point && `${copy('Pickup:', 'Pickup:')} ${serviceDetails.pickup_point}`, serviceDetails.dropoff_point && `${copy('Drop-off:', 'Drop-off:')} ${serviceDetails.dropoff_point}`].filter(Boolean).join(' · ')}
                                             </p>
                                         )}
                                     </div>
                                 )}
                                 {serviceTemplateKey === 'stay' && Array.isArray(serviceDetails.amenities) && serviceDetails.amenities.length > 0 && (
                                     <div className="rounded-xl bg-muted/30 px-3.5 py-3">
-                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Amenities</p>
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">{copy('Amenities', 'Huduma za ziada')}</p>
                                         <p className="text-sm text-muted-foreground mt-1">{serviceDetails.amenities.join(' • ')}</p>
                                     </div>
                                 )}
                                 {serviceTemplateKey === 'learning' && Array.isArray(serviceDetails.outcomes) && serviceDetails.outcomes.length > 0 && (
                                     <div className="rounded-xl bg-muted/30 px-3.5 py-3">
-                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">What you will learn</p>
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">{copy('What you will learn', 'Utakachojifunza')}</p>
                                         <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
                                             {serviceDetails.outcomes.filter(Boolean).map((item, index) => <li key={index}>• {item}</li>)}
                                         </ul>
@@ -2532,14 +2533,14 @@ export default function ProductDetail({ product }) {
                                 )}
                                 {serviceTemplateKey === 'orderable_service' && serviceDetails.customization_notes && (
                                     <div className="rounded-xl bg-muted/30 px-3.5 py-3">
-                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Customization</p>
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">{copy('Customization', 'Customization')}</p>
                                         <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">{serviceDetails.customization_notes}</p>
                                         {serviceDetails.lead_time && <p className="text-xs font-bold text-foreground mt-2">Lead time: {serviceDetails.lead_time}</p>}
                                     </div>
                                 )}
                                 {serviceCharges.length > 0 && (
                                     <div>
-                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Gharama zilizojumuishwa</p>
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">{copy('Included costs', 'Gharama zilizojumuishwa')}</p>
                                         <div className="mt-2 divide-y divide-border rounded-xl border border-border bg-white overflow-hidden">
                                             {serviceCharges.map((charge, index) => (
                                                 <div key={`${charge.name}-${index}`} className="flex items-start justify-between gap-3 px-3.5 py-3">
@@ -2556,7 +2557,7 @@ export default function ProductDetail({ product }) {
                                                                 : 'Amount varies'}
                                                         </p>
                                                         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                            {serviceChargeUnitLabels[charge.unit] || charge.unit || 'fixed'}{charge.required ? '' : ' · optional'}
+                                                            {serviceChargeUnitLabels[charge.unit] || charge.unit || copy('fixed', 'bei maalum')}{charge.required ? '' : ` · ${copy('optional', 'si lazima')}`}
                                                             {charge.included_in_checkout ? ' · included' : ''}
                                                         </p>
                                                     </div>
@@ -2594,7 +2595,7 @@ export default function ProductDetail({ product }) {
                                 )}
                                 {product.service_client_requirements && (
                                     <div className="rounded-xl bg-muted/30 px-3.5 py-3">
-                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Client requirements</p>
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">{copy('Client requirements', 'Mahitaji ya mteja')}</p>
                                         <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">{product.service_client_requirements}</p>
                                     </div>
                                 )}
@@ -2607,7 +2608,7 @@ export default function ProductDetail({ product }) {
                         <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl p-4 flex items-start gap-3 border border-emerald-100 dark:border-emerald-900/20">
                             <Clock3 className="h-6 w-6 text-emerald-600 shrink-0 mt-0.5" />
                             <div>
-                                <h4 className="font-bold text-sm text-emerald-900 dark:text-emerald-500">Delivery estimate</h4>
+                                <h4 className="font-bold text-sm text-emerald-900 dark:text-emerald-500">{copy('Delivery estimate', 'Makadirio ya delivery')}</h4>
                                 <p className="text-xs text-emerald-800/80 dark:text-emerald-400/80 mt-1">
                                     {productDeliveryPromiseText}
                                     {productDeliveryPromise.cutoff_time ? ` if ordered before ${String(productDeliveryPromise.cutoff_time).slice(0, 5)}` : ''}
@@ -2624,10 +2625,10 @@ export default function ProductDetail({ product }) {
                             <div className="bg-green-50 dark:bg-green-900/10 rounded-2xl p-4 flex items-start gap-3 border border-green-100 dark:border-green-900/20">
                                 <ShieldCheck className="h-6 w-6 text-green-600 shrink-0 mt-0.5" />
                                 <div>
-                                    <h4 className="font-bold text-sm text-green-800 dark:text-green-500">Takeer SafePay</h4>
+                                    <h4 className="font-bold text-sm text-green-800 dark:text-green-500">{copy('Licensed PSP payment', 'Malipo kupitia PSP mwenye leseni')}</h4>
                                     <p className="text-xs text-green-700/80 dark:text-green-400/80 mt-1">
                                         {(!product.type || product.type === 'physical')
-                                            ? 'Pesa yako itahifadhiwa kwenye Escrow. Muuzaji atapokea pesa punde tu utakapothibitisha kuipokea mzigo wako.'
+                                            ? 'PSP itadhibiti settlement ya malipo. Payout ya muuzaji itafuata uthibitisho wa kupokea mzigo na provider rules.'
                                             : 'Utapewa link ya kupakua mara tu baada ya malipo kukamilika.'}
                                     </p>
                                 </div>
@@ -2636,9 +2637,9 @@ export default function ProductDetail({ product }) {
                             <div className="bg-amber-50 dark:bg-amber-900/10 rounded-2xl p-4 flex items-start gap-3 border border-amber-200 dark:border-amber-900/30">
                                 <AlertTriangle className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" />
                                 <div>
-                                    <h4 className="font-bold text-sm text-amber-800 dark:text-amber-500">Muuzaji Hajathibitishwa</h4>
+                                    <h4 className="font-bold text-sm text-amber-800 dark:text-amber-500">{copy('Merchant not verified', 'Muuzaji hajathibitishwa')}</h4>
                                     <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-1">
-                                        Muuzaji huyu hajathibitishwa na Takeer. Malipo hufanywa nje ya mtandao wetu, kwa hivyo hatuwezi kudhamini usalama wa miamala yako au kukurejeshea pesa.
+                                        {copy('This merchant is not verified by Takeer. Payments happen outside our platform, so we cannot guarantee transaction safety or refunds.', 'Muuzaji huyu hajathibitishwa na Takeer. Malipo hufanywa nje ya mtandao wetu, kwa hivyo hatuwezi kudhamini usalama wa miamala yako au kukurejeshea pesa.')}
                                     </p>
                                 </div>
                             </div>
@@ -2690,7 +2691,7 @@ export default function ProductDetail({ product }) {
                             )}
 
                             <p className="mt-3 text-[11px] font-semibold leading-5 text-blue-800/80 dark:text-blue-300/80">
-                                Takeer protects the payment until fulfillment or receipt confirmation, so the seller does not receive payout before the order is completed.
+                                {copy('Takeer protects the payment until fulfilment or receipt confirmation, so the seller does not receive payout before the order is completed.', 'Takeer inalinda malipo hadi utimilishaji au uthibitisho wa kupokea, hivyo seller hapokei payout kabla ya order kukamilika.')}
                             </p>
                         </div>
                     )}
@@ -2698,7 +2699,7 @@ export default function ProductDetail({ product }) {
                         <div className="bg-amber-50 dark:bg-amber-900/10 rounded-2xl p-4 flex items-start gap-3 border border-amber-200 dark:border-amber-900/30">
                             <AlertTriangle className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" />
                             <div>
-                                <h4 className="font-bold text-sm text-amber-800 dark:text-amber-500">Booking imesitishwa kwa muda</h4>
+                                <h4 className="font-bold text-sm text-amber-800 dark:text-amber-500">{copy('Booking is temporarily paused', 'Booking imesitishwa kwa muda')}</h4>
                                 <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-1">
                                     {serviceTrustBlockReason}
                                 </p>
@@ -2710,7 +2711,7 @@ export default function ProductDetail({ product }) {
                 {/* Sticky Bottom Bar for Purchase */}
                 <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-xl border-t p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pb-4 flex items-center justify-between gap-4 max-w-2xl mx-auto shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.1)]">
                     <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-muted-foreground">Kiasi Jumla</p>
+                        <p className="text-xs font-medium text-muted-foreground">{t('common.total')}</p>
                         <p className="font-black text-lg text-foreground truncate">
                             {product.type === 'service' ? servicePriceText : `TZS ${parseFloat(effectiveCheckoutPrice || 0).toLocaleString()}`}
                         </p>
@@ -2731,7 +2732,7 @@ export default function ProductDetail({ product }) {
                             size="lg"
                             disabled
                         >
-                            Inasubiri Uhakiki
+                            {t('product.reviewing')}
                         </Button>
                     ) : shouldOpenServiceRequest ? (
                         <Button
@@ -2740,14 +2741,14 @@ export default function ProductDetail({ product }) {
                             onClick={() => setServiceRequestOpen(true)}
                         >
                             {serviceMode === 'book_appointment'
-                                ? (serviceBookingType === 'instant' ? 'Book Instantly' : 'Request Appointment')
+                                ? (serviceBookingType === 'instant' ? t('product.bookInstantly') : t('product.requestAppointment'))
                                 : serviceMode === 'request_quote'
-                                    ? 'Request Quote'
+                                    ? t('product.requestQuote')
                                     : serviceBookingType === 'manual_confirm'
-                                        ? 'Request Confirmation'
+                                        ? t('product.requestConfirmation')
                                         : serviceBookingType === 'request'
-                                            ? 'Send Request'
-                                            : 'Contact Provider'}
+                                            ? t('product.sendRequest')
+                                            : t('product.contactProvider')}
                         </Button>
                     ) : merchantCanTransactInApp && !isServiceContactOnly ? (
                         <div className="flex-[1.5] flex flex-col gap-1">
@@ -2758,17 +2759,17 @@ export default function ProductDetail({ product }) {
                                     disabled
                                 >
                                     {payableServiceRequestStatus === 'held'
-                                        ? 'Payment Held in SafePay'
+                                        ? t('productStatus.confirmed')
                                         : payableServiceRequestStatus === 'disputed'
-                                            ? 'Payment Disputed'
-                                            : serviceRequestPaymentComplete ? 'Payment Completed' : 'Payment Pending'}
+                                            ? t('productStatus.disputed')
+                                            : serviceRequestPaymentComplete ? t('productStatus.completed') : t('productStatus.pending')}
                                 </Button>
                             ) : (
                                 <>
                                     {!canCheckout && (
                                         <p className="text-[10px] font-bold text-red-500 text-center">
-                                            {hasProductVariants && !isVariantSelectionComplete ? "Tafadhali kamilisha uchaguzi" :
-                                                (requiresOwnedStock && Number(selectedVariant?.inventory_count || product.available_stock || 0) <= 0 ? "Samahani, bidhaa hii imeisha" : "")}
+                                            {hasProductVariants && !isVariantSelectionComplete ? t('product.completeSelection') :
+                                                (requiresOwnedStock && Number(selectedVariant?.inventory_count || product.available_stock || 0) <= 0 ? t('product.outOfStock') : "")}
                                         </p>
                                     )}
                                     {!canCheckout && requiresOwnedStock && Number(selectedVariant?.inventory_count || product.available_stock || 0) <= 0 && (
@@ -2837,7 +2838,7 @@ export default function ProductDetail({ product }) {
                                                     preselected_variant_filters: variantFilters,
                                                 });
                                             } else {
-                                                alert("Checkout Modal not loaded.");
+                                                alert(t('checkout.completePayment'));
                                             }
                                         }}
                                     >
@@ -2856,14 +2857,14 @@ export default function ProductDetail({ product }) {
                             className="flex-[1.5] h-14 rounded-2xl text-[15px] bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20 flex items-center justify-center font-black"
                         >
                             {product.type === 'service' && servicePricingModel === 'contract_quote'
-                                ? 'Omba Nukuu'
+                                            ? copy('Request a quote', 'Omba nukuu')
                                 : product.type === 'service' && (serviceMode === 'external_booking' || serviceSchedulingType === 'external')
-                                    ? 'Fungua Booking'
+                                    ? copy('Open booking', 'Fungua booking')
                                     : product.type === 'service' && serviceMode === 'request_quote'
-                                        ? 'Omba Nukuu'
+                                        ? copy('Request a quote', 'Omba nukuu')
                                         : product.type === 'service' && serviceMode === 'showcase_only'
-                                            ? 'Wasiliana na Provider'
-                                            : 'Wasiliana Nje ya App'}
+                                            ? copy('Contact provider', 'Wasiliana na mtoa huduma')
+                                            : copy('Contact outside the app', 'Wasiliana nje ya app')}
                         </a>
                     ) : (
                         <Button
@@ -2871,7 +2872,7 @@ export default function ProductDetail({ product }) {
                             size="lg"
                             disabled
                         >
-                            Wasiliana Nje ya App
+                            {copy('Contact outside the app', 'Wasiliana nje ya app')}
                         </Button>
                     )}
                 </div>
@@ -2883,7 +2884,7 @@ export default function ProductDetail({ product }) {
                                 <div className="flex items-start justify-between gap-4">
                                     <div>
                                         <p className="text-xs font-black uppercase tracking-widest text-amber-600">
-                                            {serviceMode === 'book_appointment' ? 'Ombi la miadi' : serviceMode === 'request_quote' ? 'Ombi la bei' : 'Ombi la mawasiliano'}
+                                            {serviceMode === 'book_appointment' ? copy('Appointment request', 'Ombi la miadi') : serviceMode === 'request_quote' ? copy('Quote request', 'Ombi la bei') : copy('Contact request', 'Ombi la mawasiliano')}
                                         </p>
                                         <h3 className="text-xl font-black mt-1">{product.title}</h3>
                                     </div>
@@ -2898,16 +2899,16 @@ export default function ProductDetail({ product }) {
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <label className="space-y-1.5">
-                                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Jina</span>
+                                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Name', 'Jina')}</span>
                                         <input
                                             className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                             value={serviceRequestForm.customer_name}
                                             onChange={(e) => setServiceRequestForm((prev) => ({ ...prev, customer_name: e.target.value }))}
-                                            placeholder="Jina lako"
+                                            placeholder={copy('Your name', 'Jina lako')}
                                         />
                                     </label>
                                     <label className="space-y-1.5">
-                                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Simu</span>
+                                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Phone', 'Simu')}</span>
                                         <input
                                             className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                             value={serviceRequestForm.customer_phone}
@@ -2918,7 +2919,7 @@ export default function ProductDetail({ product }) {
                                 </div>
 
                                 <label className="space-y-1.5 block">
-                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Barua pepe si lazima</span>
+                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Email (optional)', 'Barua pepe si lazima')}</span>
                                     <input
                                         type="email"
                                         className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
@@ -2930,7 +2931,7 @@ export default function ProductDetail({ product }) {
 
                                 {serviceOptions.length > 0 && (
                                     <div className="rounded-xl border bg-purple-50/40 p-3 space-y-2">
-                                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Chaguo la huduma</p>
+                                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Service option', 'Chaguo la huduma')}</p>
                                         <div className="grid gap-2">
                                             {serviceOptions.map((option) => {
                                                 const selected = String(selectedServiceOption?.id || '') === String(option.id || '');
@@ -2959,7 +2960,7 @@ export default function ProductDetail({ product }) {
                                                                 {option.description && <p className="text-xs mt-0.5">{option.description}</p>}
                                                             </div>
                                                             <p className="text-xs font-black shrink-0">
-                                                                {option.price !== null && option.price !== undefined ? `TZS ${Number(option.price || 0).toLocaleString()}` : 'Bei hubadilika'}
+                                                                {option.price !== null && option.price !== undefined ? `TZS ${Number(option.price || 0).toLocaleString()}` : copy('Price varies', 'Bei hubadilika')}
                                                             </p>
                                                         </div>
                                                     </button>
@@ -2972,7 +2973,7 @@ export default function ProductDetail({ product }) {
                                 {serviceMode === 'book_appointment' && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <label className="space-y-1.5">
-                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Tarehe unayopendelea</span>
+                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Preferred date', 'Tarehe unayopendelea')}</span>
                                             <input
                                                 type="date"
                                                 className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
@@ -2989,7 +2990,7 @@ export default function ProductDetail({ product }) {
                                             />
                                         </label>
                                         <label className="space-y-1.5">
-                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Muda unaopendelea</span>
+                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Preferred time', 'Muda unaopendelea')}</span>
                                             <input
                                                 type="time"
                                                 className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
@@ -3003,14 +3004,14 @@ export default function ProductDetail({ product }) {
 
                                 {serviceMode === 'book_appointment' && serviceRequestForm.preferred_date && (
                                     <div className="rounded-xl border bg-muted/20 p-3">
-                                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Nafasi zinazopatikana</p>
+                                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Available slots', 'Nafasi zinazopatikana')}</p>
                                         {serviceSlotsLoading ? (
-                                            <p className="text-sm text-muted-foreground mt-2">Inapakia nafasi...</p>
+                                            <p className="text-sm text-muted-foreground mt-2">{copy('Loading slots...', 'Inapakia nafasi...')}</p>
                                         ) : serviceSlots.length === 0 ? (
                                             <p className="text-sm text-muted-foreground mt-2">
                                                 {product.service_scheduling_type === 'fixed_sessions'
-                                                    ? 'Hakuna session wazi kwa tarehe hii. Jaribu tarehe nyingine.'
-                                                    : 'Hakuna nafasi zilizowekwa kwa tarehe hii. Bado unaweza kutuma muda unaopendelea.'}
+                                                    ? copy('No open sessions on this date. Try another date.', 'Hakuna session wazi kwa tarehe hii. Jaribu tarehe nyingine.')
+                                                    : copy('No slots are scheduled for this date. You can still submit your preferred time.', 'Hakuna nafasi zilizowekwa kwa tarehe hii. Bado unaweza kutuma muda unaopendelea.')}
                                             </p>
                                         ) : (
                                             <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -3039,7 +3040,7 @@ export default function ProductDetail({ product }) {
                                                             <span className="block">{slot.title || slotTime}</span>
                                                             {slot.title && <span className="block text-[10px] font-semibold text-muted-foreground">{slotTime}</span>}
                                                             {slot.capacity_type === 'unlimited' ? (
-                                                                <span className="block text-[10px] font-semibold text-muted-foreground">Wazi</span>
+                                                                <span className="block text-[10px] font-semibold text-muted-foreground">{copy('Available', 'Wazi')}</span>
                                                             ) : slot.capacity > 1 ? (
                                                                 <span className="block text-[10px] font-semibold text-muted-foreground">Zimebaki {slot.remaining}</span>
                                                             ) : null}
@@ -3053,7 +3054,7 @@ export default function ProductDetail({ product }) {
 
                                 {customerLocationNeeded && (
                                     <label className="space-y-1.5 block">
-                                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Eneo lako</span>
+                                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Your location', 'Eneo lako')}</span>
                                         <input
                                             className={cn(
                                                 'w-full h-11 rounded-xl border bg-background px-3 text-sm',
@@ -3070,11 +3071,11 @@ export default function ProductDetail({ product }) {
                                                 selected_slot_start: serviceAreaGatingEnabled ? '' : prev.selected_slot_start,
                                                 selected_slot_end: serviceAreaGatingEnabled ? '' : prev.selected_slot_end,
                                             }))}
-                                            placeholder="Eneo au anuani"
+                                            placeholder={copy('Location or address', 'Eneo au anuani')}
                                         />
                                         {serviceAreaGatingEnabled && !serviceAreaMatches && serviceRequestForm.location_text && (
                                             <p className="text-xs font-semibold text-red-600">
-                                                Huduma hii inapatikana: {productServiceAreas.join(', ')}.
+                                                {copy('This service is available in:', 'Huduma hii inapatikana:')} {productServiceAreas.join(', ')}.
                                             </p>
                                         )}
                                     </label>
@@ -3082,7 +3083,7 @@ export default function ProductDetail({ product }) {
 
                                 {serviceIntakeForm.length > 0 && (
                                     <div className="rounded-xl border bg-muted/20 p-3 space-y-3">
-                                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Taarifa zinazohitajika</p>
+                                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Required information', 'Taarifa zinazohitajika')}</p>
                                         <div className="space-y-3">
                                             {serviceIntakeForm.map((field) => (
                                                 <label key={field.id} className="space-y-1.5 block">
@@ -3098,12 +3099,12 @@ export default function ProductDetail({ product }) {
 
                                 {serviceIntakeForm.length === 0 && (
                                     <label className="space-y-1.5 block">
-                                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Ujumbe</span>
+                                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Message', 'Ujumbe')}</span>
                                         <textarea
                                             className="w-full min-h-28 rounded-xl border border-input bg-background px-3 py-2 text-sm"
                                             value={serviceRequestForm.message}
                                             onChange={(e) => setServiceRequestForm((prev) => ({ ...prev, message: e.target.value }))}
-                                            placeholder={product.service_client_requirements || 'Mwambie mtoa huduma unachohitaji...'}
+                                            placeholder={product.service_client_requirements || copy('Tell the provider what you need...', 'Mwambie mtoa huduma unachohitaji...')}
                                         />
                                     </label>
                                 )}
@@ -3113,7 +3114,7 @@ export default function ProductDetail({ product }) {
                                     disabled={serviceRequestSubmitting}
                                     className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black"
                                 >
-                                    {serviceRequestSubmitting ? 'Inatuma...' : 'Tuma Ombi'}
+                                    {serviceRequestSubmitting ? copy('Sending...', 'Inatuma...') : copy('Send request', 'Tuma ombi')}
                                 </Button>
                             </form>
                         </div>
@@ -3124,7 +3125,7 @@ export default function ProductDetail({ product }) {
                         <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-3xl bg-white shadow-2xl">
                             <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
                                 <div className="min-w-0">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Certificate</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">{copy('Certificate', 'Cheti')}</p>
                                     <h3 className="truncate text-lg font-black text-slate-950">{selectedCertificate.title}</h3>
                                 </div>
                                 <button
@@ -3154,14 +3155,14 @@ export default function ProductDetail({ product }) {
                                     ) : (
                                         <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center">
                                             <FileText className="mx-auto h-10 w-10 text-slate-400" />
-                                            <p className="mt-3 text-sm font-bold text-slate-700">Document summary only</p>
-                                            <p className="mt-1 text-xs text-slate-500">The merchant chose not to show the certificate file publicly.</p>
+                                            <p className="mt-3 text-sm font-bold text-slate-700">{copy('Document summary only', 'Muhtasari wa hati pekee')}</p>
+                                            <p className="mt-1 text-xs text-slate-500">{copy('The merchant chose not to show the certificate file publicly.', 'Muuzaji amechagua kutoonyesha faili la cheti hadharani.')}</p>
                                         </div>
                                     )}
                                 </div>
                                 <div className="p-5 space-y-4">
                                     <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Status</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">{copy('Status', 'Hali')}</p>
                                         <p className="mt-1 text-sm font-black text-blue-950">{selectedCertificate.display_status || 'Merchant provided'}</p>
                                         {selectedCertificate.description && (
                                             <p className="mt-2 text-sm leading-relaxed text-slate-700">{selectedCertificate.description}</p>

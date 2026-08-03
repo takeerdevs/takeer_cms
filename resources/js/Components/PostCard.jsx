@@ -16,11 +16,12 @@ import { trackPlatformEvent } from '@/lib/attribution';
 import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { useLocale } from '@/lib/i18n';
 
-const timeAgo = (ts) => {
+const timeAgo = (ts, copy = (english) => english) => {
     if (!ts) return '';
     const s = Math.floor((Date.now() - new Date(ts)) / 1000);
-    if (s < 60) return 'Sasa hivi';
+    if (s < 60) return copy('Just now', 'Sasa hivi');
     if (s < 3600) return `${Math.floor(s / 60)}m`;
     if (s < 86400) return `${Math.floor(s / 3600)}h`;
     return `${Math.floor(s / 86400)}d`;
@@ -83,27 +84,32 @@ const freightModeLabels = {
 const enabledFreightModes = new Set(['sea_cargo', 'air_cargo']);
 
 const freightPricingSuffix = {
-    per_kg: '/kg',
-    per_cbm: '/CBM',
-    per_day: '/day',
-    per_week: '/week',
-    per_cbm_day: '/CBM/day',
-    per_pallet: '/pallet',
-    per_km: '/km',
-    per_zone: '/zone',
-    percent_declared_value: '% value',
-    percent_duty_tax: '% duty/tax',
-    fee_plus_government: '+ govt',
-    retainer: 'retainer',
-    fixed: 'fixed',
+    per_kg: ['/kg', '/kg'],
+    per_cbm: ['/CBM', '/CBM'],
+    per_day: ['/day', '/siku'],
+    per_week: ['/week', '/wiki'],
+    per_cbm_day: ['/CBM/day', '/CBM/siku'],
+    per_pallet: ['/pallet', '/palleti'],
+    per_km: ['/km', '/km'],
+    per_zone: ['/zone', '/eneo'],
+    percent_declared_value: ['% value', '% ya thamani'],
+    percent_duty_tax: ['% duty/tax', '% ya ushuru/kodi'],
+    fee_plus_government: ['+ govt', '+ serikali'],
+    retainer: ['retainer', 'ada ya uhifadhi'],
+    fixed: ['fixed', 'bei maalum'],
 };
 
-const freightModeLabel = (mode) => freightModeLabels[mode] || String(mode || '').replace(/_/g, ' ');
+const freightModeLabel = (mode, copy = (english) => english) => copy(
+    freightModeLabels[mode] || String(mode || '').replace(/_/g, ' '),
+    ({ sea_cargo: 'Mizigo ya baharini', air_cargo: 'Mizigo ya angani' }[mode] || String(mode || '').replace(/_/g, ' ')),
+);
 
-const freightPriceLabel = (detail = {}) => {
-    if (!detail?.price_amount) return detail?.pricing_model === 'quote' ? 'Quote' : '';
+const freightPriceLabel = (detail = {}, copy = (english) => english) => {
+    if (!detail?.price_amount) return detail?.pricing_model === 'quote' ? copy('Quote', 'Bei kwa ombi') : '';
     const suffix = detail.pricing_model && detail.pricing_model !== 'quote'
-        ? ` ${freightPricingSuffix[detail.pricing_model] || detail.pricing_model}`
+        ? ` ${freightPricingSuffix[detail.pricing_model]
+            ? copy(...freightPricingSuffix[detail.pricing_model])
+            : copy(detail.pricing_model, detail.pricing_model)}`
         : '';
     return `${detail.currency || ''} ${detail.price_amount}${suffix}`.trim();
 };
@@ -126,6 +132,7 @@ const compactFreightPlace = (locations = [], fallback = '') => {
 };
 
 function FreightRoutePostCard({ snapshot = {}, onOpen }) {
+    const { copy } = useLocale();
     const transportModes = Array.isArray(snapshot.transport_modes)
         ? snapshot.transport_modes.filter((mode) => enabledFreightModes.has(mode))
         : [];
@@ -152,24 +159,24 @@ function FreightRoutePostCard({ snapshot = {}, onOpen }) {
                         <div>
                             <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-sky-100">
                                 <Ship className="h-3.5 w-3.5" />
-                                Freight route
+                                {copy('Freight route', 'Njia ya freight')}
                             </div>
                             <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
                                 <div className="min-w-0">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-white/45">From</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-white/45">{copy('From', 'Kutoka')}</p>
                                     <p className="mt-1 truncate text-2xl font-black leading-none">{origin}</p>
                                 </div>
                                 <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10">
                                     <Route className="h-5 w-5 text-sky-200" />
                                 </div>
                                 <div className="min-w-0 text-right">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-white/45">To</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-white/45">{copy('To', 'Kwenda')}</p>
                                     <p className="mt-1 truncate text-2xl font-black leading-none">{destination}</p>
                                 </div>
                             </div>
                         </div>
                         <div className="hidden shrink-0 rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-right sm:block">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-white/45">Offices</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-white/45">{copy('Offices', 'Ofisi')}</p>
                             <p className="text-lg font-black">{originLocations.length} → {destinationLocations.length}</p>
                         </div>
                     </div>
@@ -178,12 +185,12 @@ function FreightRoutePostCard({ snapshot = {}, onOpen }) {
                 <div className="space-y-4 p-5">
                     <div className="grid gap-2 sm:grid-cols-2">
                         {primaryModes.length > 0 ? primaryModes.map(({ mode, detail }) => {
-                            const price = freightPriceLabel(detail);
+                            const price = freightPriceLabel(detail, copy);
                             return (
                                 <div key={mode} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
-                                            <p className="truncate text-sm font-black text-slate-950">{freightModeLabel(mode)}</p>
+                                            <p className="truncate text-sm font-black text-slate-950">{freightModeLabel(mode, copy)}</p>
                                             {detail.estimate && <p className="mt-1 text-xs font-bold text-slate-500">{detail.estimate}</p>}
                                         </div>
                                         {price && <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-slate-800 ring-1 ring-slate-200">{price}</span>}
@@ -192,7 +199,7 @@ function FreightRoutePostCard({ snapshot = {}, onOpen }) {
                             );
                         }) : (
                             <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500 sm:col-span-2">
-                                Open route for freight details.
+                                {copy('Open route for freight details.', 'Fungua route kuona maelezo ya freight.')}
                             </div>
                         )}
                     </div>
@@ -200,12 +207,12 @@ function FreightRoutePostCard({ snapshot = {}, onOpen }) {
                     {(originNames.length > 0 || destinationNames.length > 0) && (
                         <div className="grid gap-2 text-xs font-bold text-slate-600 sm:grid-cols-2">
                             <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900">
-                                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-700"><MapPin className="h-3.5 w-3.5" /> Drop-off</p>
-                                <p className="line-clamp-2">{originNames.join(', ') || 'Origin locations'}</p>
+                                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-700"><MapPin className="h-3.5 w-3.5" /> {copy('Drop-off', 'Kushusha')}</p>
+                                <p className="line-clamp-2">{originNames.join(', ') || copy('Origin locations', 'Maeneo ya kuanzia')}</p>
                             </div>
                             <div className="rounded-2xl bg-sky-50 px-4 py-3 text-sky-900">
-                                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-sky-700"><Package className="h-3.5 w-3.5" /> Pickup</p>
-                                <p className="line-clamp-2">{destinationNames.join(', ') || 'Collection offices'}</p>
+                                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-sky-700"><Package className="h-3.5 w-3.5" /> {copy('Pickup', 'Pickup')}</p>
+                                <p className="line-clamp-2">{destinationNames.join(', ') || copy('Collection offices', 'Ofisi za kuchukulia')}</p>
                             </div>
                         </div>
                     )}
@@ -220,12 +227,12 @@ function FreightRoutePostCard({ snapshot = {}, onOpen }) {
                         <div className="flex flex-wrap gap-1.5">
                             {transportModes.slice(0, 5).map((mode) => (
                                 <span key={mode} className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-600">
-                                    {freightModeLabel(mode)}
+                                    {freightModeLabel(mode, copy)}
                                 </span>
                             ))}
                         </div>
                         <span className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-black text-white">
-                            View route
+                            {copy('View route', 'Angalia route')}
                             <Truck className="h-4 w-4" />
                         </span>
                     </div>
@@ -236,6 +243,7 @@ function FreightRoutePostCard({ snapshot = {}, onOpen }) {
 }
 
 export default function PostCard({ post, readOnly = false, detailHref = null, adminMode = false }) {
+    const { copy } = useLocale();
     const { auth } = usePage().props;
     const [reactionSummary, setReactionSummary] = useState(post.reaction_summary || []);
     const [myReaction, setMyReaction] = useState(post.my_reaction || null);
@@ -366,14 +374,14 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         const interval = promotableItem?.billing_interval || 'monthly';
         const count = Number(promotableItem?.interval_count || 1);
         const labels = {
-            hourly: ['Hour', 'Hours'],
-            daily: ['Day', 'Days'],
-            weekly: ['Week', 'Weeks'],
-            monthly: ['Month', 'Months'],
+            hourly: [copy('Hour', 'Saa'), copy('Hours', 'Masaa')],
+            daily: [copy('Day', 'Siku'), copy('Days', 'Siku')],
+            weekly: [copy('Week', 'Wiki'), copy('Weeks', 'Wiki')],
+            monthly: [copy('Month', 'Mwezi'), copy('Months', 'Miezi')],
         };
-        const [single, plural] = labels[interval] || [interval, `${interval}s`];
+        const [single, plural] = labels[interval] || [copy(interval, interval), copy(`${interval}s`, `${interval}s`)];
 
-        return count <= 1 ? single : `Every ${count} ${plural}`;
+        return count <= 1 ? single : `${copy('Every', 'Kila')} ${count} ${plural}`;
     })();
     const promotableBundleRouteKey = promotableItem?.slug || firstPromotable?.id;
     const isBundlePromotable = promotableType === 'bundle' && Boolean(promotableBundleRouteKey);
@@ -385,10 +393,10 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         offeringGroupTemplate === 'menu_board' ? 'classic_menu' : offeringGroupTemplate === 'itinerary' ? 'timeline' : 'package'
     );
     const offeringGroupLabel = offeringGroupTemplate === 'menu_board'
-        ? 'Menu board'
+        ? copy('Menu board', 'Ubao wa menu')
         : offeringGroupTemplate === 'itinerary'
-            ? 'Itinerary'
-            : 'Offering package';
+            ? copy('Itinerary', 'Ratiba ya safari')
+            : copy('Offering package', 'Kifurushi cha ofa');
     const bundleItems = Array.isArray(promotableItem?.bundle_items) ? promotableItem.bundle_items : [];
     const courseModules = Array.isArray(promotableItem?.course_modules) ? promotableItem.course_modules : [];
     const isCourseBundle = Boolean(promotableItem?.is_course);
@@ -402,7 +410,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         if (courseModules.length > 0) return courseModules;
         const groups = [];
         bundleItems.forEach((item) => {
-            const title = item.section_title || 'Moduli';
+            const title = item.section_title || copy('Modules', 'Moduli');
             let group = groups.find((entry) => entry.title === title);
             if (!group) {
                 group = { title, lessons: [] };
@@ -411,7 +419,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
             group.lessons.push(item);
         });
         return groups;
-    }, [bundleItems, courseModules, isCourseBundle]);
+    }, [bundleItems, courseModules, isCourseBundle, copy]);
     const isImageLikeUrl = (value) => /^https?:\/\/.+\.(jpg|jpeg|png|webp|gif|avif)(\?.*)?$/i.test(String(value || '').trim());
     const resolveBundleItemHref = (item) => {
         if (item?.item_type === 'product') {
@@ -495,16 +503,16 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                 : 'fixed'
     );
     const serviceUnitLabels = {
-        hourly: ' / hour',
-        daily: ' / day',
-        nightly: ' / night',
-        weekly: ' / week',
-        monthly: ' / month',
-        yearly: ' / year',
-        per_person: ' / person',
-        per_visit: ' / visit',
-        per_session: ' / session',
-        per_project: ' / project',
+        hourly: ` / ${copy('hour', 'saa')}`,
+        daily: ` / ${copy('day', 'siku')}`,
+        nightly: ` / ${copy('night', 'usiku')}`,
+        weekly: ` / ${copy('week', 'wiki')}`,
+        monthly: ` / ${copy('month', 'mwezi')}`,
+        yearly: ` / ${copy('year', 'mwaka')}`,
+        per_person: ` / ${copy('person', 'mtu')}`,
+        per_visit: ` / ${copy('visit', 'ziara')}`,
+        per_session: ` / ${copy('session', 'session')}`,
+        per_project: ` / ${copy('project', 'mradi')}`,
     };
     const attachedProductPrice = Number(attachedProduct?.discounted_price > 0 ? attachedProduct.discounted_price : attachedProduct?.price || 0);
     const attachedProductUnitLabel = !attachedProductIsService && attachedProduct?.type === 'physical'
@@ -517,44 +525,44 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         && (Boolean(attachedProduct?.is_wholesale_enabled) || ['wholesale', 'both'].includes(attachedProductSellingStyle));
     const attachedProductIsWholesaleOnly = attachedProductSellingStyle === 'wholesale';
     const attachedProductWholesaleBadge = attachedProductIsWholesale
-        ? (attachedProductSellingStyle === 'both' ? 'Retail + Wholesale' : 'Wholesale')
+        ? (attachedProductSellingStyle === 'both' ? copy('Retail + wholesale', 'Rejareja + jumla') : copy('Wholesale', 'Jumla'))
         : '';
     const attachedProductMoqLabel = attachedProductIsWholesale && Number(attachedProduct?.min_order_quantity || 0) > 0
         ? `MOQ ${formatQuantity(attachedProduct.min_order_quantity)} ${attachedProduct?.unit_type?.symbol || attachedProduct?.unit_type?.name || 'units'}`
         : '';
     const attachedProductPriceLabel = (() => {
         if (!attachedProductIsService) return productCardPriceLabel(attachedProduct, attachedProductPrice);
-        if (attachedProductPriceDisplay === 'hidden' || attachedProductServiceMode === 'showcase_only') return 'Contact provider';
-        if (attachedProductPriceDisplay === 'quote_only' || attachedProductServiceMode === 'request_quote') return 'Quote after request';
-        if (attachedProductPriceDisplay === 'starts_from') return `From TZS ${attachedProductPrice.toLocaleString()}`;
-        if (attachedProductPriceDisplay === 'package') return `TZS ${attachedProductPrice.toLocaleString()} package`;
+        if (attachedProductPriceDisplay === 'hidden' || attachedProductServiceMode === 'showcase_only') return copy('Contact provider', 'Wasiliana na mtoa huduma');
+        if (attachedProductPriceDisplay === 'quote_only' || attachedProductServiceMode === 'request_quote') return copy('Quote after request', 'Bei baada ya ombi');
+        if (attachedProductPriceDisplay === 'starts_from') return `${copy('From', 'Kuanzia')} TZS ${attachedProductPrice.toLocaleString()}`;
+        if (attachedProductPriceDisplay === 'package') return `TZS ${attachedProductPrice.toLocaleString()} ${copy('package', 'kifurushi')}`;
         return `TZS ${attachedProductPrice.toLocaleString()}${serviceUnitLabels[attachedProductPriceDisplay] || ''}`;
     })();
     const attachedProductCtaLabel = readOnly
-        ? 'View'
+        ? copy('View', 'Tazama')
         : attachedProduct?.has_access
-            ? 'Fungua'
+            ? copy('Open', 'Fungua')
             : attachedProductIsMenu
-                ? 'Order item'
+                ? copy('Order item', 'Oda bidhaa')
                 : attachedProductIsRoom
-                    ? 'View stay'
+                    ? copy('View stay', 'Tazama malazi')
                     : attachedProductIsTour
-                        ? 'View tour'
+                        ? copy('View tour', 'Tazama ziara')
                         : attachedProductIsWorkshop
-                            ? 'View workshop'
+                            ? copy('View workshop', 'Tazama warsha')
                             : attachedProductIsAppointment
-                                ? 'Book appointment'
+                                ? copy('Book appointment', 'Weka miadi')
                                 : attachedProductIsReservation
-                                    ? 'Reserve'
+                                    ? copy('Reserve', 'Hifadhi')
                                     : attachedProductIsRental
-                                        ? 'Rent'
+                                        ? copy('Rent', 'Kodisha')
                                         : attachedProductIsCustomOrder
-                                            ? 'Request quote'
+                                            ? copy('Request quote', 'Omba bei')
                                             : attachedProductIsService
-                                                ? (attachedProductServiceMode === 'book_appointment' ? 'Book' : 'View Service')
+                                                ? (attachedProductServiceMode === 'book_appointment' ? copy('Book', 'Weka booking') : copy('View service', 'Tazama huduma'))
                                                 : attachedProductIsWholesaleOnly
-                                                    ? 'Request quote'
-                                                    : 'Nunua';
+                                                    ? copy('Request quote', 'Omba bei')
+                                                    : copy('Buy', 'Nunua');
     const variantAttributeSummary = useMemo(() => {
         if (!hasVariantPricing) return [];
 
@@ -756,7 +764,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
             setReactionSummary(res.data?.reaction_summary || []);
         } catch (e) {
             setMyReaction(prevReaction);
-            toast.error(e.response?.data?.message || 'Imeshindwa kuweka reaction.');
+            toast.error(e.response?.data?.message || copy('Unable to add reaction.', 'Imeshindwa kuweka reaction.'));
         }
     };
 
@@ -785,11 +793,11 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
 
     const sendGuestOtp = async () => {
         if (guestEngagement.action === 'comment' && !guestEngagement.text.trim()) {
-            updateGuestEngagement({ error: 'Andika maoni yako kwanza.' });
+            updateGuestEngagement({ error: copy('Write your comment first.', 'Andika maoni yako kwanza.') });
             return;
         }
         if (!guestEngagement.name.trim() || !guestEngagement.phone.trim()) {
-            updateGuestEngagement({ error: 'Andika jina na namba ya simu kuendelea.' });
+            updateGuestEngagement({ error: copy('Enter your name and phone number to continue.', 'Andika jina na namba ya simu kuendelea.') });
             return;
         }
 
@@ -802,14 +810,14 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         } catch (e) {
             updateGuestEngagement({
                 sending: false,
-                error: e.response?.data?.message || 'Imeshindwa kutuma OTP. Hakiki namba na ujaribu tena.',
+                error: e.response?.data?.message || copy('Unable to send OTP. Check the number and try again.', 'Imeshindwa kutuma OTP. Hakiki namba na ujaribu tena.'),
             });
         }
     };
 
     const completeGuestEngagement = async () => {
         if (!guestEngagement.otp.trim()) {
-            updateGuestEngagement({ error: 'Weka OTP iliyotumwa kwenye simu yako.' });
+            updateGuestEngagement({ error: copy('Enter the OTP sent to your phone.', 'Weka OTP iliyotumwa kwenye simu yako.') });
             return;
         }
 
@@ -831,11 +839,11 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                     ...current,
                     comment_count: res.data?.comment_count ?? ((current.comment_count || 0) + 1),
                 }));
-                toast.success(res.data?.message || 'Maoni yako yamewekwa.');
+                toast.success(res.data?.message || copy('Your comment was posted.', 'Maoni yako yamewekwa.'));
             } else {
                 setMyReaction(res.data?.my_reaction || guestEngagement.emoji);
                 setReactionSummary(res.data?.reaction_summary || []);
-                toast.success(res.data?.message || 'Reaction imewekwa.');
+                toast.success(res.data?.message || copy('Reaction added.', 'Reaction imewekwa.'));
             }
 
             router.reload({ only: ['auth'], preserveScroll: true, preserveState: true });
@@ -843,7 +851,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         } catch (e) {
             updateGuestEngagement({
                 verifying: false,
-                error: e.response?.data?.message || 'Imeshindwa kukamilisha. Jaribu tena.',
+                error: e.response?.data?.message || copy('Unable to complete. Try again.', 'Imeshindwa kukamilisha. Jaribu tena.'),
             });
         }
     };
@@ -860,11 +868,11 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                 <Eye className="h-4 w-4 shrink-0" />
                             )}
                             <span className="text-xs font-black uppercase tracking-widest">
-                                {isDeleted ? 'Deleted post' : 'Live post'}
+                                {isDeleted ? copy('Deleted post', 'Post imefutwa') : copy('Live post', 'Post iko live')}
                             </span>
                             {deletedAtLabel && (
                                 <span className="text-xs font-semibold normal-case tracking-normal text-rose-800/80 truncate">
-                                    Deleted {deletedAtLabel}
+                                    {copy('Deleted', 'Ilifutwa')} {deletedAtLabel}
                                 </span>
                             )}
                         </div>
@@ -872,7 +880,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             {isRestricted && (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-800">
                                     <Lock className="h-3 w-3" />
-                                    Restricted
+                                    {copy('Restricted', 'Imezuiwa')}
                                 </span>
                             )}
                             <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-slate-700">
@@ -932,7 +940,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                     <Clock className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">{timeAgo(post.created_at)}</span>
+                    <span className="text-xs text-muted-foreground">{timeAgo(post.created_at, copy)}</span>
                 </div>
                 {adminMode && isDeleted && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-rose-700">
@@ -1007,7 +1015,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             <div className="h-14 w-14 rounded-2xl bg-brand-50 flex items-center justify-center">
                                 <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
                             </div>
-                            <p className="text-sm font-bold text-muted-foreground">Inafungua content yako...</p>
+                            <p className="text-sm font-bold text-muted-foreground">{copy('Opening your content...', 'Inafungua content yako...')}</p>
                         </div>
                     ) : shouldShowPremiumCtas && (
                         <div className="pt-1">
@@ -1020,7 +1028,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                         onClick={handleSingleUnlockClick}
                                         className="inline-flex items-center justify-center min-w-48 px-5 py-1.5 rounded-full border-[1.5px] border-foreground text-foreground font-medium text-xs hover:bg-foreground hover:text-background transition-all"
                                     >
-                                        {`Unlock Tsh ${singleUnlockPrice.toLocaleString()}`}
+                                        {`${copy('Unlock', 'Fungua')} TZS ${singleUnlockPrice.toLocaleString()}`}
                                     </button>
                                 )}
                                 {hasPromotableOption && (
@@ -1029,10 +1037,10 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                         className="inline-flex items-center justify-center min-w-48 px-5 py-1.5 rounded-full border-[1.5px] border-foreground text-foreground font-medium text-xs hover:bg-foreground hover:text-background transition-all"
                                     >
                                         {hasMultiplePromotables
-                                            ? `Unlock Options`
+                                            ? copy('Unlock options', 'Chaguo za kufungua')
                                             : promotableType === 'subscription_plan'
-                                                ? `Subscribe ${(promotableItem?.name || promotableItem?.title || 'Plan')}: Tsh ${Number(promotableItem?.price || 0).toLocaleString()}`
-                                                : `Join ${(promotableItem?.title || 'Bundle')}: Tsh ${Number(promotableItem?.price || 0).toLocaleString()}`
+                                                ? `${copy('Subscribe', 'Jiunge na')} ${(promotableItem?.name || promotableItem?.title || copy('Plan', 'Mpango'))}: TZS ${Number(promotableItem?.price || 0).toLocaleString()}`
+                                                : `${copy('Join', 'Jiunge na')} ${(promotableItem?.title || copy('Bundle', 'Kifurushi'))}: TZS ${Number(promotableItem?.price || 0).toLocaleString()}`
                                         }
                                     </button>
                                 )}
@@ -1090,7 +1098,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                 </span>
                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-100">
                                     <ShieldCheck className="h-3 w-3" />
-                                    SafePay
+                                    PSP payment
                                 </span>
                                 {attachedProductIsWholesale && (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-slate-950 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white ring-1 ring-slate-800">
@@ -1171,7 +1179,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wide text-sky-950">
                                 <span className="inline-flex items-center gap-1">
                                     <BedDouble className="h-3.5 w-3.5" />
-                                    {attachedRoomDetails.room_type || 'Room'}
+                                        {attachedRoomDetails.room_type || copy('Room', 'Chumba')}
                                 </span>
                                 {attachedRoomDetails.max_guests && (
                                     <span className="inline-flex items-center gap-1">
@@ -1367,21 +1375,21 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                         <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
                                     )}
                                     <span className="text-xs font-black text-emerald-950 truncate">
-                                        {attachedServiceTrustReady ? 'Imekaguliwa na Takeer' : 'Uhakiki unaendelea'}
+                                        {attachedServiceTrustReady ? copy('Reviewed by Takeer', 'Imekaguliwa na Takeer') : copy('Verification in progress', 'Uhakiki unaendelea')}
                                     </span>
                                 </div>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 shrink-0">
-                                    SafePay
+                                    {copy('PSP payment', 'Malipo ya PSP')}
                                 </span>
                             </div>
                             <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] font-bold text-slate-600">
-                                <span>{attachedServiceTrust.identity_verified ? 'KYC' : 'KYC pending'}</span>
+                                <span>{attachedServiceTrust.identity_verified ? 'KYC' : copy('KYC pending', 'KYC inasubiri')}</span>
                                 <span>•</span>
-                                <span>{attachedServiceCredentialOk ? 'Leseni OK' : 'Leseni pending'}</span>
+                                <span>{attachedServiceCredentialOk ? copy('Licence OK', 'Leseni sawa') : copy('Licence pending', 'Leseni inasubiri')}</span>
                                 <span>•</span>
-                                <span>{attachedServiceTrust.completed_services_count || 0} completed</span>
+                                <span>{attachedServiceTrust.completed_services_count || 0} {copy('completed', 'zimekamilika')}</span>
                                 <span>•</span>
-                                <span>{attachedServiceTrust.disputes_count || 0} disputes</span>
+                                <span>{attachedServiceTrust.disputes_count || 0} {copy('disputes', 'migogoro')}</span>
                             </div>
                         </div>
                     )}
@@ -1433,7 +1441,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                     <Crown className="h-6 w-6 text-emerald-700" />
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Subscription</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">{copy('Subscription', 'Subscription')}</p>
                                     <p className="text-xl font-black leading-tight truncate">{promotableItem?.name || promotableItem?.title || 'Membership'}</p>
                                 </div>
                             </div>
@@ -1446,15 +1454,15 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                         <div className="mt-4">
                             {hasActiveSubscriptionMembership ? (
                                 <div className="rounded-xl border border-emerald-200 bg-white px-3 py-3">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">Membership active</p>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">{copy('Membership active', 'Membership iko active')}</p>
                                     <p className="mt-1 text-lg font-black tabular-nums">{subscriptionTimeLeft}</p>
                                     {subscriptionEndsLabel && (
-                                        <p className="mt-1 text-xs font-semibold text-muted-foreground">Ends {subscriptionEndsLabel}</p>
+                                        <p className="mt-1 text-xs font-semibold text-muted-foreground">{copy('Ends', 'Inaisha')} {subscriptionEndsLabel}</p>
                                     )}
                                 </div>
                             ) : (
                                 <div className="rounded-xl border border-emerald-100 bg-white px-3 py-2">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Renewal</p>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">{copy('Renewal', 'Renewal')}</p>
                                     <p className="mt-1 text-sm font-black">{subscriptionCadence}</p>
                                 </div>
                             )}
@@ -1474,7 +1482,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             }}
                             className="w-full h-11 rounded-xl bg-emerald-600 text-white text-base font-extrabold hover:bg-emerald-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20"
                         >
-                            <Crown className="h-4 w-4" /> {hasActiveSubscriptionMembership ? 'Renew access' : 'View Membership'}
+                                <Crown className="h-4 w-4" /> {hasActiveSubscriptionMembership ? copy('Renew access', 'Ongeza muda wa access') : copy('View membership', 'Angalia membership')}
                         </button>
                         {hasActiveSubscriptionMembership && (
                             <button
@@ -1524,7 +1532,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                         {offeringGroupTemplate === 'menu_board' ? (
                             <div className="bg-white px-4 py-4">
                                 <div className="mb-3 flex items-center justify-between gap-3 border-b border-dashed border-orange-200 pb-2">
-                                    <p className="font-serif text-lg font-black text-orange-950">Today&apos;s menu</p>
+                                    <p className="font-serif text-lg font-black text-orange-950">{copy("Today's menu", 'Menu ya leo')}</p>
                                     <span className="text-[10px] font-black uppercase tracking-widest text-orange-700">{offeringGroupLayout.replace(/_/g, ' ')}</span>
                                 </div>
                                 <div className="space-y-3">
@@ -1551,7 +1559,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                                 <div className="min-w-0">
                                                     <p className="truncate text-sm font-black text-slate-950">{item.title}</p>
                                                     <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                                                        {item.section || 'Menu'}{Array.isArray(item.add_ons) && item.add_ons.length > 0 ? ` · ${item.add_ons.length} add-on${item.add_ons.length === 1 ? '' : 's'}` : ''}
+                                                        {item.section || copy('Menu', 'Menu')}{Array.isArray(item.add_ons) && item.add_ons.length > 0 ? ` · ${item.add_ons.length} ${copy(item.add_ons.length === 1 ? 'add-on' : 'add-ons', item.add_ons.length === 1 ? 'ongeza' : 'viongezi')}` : ''}
                                                     </p>
                                                 </div>
                                                 <p className="text-sm font-black text-orange-700">
@@ -1561,7 +1569,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                         );
                                     })}
                                     {offeringGroupItems.length === 0 && (
-                                        <p className="rounded-xl bg-orange-50 px-3 py-3 text-sm font-bold text-orange-900">Open to view this menu.</p>
+                                        <p className="rounded-xl bg-orange-50 px-3 py-3 text-sm font-bold text-orange-900">{copy('Open to view this menu.', 'Fungua ili kuona menu hii.')}</p>
                                     )}
                                 </div>
                             </div>
@@ -1572,7 +1580,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-black text-slate-700">{index + 1}</span>
                                         <div className="min-w-0 flex-1">
                                             <p className="truncate text-sm font-black text-slate-950">{item.title}</p>
-                                            <p className="truncate text-xs font-semibold text-slate-500">{item.section || item.role || 'Included'}</p>
+                                            <p className="truncate text-xs font-semibold text-slate-500">{item.section || item.role || copy('Included', 'Imejumuishwa')}</p>
                                         </div>
                                         {Number(item.price || 0) > 0 && (
                                             <span className="text-xs font-black text-brand-700">TZS {Number(item.price || 0).toLocaleString()}</span>
@@ -1592,7 +1600,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 text-sm font-black text-white shadow-md shadow-orange-500/20 transition-all hover:bg-orange-700 active:scale-[0.99]"
                         >
                             <ShoppingBag className="h-4 w-4" />
-                            Open offering
+                            {copy('Open offering', 'Fungua ofa')}
                         </button>
                     </div>
                 </div>
@@ -1603,15 +1611,15 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                     {isCourseBundle && courseModuleGroups.length > 0 ? (
                         <div className="p-3 space-y-2">
                             <div className="rounded-xl border border-sky-100 bg-white/85 px-3 py-2 dark:border-sky-900/50 dark:bg-slate-900/80">
-                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Course Curriculum</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">{copy('Course curriculum', 'Mtaala wa kozi')}</p>
                                 <div className="mt-2 grid grid-cols-2 gap-2 text-center">
                                     <div className="rounded-lg bg-sky-50 px-2 py-2 dark:bg-sky-950/40">
                                         <p className="text-lg font-black text-sky-900 dark:text-sky-100">{courseModuleGroups.length}</p>
-                                        <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">Modules</p>
+                                        <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">{copy('Modules', 'Moduli')}</p>
                                     </div>
                                     <div className="rounded-lg bg-sky-50 px-2 py-2 dark:bg-sky-950/40">
                                         <p className="text-lg font-black text-sky-900 dark:text-sky-100">{bundleItemsCount}</p>
-                                        <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">Lessons</p>
+                                        <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">{copy('Lessons', 'Masomo')}</p>
                                     </div>
                                 </div>
                             </div>
@@ -1619,12 +1627,12 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                 <div key={`${module.title}-${idx}`} className="rounded-xl border border-border/70 bg-background px-3 py-2">
                                     <div className="flex items-center justify-between gap-2">
                                         <p className="text-sm font-black truncate">{module.title}</p>
-                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{module.lessons.length} lessons</span>
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{module.lessons.length} {copy('lessons', 'masomo')}</span>
                                     </div>
                                     <div className="mt-1 space-y-1">
                                         {module.lessons.slice(0, 2).map((lesson, lessonIdx) => (
                                             <p key={`${lesson.item_type}-${lesson.item_id}-${lessonIdx}`} className="text-xs text-muted-foreground truncate">
-                                                {lesson.is_preview ? 'Preview · ' : ''}{lesson.lesson_title || lesson.title}
+                                                {lesson.is_preview ? `${copy('Preview', 'Mwonekano')} · ` : ''}{lesson.lesson_title || lesson.title}
                                             </p>
                                         ))}
                                     </div>
@@ -1681,7 +1689,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             )}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="font-bold text-[22px] leading-tight text-foreground truncate">{promotableItem?.title || 'Bundle Offer'}</p>
+                            <p className="font-bold text-[22px] leading-tight text-foreground truncate">{promotableItem?.title || copy('Bundle offer', 'Ofa ya kifurushi')}</p>
                             {hasBundlePrice && (
                                 <p className="text-sky-700 dark:text-sky-300 font-black text-2xl leading-none">
                                     TZS {Number(promotableItem?.price || 0).toLocaleString()}
@@ -1689,8 +1697,8 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             )}
                             <p className="text-[11px] text-slate-600 leading-tight truncate mt-0.5">
                                 {isCourseBundle
-                                    ? `${courseModuleGroups.length || 1} module(s) • ${bundleItemsCount} lesson(s)`
-                                    : (bundleItemsCount > 0 ? `${bundleItemsCount} item(s)` : 'Bundle access')}
+                                    ? `${courseModuleGroups.length || 1} ${copy('modules', 'moduli')} • ${bundleItemsCount} ${copy('lessons', 'masomo')}`
+                                    : (bundleItemsCount > 0 ? `${bundleItemsCount} ${copy(bundleItemsCount === 1 ? 'item' : 'items', bundleItemsCount === 1 ? 'kitu' : 'vitu')}` : copy('Bundle access', 'Ufikiaji wa kifurushi'))}
                             </p>
                         </div>
                     </Link>
@@ -1703,7 +1711,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             }}
                             className="w-full h-11 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 dark:from-sky-500 dark:to-cyan-400 text-white text-base font-extrabold hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-sky-500/25"
                         >
-                            <Boxes className="h-4 w-4" /> {isCourseBundle ? (readOnly ? 'View Course' : 'Open Course') : (readOnly ? 'View Bundle' : 'Open Bundle')}
+                            <Boxes className="h-4 w-4" /> {isCourseBundle ? (readOnly ? copy('View course', 'Tazama kozi') : copy('Open course', 'Fungua kozi')) : (readOnly ? copy('View bundle', 'Tazama kifurushi') : copy('Open bundle', 'Fungua kifurushi'))}
                         </button>
                     </div>
                 </div>
@@ -1764,7 +1772,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                 type="button"
                                 onClick={() => setShowReactionPicker(true)}
                                 className="inline-flex items-center justify-center rounded-full h-8 w-8 border border-border bg-background hover:bg-accent text-muted-foreground"
-                                aria-label="More reactions"
+                                aria-label={copy('More reactions', 'Maoni zaidi')}
                             >
                                 <MoreHorizontal className="h-4 w-4" />
                             </button>
@@ -1786,7 +1794,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             ))}
                             <div
                                 className="inline-flex items-center justify-center rounded-full h-8 w-8 border border-border bg-background text-muted-foreground"
-                                aria-label="Reactions overview"
+                                aria-label={copy('Reactions overview', 'Muhtasari wa maoni')}
                             >
                                 <MoreHorizontal className="h-4 w-4" />
                             </div>
@@ -1830,7 +1838,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                                <h3 className="font-black text-sm uppercase tracking-wider">Choose Reaction</h3>
+                                <h3 className="font-black text-sm uppercase tracking-wider">{copy('Choose reaction', 'Chagua reaction')}</h3>
                                 <button
                                     type="button"
                                     onClick={() => setShowReactionPicker(false)}
@@ -1874,9 +1882,9 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                         <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
                             <div>
                                 <p className="text-[10px] font-black uppercase tracking-widest text-brand-600">
-                                    {guestEngagement.action === 'comment' ? 'Weka maoni yako' : 'Weka reaction'}
+                                    {guestEngagement.action === 'comment' ? copy('Write your comment', 'Weka maoni yako') : copy('Choose a reaction', 'Weka reaction')}
                                 </p>
-                                <h3 className="text-lg font-black tracking-tight">Thibitisha kwa simu</h3>
+                                <h3 className="text-lg font-black tracking-tight">{copy('Confirm with phone', 'Thibitisha kwa simu')}</h3>
                             </div>
                             <button
                                 type="button"
@@ -1893,7 +1901,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                     <textarea
                                         value={guestEngagement.text}
                                         onChange={(e) => updateGuestEngagement({ text: e.target.value, error: '' })}
-                                        placeholder="Andika maoni yako..."
+                                        placeholder={copy('Write your comment...', 'Andika maoni yako...')}
                                         maxLength={1000}
                                         className="min-h-28 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm font-semibold outline-none focus:border-brand-400"
                                     />
@@ -1901,14 +1909,14 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                         type="button"
                                         onClick={() => {
                                             if (!guestEngagement.text.trim()) {
-                                                updateGuestEngagement({ error: 'Andika maoni yako kwanza.' });
+                                                updateGuestEngagement({ error: copy('Write your comment first.', 'Andika maoni yako kwanza.') });
                                                 return;
                                             }
                                             updateGuestEngagement({ step: 'identity', error: '' });
                                         }}
                                         className="h-12 w-full rounded-2xl bg-brand-600 text-sm font-black text-white hover:bg-brand-700"
                                     >
-                                        Endelea
+                                        {copy('Continue', 'Endelea')}
                                     </button>
                                 </div>
                             )}
@@ -1918,7 +1926,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
 
                                     {guestEngagement.action === 'comment' ? (
                                         <div className="rounded-2xl border border-border bg-accent/40 p-4">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Maoni yako</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">{copy('Your comment', 'Maoni yako')}</p>
                                             <p className="text-sm font-semibold leading-relaxed text-foreground break-words">
                                                 {guestEngagement.text}
                                             </p>
@@ -1936,7 +1944,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                                 value={guestEngagement.name}
                                                 onChange={(e) => updateGuestEngagement({ name: e.target.value, error: '' })}
                                                 className="w-full h-12 rounded-2xl border border-border bg-background px-4 text-sm font-semibold outline-none focus:border-brand-400"
-                                                placeholder="Jina lako"
+                                                placeholder={copy('Your name', 'Jina lako')}
                                                 maxLength={80}
                                             />
                                             <input
@@ -1944,7 +1952,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                                 value={guestEngagement.phone}
                                                 onChange={(e) => updateGuestEngagement({ phone: e.target.value, error: '' })}
                                                 className="w-full h-12 rounded-2xl border border-border bg-background px-4 text-sm font-semibold outline-none focus:border-brand-400"
-                                                placeholder="Namba ya simu"
+                                                placeholder={copy('Phone number', 'Namba ya simu')}
                                             />
                                         </div>
                                     ) : (
@@ -1952,7 +1960,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                             <div className="flex items-start gap-3 rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3 text-brand-900">
                                                 <ShieldCheck className="h-5 w-5 mt-0.5 shrink-0" />
                                                 <p className="text-xs font-semibold leading-relaxed">
-                                                    Tumetuma OTP kwenye <span className="font-black">{guestEngagement.phone}</span>.
+                                                    {copy('We sent an OTP to', 'Tumetuma OTP kwenye')} <span className="font-black">{guestEngagement.phone}</span>.
                                                 </p>
                                             </div>
                                             <input
@@ -1981,7 +1989,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                                 onClick={() => updateGuestEngagement({ step: 'compose', otp: '', error: '' })}
                                                 className="h-12 px-4 rounded-2xl border border-border text-sm font-black hover:bg-accent"
                                             >
-                                                Hariri
+                                                {copy('Edit', 'Hariri')}
                                             </button>
                                         )}
                                         <button
@@ -1991,7 +1999,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                             className="flex-1 h-12 rounded-2xl bg-brand-600 text-white text-sm font-black hover:bg-brand-700 disabled:opacity-60 flex items-center justify-center gap-2"
                                         >
                                             {(guestEngagement.sending || guestEngagement.verifying) && <Loader2 className="h-4 w-4 animate-spin" />}
-                                            {guestEngagement.step === 'identity' ? 'Tuma OTP' : 'Thibitisha'}
+                                            {guestEngagement.step === 'identity' ? copy('Send OTP', 'Tuma OTP') : copy('Confirm', 'Thibitisha')}
                                         </button>
                                     </div>
                                 </>

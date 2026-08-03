@@ -3,46 +3,21 @@ import { Link } from '@inertiajs/react';
 import { Toaster } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
-    LayoutDashboard, ShieldAlert, Users, ArrowDownToLine,
+    LayoutDashboard, ShieldAlert, Users,
     Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper,
-    ShieldCheck, Globe, Wallet, Percent, Crown, Calendar, Bell, BarChart3, LinkIcon,
-    Tags, Ruler, WalletCards, Activity, Gauge, LifeBuoy, RefreshCcw
+    ShieldCheck, Globe, Percent, Crown, Calendar, Bell, BarChart3, LinkIcon,
+    Tags, Ruler, Activity, Gauge, LifeBuoy, RefreshCcw
 } from 'lucide-react';
+import LanguageSwitcher from '@/Components/LanguageSwitcher';
+import { useLocale } from '@/lib/i18n';
 
 const adminNav = [
-    { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-    { name: 'Attention', href: '/admin/attention', icon: Bell },
-    { name: 'Disputes', href: '/admin/disputes', icon: ShieldAlert },
-    { name: 'Safety Reviews', href: '/admin/trust-safety-reviews', icon: ShieldCheck },
-    { name: 'Notifications', href: '/admin/notifications', icon: Bell },
-    { name: 'Enquiries', href: '/admin/enquiries', icon: LifeBuoy },
-    { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
-    { name: 'Tracked Links', href: '/admin/tracked-links', icon: LinkIcon },
-    { name: 'Users', href: '/admin/users', icon: Users },
-    { name: 'Merchants', href: '/admin/merchants', icon: Store },
-    { name: 'Forwarders', href: '/admin/forwarders', icon: Globe },
-    { name: 'Verifications', href: '/admin/verifications', icon: ShieldCheck },
-    { name: 'Content Reports', href: '/admin/content-reports', icon: Flag },
-    { name: 'Feed Monitor', href: '/admin/feed', icon: Newspaper },
-    { name: 'System Health', href: '/health', icon: Activity, external: true },
-    { name: 'Horizon', href: '/admin/horizon', icon: Gauge, external: true },
-    { name: 'Services', href: '/admin/services', icon: Calendar },
-    { name: 'Service Categories', href: '/admin/service-categories', icon: Shapes },
-    { name: 'Categories', href: '/admin/categories', icon: Shapes },
-    { name: 'Brands & Models', href: '/admin/brands', icon: Tags },
-    { name: 'Sellable Units', href: '/admin/sellable-units', icon: Ruler },
-    { name: 'Countries', href: '/admin/countries', icon: Globe },
-    { name: 'Platform Wallet', href: '/admin/platform-wallet', icon: Wallet },
-    { name: 'Pricing & Fees', href: '/admin/fee-policies', icon: Percent },
-    { name: 'Subscriptions', href: '/admin/subscriptions', icon: Crown },
-    { name: 'Withdrawals', href: '/admin/withdrawals', icon: ArrowDownToLine },
-    { name: 'Refunds', href: '/admin/refunds', icon: RefreshCcw },
-    { name: 'Payout Settings', href: '/admin/payout-settings', icon: WalletCards },
-    { name: 'General Settings', href: '/admin/settings', icon: Settings2 },
-    { name: 'AI Settings', href: '/admin/ai-settings', icon: Settings2 },
+    { key: 'dashboard', href: '/admin', icon: LayoutDashboard }, { key: 'attention', href: '/admin/attention', icon: Bell }, { key: 'disputes', href: '/admin/disputes', icon: ShieldAlert }, { key: 'safety', href: '/admin/trust-safety-reviews', icon: ShieldCheck }, { key: 'notifications', href: '/admin/notifications', icon: Bell }, { key: 'enquiries', href: '/admin/enquiries', icon: LifeBuoy }, { key: 'analytics', href: '/admin/analytics', icon: BarChart3 }, { key: 'trackedLinks', href: '/admin/tracked-links', icon: LinkIcon }, { key: 'users', href: '/admin/users', icon: Users }, { key: 'merchants', href: '/admin/merchants', icon: Store }, { key: 'forwarders', href: '/admin/forwarders', icon: Globe }, { key: 'verifications', href: '/admin/verifications', icon: ShieldCheck }, { key: 'contentReports', href: '/admin/content-reports', icon: Flag }, { key: 'feedMonitor', href: '/admin/feed', icon: Newspaper }, { key: 'systemHealth', href: '/health', icon: Activity, external: true }, { key: 'horizon', href: '/admin/horizon', icon: Gauge, external: true }, { key: 'services', href: '/admin/services', icon: Calendar }, { key: 'serviceCategories', href: '/admin/service-categories', icon: Shapes }, { key: 'categories', href: '/admin/categories', icon: Shapes }, { key: 'brands', href: '/admin/brands', icon: Tags }, { key: 'sellableUnits', href: '/admin/sellable-units', icon: Ruler }, { key: 'countries', href: '/admin/countries', icon: Globe }, { key: 'fees', href: '/admin/fee-policies', icon: Percent }, { key: 'subscriptions', href: '/admin/subscriptions', icon: Crown }, { key: 'refunds', href: '/admin/refunds', icon: RefreshCcw }, { key: 'paymentOperations', href: '/admin/payment-operations', icon: Activity }, { key: 'settings', href: '/admin/settings', icon: Settings2 }, { key: 'aiSettings', href: '/admin/ai-settings', icon: Settings2 },
 ];
 
 export default function AdminLayout({ children, title = 'Admin', hideTopBar = false }) {
+    const { t, copy } = useLocale();
+    const localizedAdminNav = adminNav.map((item) => ({ ...item, name: t(`admin.nav.${item.key}`) }));
     const current = typeof window !== 'undefined' ? window.location.pathname : '';
     const previousHadDarkClass = useRef(false);
     const [attentionSummary, setAttentionSummary] = useState({ total: 0 });
@@ -81,6 +56,9 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased flex">
             <Toaster position="top-center" richColors />
+            <div className="fixed right-4 top-4 z-[60]">
+                <LanguageSwitcher />
+            </div>
 
             {/* Sidebar */}
             <aside className="w-64 shrink-0 flex flex-col border-r border-slate-200 bg-white h-screen sticky top-0">
@@ -91,13 +69,13 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
                     </div>
                     <div>
                         <p className="font-black text-slate-900 text-sm leading-none">Takeer</p>
-                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-widest mt-0.5">Admin Panel</p>
+                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-widest mt-0.5">{copy('Admin Panel', 'Paneli ya msimamizi')}</p>
                     </div>
                 </div>
 
                 {/* Nav */}
                 <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-                    {adminNav.map((item) => {
+                    {localizedAdminNav.map((item) => {
                         const Icon = item.icon;
                         const isActive = current === item.href;
                         const className = cn(
@@ -144,7 +122,7 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
                         href="/"
                         className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all"
                     >
-                        <ChevronLeft className="h-4 w-4" /> Back to App
+                        <ChevronLeft className="h-4 w-4" /> {t('admin.backToApp')}
                     </Link>
                 </div>
             </aside>
@@ -156,7 +134,7 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
                         <h1 className="text-sm font-semibold text-slate-700">{title}</h1>
                         <Link
                             href="/admin/attention"
-                            aria-label="Open admin attention center"
+                            aria-label={t('admin.openAttention')}
                             className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
                         >
                             <Bell className="h-4 w-4" />

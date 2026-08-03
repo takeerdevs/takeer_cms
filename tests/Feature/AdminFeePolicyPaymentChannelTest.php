@@ -83,8 +83,8 @@ class AdminFeePolicyPaymentChannelTest extends TestCase
     private function payload(array $overrides = []): array
     {
         return array_merge([
-            'name' => 'Selcom payout markup',
-            'category' => 'withdrawal',
+            'name' => 'Selcom provider channel fee',
+            'category' => 'sale',
             'scope' => 'payment_channel',
             'payment_channel' => 'tz_selcom_payout_mobile_money_tzs',
             'fee_type' => 'fixed',

@@ -5,6 +5,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import AppLayout from '@/Layouts/AppLayout';
 import { enabledFreightModes, freightEstimateLabel, freightModeLabel, freightPriceLabel } from '@/Components/FreightRouteCard';
+import { useLocale } from '@/lib/i18n';
 
 const templateFields = (template = '', fallbackFields = []) => {
     const matches = [...String(template || '').matchAll(/\{\{\s*([a-zA-Z0-9_ -]+)\s*:\s*([^}]+)\s*\}\}/g)];
@@ -85,6 +86,7 @@ const paymentTermText = (detail = {}) => {
 
 export default function RouteDetail({ routeData }) {
     const { auth } = usePage().props;
+    const { copy } = useLocale();
     const [selectedOriginId, setSelectedOriginId] = useState('');
     const [selectedMode, setSelectedMode] = useState('');
     const [inputs, setInputs] = useState({});
@@ -121,19 +123,19 @@ export default function RouteDetail({ routeData }) {
     const copyAddress = async () => {
         try {
             await navigator.clipboard.writeText(filledAddress);
-            toast.success('Address copied.');
+            toast.success(copy('Address copied.', 'Anwani imenakiliwa.'));
         } catch {
-            toast.error('Could not copy address.');
+            toast.error(copy('Could not copy address.', 'Imeshindikana kunakili anwani.'));
         }
     };
 
     const importAddress = async () => {
         if (!auth?.user) {
-            toast.error('Log in first to import this forwarding address.');
+            toast.error(copy('Log in first to import this forwarding address.', 'Ingia kwanza ku-import anwani hii ya forwarder.'));
             return;
         }
         if (!canImport) {
-            toast.error('Fill all required fields first.');
+            toast.error(copy('Fill all required fields first.', 'Jaza sehemu zote zinazohitajika kwanza.'));
             return;
         }
 
@@ -159,9 +161,9 @@ export default function RouteDetail({ routeData }) {
                 state_id: selectedOrigin?.state_id || undefined,
                 city_id: selectedOrigin?.city_id || undefined,
             });
-            toast.success('Forwarder address imported.');
+            toast.success(copy('Forwarder address imported.', 'Anwani ya forwarder imeingizwa.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not import this address.');
+            toast.error(error.response?.data?.message || copy('Could not import this address.', 'Imeshindikana kuingiza anwani hii.'));
         } finally {
             setSaving(false);
         }
@@ -169,7 +171,7 @@ export default function RouteDetail({ routeData }) {
 
     return (
         <AppLayout hideTabBar>
-            <Head title={`${routeData.label} | Freight Route`} />
+            <Head title={`${routeData.label} | ${copy('Freight route', 'Route ya freight')}`} />
             <main className="mx-auto max-w-6xl px-4 pb-24 pt-4 sm:px-6">
                 <div className="mb-5 flex items-center justify-between gap-3">
                     <button
@@ -199,27 +201,27 @@ export default function RouteDetail({ routeData }) {
                                     </p>
                                     <div className="mt-6 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-6">
                                         <div className="min-w-0">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-white/45">From</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-white/45">{copy('From', 'Kutoka')}</p>
                                             <h1 className="mt-2 truncate text-3xl font-black leading-none sm:text-4xl">{originName}</h1>
                                         </div>
                                         <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/10 sm:h-14 sm:w-14">
                                             <Route className="h-6 w-6 text-sky-200" />
                                         </div>
                                         <div className="min-w-0 text-right">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-white/45">To</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-white/45">{copy('To', 'Kwenda')}</p>
                                             <h1 className="mt-2 truncate text-3xl font-black leading-none sm:text-4xl">{destinationName}</h1>
                                         </div>
                                     </div>
                                 </div>
                                 <div className="hidden shrink-0 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-right sm:block">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-white/45">Offices</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-white/45">{copy('Offices', 'Ofisi')}</p>
                                     <p className="text-2xl font-black">{origins.length} &rarr; {destinations.length}</p>
                                 </div>
                             </div>
                         </div>
 
                         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                            <h2 className="text-xl font-black text-slate-950">Route services</h2>
+                            <h2 className="text-xl font-black text-slate-950">{copy('Route services', 'Huduma za route')}</h2>
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
                                 {modes.map((mode) => {
                                     const detail = details?.[mode] || {};
@@ -245,8 +247,8 @@ export default function RouteDetail({ routeData }) {
                                             )}
                                             {(detail.allowed_items || detail.disallowed_items || detail.notes) && (
                                                 <div className="mt-4 space-y-2 text-sm font-semibold leading-6 text-slate-600">
-                                                    {detail.allowed_items && <p><span className="font-black text-emerald-700">Allowed:</span> {detail.allowed_items}</p>}
-                                                    {detail.disallowed_items && <p><span className="font-black text-rose-700">Not allowed:</span> {detail.disallowed_items}</p>}
+                                                    {detail.allowed_items && <p><span className="font-black text-emerald-700">{copy('Allowed:', 'Inaruhusiwa:')}</span> {detail.allowed_items}</p>}
+                                                    {detail.disallowed_items && <p><span className="font-black text-rose-700">{copy('Not allowed:', 'Hairuhusiwi:')}</span> {detail.disallowed_items}</p>}
                                                     {detail.notes && <p>{detail.notes}</p>}
                                                 </div>
                                             )}
@@ -259,7 +261,7 @@ export default function RouteDetail({ routeData }) {
                         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div className="flex items-center gap-2">
                                 <CalendarClock className="h-5 w-5 text-brand-600" />
-                                <h2 className="text-xl font-black text-slate-950">Schedules</h2>
+                                <h2 className="text-xl font-black text-slate-950">{copy('Schedules', 'Ratiba')}</h2>
                             </div>
                             <div className="mt-4 grid gap-3">
                                 {(routeData.schedules || []).length > 0 ? routeData.schedules.map((schedule) => (
@@ -279,7 +281,7 @@ export default function RouteDetail({ routeData }) {
                                         </p>
                                     </div>
                                 )) : (
-                                    <p className="rounded-2xl border border-dashed border-slate-200 p-5 text-sm font-bold text-slate-500">No schedules posted for this route yet.</p>
+                                    <p className="rounded-2xl border border-dashed border-slate-200 p-5 text-sm font-bold text-slate-500">{copy('No schedules posted for this route yet.', 'Hakuna ratiba iliyowekwa kwa route hii bado.')}</p>
                                 )}
                             </div>
                         </div>
@@ -293,7 +295,7 @@ export default function RouteDetail({ routeData }) {
                                 </div>
                                 <div>
                                     <p className="text-lg font-black text-slate-950">{routeData.forwarder?.name || 'Forwarder'}</p>
-                                    <p className="text-sm font-bold text-slate-500">Verified freight provider</p>
+                                    <p className="text-sm font-bold text-slate-500">{copy('Verified freight provider', 'Mtoa freight aliyethibitishwa')}</p>
                                 </div>
                             </div>
                             {routeData.forwarder?.description && (
@@ -308,8 +310,8 @@ export default function RouteDetail({ routeData }) {
                         </div>
 
                         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                            <h2 className="text-xl font-black text-slate-950">Import shipping address</h2>
-                            <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">Choose the origin warehouse and fill the fields required by this forwarder.</p>
+                            <h2 className="text-xl font-black text-slate-950">{copy('Import shipping address', 'Ingiza anwani ya usafirishaji')}</h2>
+                            <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">{copy('Choose the origin warehouse and fill the fields required by this forwarder.', 'Chagua ghala la kuanzia na jaza sehemu zinazohitajika na forwarder huyu.')}</p>
 
                             <div className="mt-4 space-y-2">
                                 {origins.map((origin) => (
@@ -360,7 +362,7 @@ export default function RouteDetail({ routeData }) {
 
                             <div className="mt-4 grid grid-cols-2 gap-2">
                                 <button type="button" onClick={copyAddress} className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-xs font-black uppercase tracking-widest text-slate-700">
-                                    <Copy className="h-4 w-4" /> Copy
+                                    <Copy className="h-4 w-4" /> {copy('Copy', 'Nakili')}
                                 </button>
                                 <button type="button" onClick={importAddress} disabled={saving || !selectedOrigin} className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 text-xs font-black uppercase tracking-widest text-white disabled:bg-slate-300">
                                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
@@ -370,7 +372,7 @@ export default function RouteDetail({ routeData }) {
                         </div>
 
                         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                            <h2 className="text-xl font-black text-slate-950">Pickup offices</h2>
+                            <h2 className="text-xl font-black text-slate-950">{copy('Pickup offices', 'Ofisi za pickup')}</h2>
                             <div className="mt-4 space-y-2">
                                 {destinations.map((destination) => (
                                     <div key={destination.id} className="rounded-2xl bg-sky-50 px-4 py-3 text-sky-950">

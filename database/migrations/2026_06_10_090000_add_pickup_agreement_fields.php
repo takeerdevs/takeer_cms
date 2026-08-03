@@ -23,7 +23,7 @@ return new class extends Migration {
 
         Schema::table('orders', function (Blueprint $table) {
             $table->foreignId('pickup_location_id')->nullable()->after('user_address_id')->constrained('merchant_locations')->nullOnDelete();
-            $table->timestamp('pickup_ready_at')->nullable()->after('paid_out_at');
+            $table->timestamp('pickup_ready_at')->nullable()->after('cancellation_reason');
             $table->timestamp('pickup_deadline_at')->nullable()->after('pickup_ready_at');
             $table->timestamp('pickup_grace_ends_at')->nullable()->after('pickup_deadline_at');
             $table->timestamp('pickup_completed_at')->nullable()->after('pickup_grace_ends_at');

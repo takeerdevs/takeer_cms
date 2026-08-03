@@ -17,15 +17,17 @@ import {
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Button } from '@/Components/ui/Button';
+import { useLocale } from '@/lib/i18n';
 
 export default function CourseBundleTemplate({ bundle }) {
+    const { t, copy } = useLocale();
     const merchant = bundle?.merchant || {};
     const modules = useMemo(() => {
         if (Array.isArray(bundle?.course_modules) && bundle.course_modules.length > 0) return bundle.course_modules;
 
         const grouped = [];
         (bundle?.items || []).forEach((item, index) => {
-            const title = item.section_title || 'Course lessons';
+            const title = item.section_title || copy('Course lessons', 'Masomo ya kozi');
             let module = grouped.find((entry) => entry.title === title);
             if (!module) {
                 module = { title, lessons: [] };
@@ -33,7 +35,7 @@ export default function CourseBundleTemplate({ bundle }) {
             }
             module.lessons.push({
                 id: `${item.item_type}-${item.item_id}-${index}`,
-                title: item.lesson_title || item.title || `Lesson ${index + 1}`,
+                title: item.lesson_title || item.title || `${copy('Lesson', 'Somo')} ${index + 1}`,
                 summary: item.lesson_summary,
                 duration_minutes: item.lesson_duration_minutes,
                 unlock_after_days: item.unlock_after_days,
@@ -43,7 +45,7 @@ export default function CourseBundleTemplate({ bundle }) {
         });
 
         return grouped;
-    }, [bundle?.course_modules, bundle?.items]);
+    }, [bundle?.course_modules, bundle?.items, copy]);
     const cohorts = Array.isArray(bundle?.cohorts) ? bundle.cohorts : [];
     const outcomes = Array.isArray(bundle?.course_outcomes) ? bundle.course_outcomes : [];
     const requirements = Array.isArray(bundle?.course_requirements) ? bundle.course_requirements : [];
@@ -51,12 +53,12 @@ export default function CourseBundleTemplate({ bundle }) {
     const totalMinutes = modules.reduce((total, module) => (
         total + (module.lessons || []).reduce((sum, lesson) => sum + Number(lesson.duration_minutes || 0), 0)
     ), 0);
-    const totalHoursLabel = totalMinutes > 0 ? `${Math.max(1, Math.round(totalMinutes / 60))} hrs` : 'Self paced';
+    const totalHoursLabel = totalMinutes > 0 ? `${Math.max(1, Math.round(totalMinutes / 60))} ${copy('hrs', 'saa')}` : copy('Self paced', 'Kujifunza kwa kasi yako');
     const formatLabel = {
-        self_paced: 'Self-paced course',
-        cohort: 'Cohort course',
-        live: 'Live course',
-    }[bundle?.course_format || 'self_paced'] || 'Course';
+        self_paced: copy('Self-paced course', 'Kozi ya kujifunza kwa kasi yako'),
+        cohort: copy('Cohort course', 'Kozi ya kundi'),
+        live: copy('Live course', 'Kozi ya moja kwa moja'),
+    }[bundle?.course_format || 'self_paced'] || copy('Course', 'Kozi');
     const coverImage = bundle?.course_cover_image_url;
     const checkoutItem = {
         ...bundle,
@@ -85,7 +87,7 @@ export default function CourseBundleTemplate({ bundle }) {
                             type="button"
                             onClick={() => window.history.back()}
                             className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 backdrop-blur transition hover:bg-black/50"
-                            aria-label="Go back"
+                            aria-label={t('template.goBack')}
                         >
                             <ArrowLeft className="h-5 w-5" />
                         </button>
@@ -99,14 +101,14 @@ export default function CourseBundleTemplate({ bundle }) {
                                 {cohorts.length > 0 && (
                                     <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-black uppercase tracking-wide backdrop-blur">
                                         <Users className="h-3.5 w-3.5" />
-                                        {cohorts.length} cohort{cohorts.length === 1 ? '' : 's'}
+                                        {cohorts.length} {copy(cohorts.length === 1 ? 'cohort' : 'cohorts', 'makundi')}
                                     </span>
                                 )}
                             </div>
                             <h1 className="text-4xl font-black leading-none tracking-tight md:text-6xl">{bundle.title}</h1>
-                            <p className="mt-4 max-w-3xl text-base leading-7 text-white/85">{bundle.description || 'Structured learning program with lessons, materials, and guided progress.'}</p>
+                            <p className="mt-4 max-w-3xl text-base leading-7 text-white/85">{bundle.description || t('template.confirmLearning')}</p>
                             <div className="mt-5 flex flex-wrap gap-4 text-sm font-bold text-white/90">
-                                <span className="inline-flex items-center gap-1.5"><BookOpenText className="h-4 w-4" />{lessonCount || 0} lessons</span>
+                                <span className="inline-flex items-center gap-1.5"><BookOpenText className="h-4 w-4" />{lessonCount || 0} {t('templateExtra.lessons')}</span>
                                 <span className="inline-flex items-center gap-1.5"><Clock3 className="h-4 w-4" />{totalHoursLabel}</span>
                                 {merchant?.display_name && <span className="inline-flex items-center gap-1.5"><Store className="h-4 w-4" />{merchant.display_name}</span>}
                             </div>
@@ -118,7 +120,7 @@ export default function CourseBundleTemplate({ bundle }) {
                     <div className="space-y-5">
                         {outcomes.length > 0 && (
                             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                                <h2 className="text-lg font-black">What students will learn</h2>
+                                <h2 className="text-lg font-black">{t('template.whatStudentsLearn')}</h2>
                                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                                     {outcomes.map((outcome, index) => (
                                         <div key={`${outcome}-${index}`} className="flex gap-2 rounded-xl bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-950">
@@ -132,16 +134,16 @@ export default function CourseBundleTemplate({ bundle }) {
 
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
                             <div className="flex items-center justify-between gap-3">
-                                <h2 className="text-lg font-black">Curriculum</h2>
-                                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{modules.length} module{modules.length === 1 ? '' : 's'}</span>
+                                <h2 className="text-lg font-black">{t('template.curriculum')}</h2>
+                                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{modules.length} {t('templateExtra.modules')}</span>
                             </div>
                             <div className="mt-5 space-y-3">
                                 {modules.length === 0 ? (
-                                    <div className="rounded-2xl border border-dashed p-6 text-center text-sm font-semibold text-slate-500">Lessons will appear here.</div>
+                                    <div className="rounded-2xl border border-dashed p-6 text-center text-sm font-semibold text-slate-500">{t('template.lessonsAppear')}</div>
                                 ) : modules.map((module, moduleIndex) => (
                                     <div key={module.id || module.title || moduleIndex} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                                        <p className="text-xs font-black uppercase tracking-wide text-slate-500">Module {moduleIndex + 1}</p>
-                                        <h3 className="mt-1 font-black">{module.title || `Module ${moduleIndex + 1}`}</h3>
+                                        <p className="text-xs font-black uppercase tracking-wide text-slate-500">{t('templateExtra.module')} {moduleIndex + 1}</p>
+                                        <h3 className="mt-1 font-black">{module.title || `${copy('Module', 'Sehemu')} ${moduleIndex + 1}`}</h3>
                                         <div className="mt-3 divide-y divide-slate-200">
                                             {(module.lessons || []).map((lesson, lessonIndex) => (
                                                 <div key={lesson.id || `${moduleIndex}-${lessonIndex}`} className="flex gap-3 py-3 first:pt-0 last:pb-0">
@@ -150,14 +152,14 @@ export default function CourseBundleTemplate({ bundle }) {
                                                     </div>
                                                     <div className="min-w-0 flex-1">
                                                         <div className="flex flex-wrap items-center gap-2">
-                                                            <p className="font-black">{lesson.title || `Lesson ${lessonIndex + 1}`}</p>
-                                                            {lesson.is_preview && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700">Preview</span>}
+                                                            <p className="font-black">{lesson.title || `${copy('Lesson', 'Somo')} ${lessonIndex + 1}`}</p>
+                                                            {lesson.is_preview && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700">{t('template.preview')}</span>}
                                                         </div>
                                                         {lesson.summary && <p className="mt-1 text-sm leading-6 text-slate-600">{lesson.summary}</p>}
                                                         <div className="mt-1 flex flex-wrap gap-3 text-[11px] font-bold text-slate-500">
-                                                            {lesson.duration_minutes && <span>{lesson.duration_minutes} min</span>}
-                                                            {Number(lesson.unlock_after_days || 0) > 0 && <span>Unlocks after {lesson.unlock_after_days} day(s)</span>}
-                                                            {lesson.live_session?.starts_at && <span>Live {new Date(lesson.live_session.starts_at).toLocaleString()}</span>}
+                                                            {lesson.duration_minutes && <span>{lesson.duration_minutes} {t('template.minute')}</span>}
+                                                            {Number(lesson.unlock_after_days || 0) > 0 && <span>{t('publicCommerce.unlockAfter', { days: lesson.unlock_after_days })}</span>}
+                                                            {lesson.live_session?.starts_at && <span>{copy('Live', 'Moja kwa moja')} {new Date(lesson.live_session.starts_at).toLocaleString()}</span>}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -172,14 +174,14 @@ export default function CourseBundleTemplate({ bundle }) {
                             <section className="grid gap-4 md:grid-cols-2">
                                 {cohorts.length > 0 && (
                                     <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                                        <h2 className="text-lg font-black">Upcoming cohorts</h2>
+                                        <h2 className="text-lg font-black">{t('template.upcomingCohorts')}</h2>
                                         <div className="mt-4 space-y-3">
                                             {cohorts.map((cohort) => (
                                                 <div key={cohort.id || cohort.name} className="rounded-xl bg-indigo-50 p-3 text-indigo-950">
-                                                    <p className="font-black">{cohort.name || 'Cohort'}</p>
+                                                    <p className="font-black">{cohort.name || copy('Cohort', 'Kundi')}</p>
                                                     <div className="mt-1 flex flex-wrap gap-2 text-xs font-bold text-indigo-800">
-                                                        {cohort.starts_at && <span>Starts {new Date(cohort.starts_at).toLocaleDateString()}</span>}
-                                                        {cohort.capacity && <span>{cohort.capacity} seats</span>}
+                                                        {cohort.starts_at && <span>{t('template.starts')} {new Date(cohort.starts_at).toLocaleDateString()}</span>}
+                                                        {cohort.capacity && <span>{cohort.capacity} {t('template.seats')}</span>}
                                                         {cohort.status && <span>{cohort.status}</span>}
                                                     </div>
                                                 </div>
@@ -189,7 +191,7 @@ export default function CourseBundleTemplate({ bundle }) {
                                 )}
                                 {requirements.length > 0 && (
                                     <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                                        <h2 className="text-lg font-black">Requirements</h2>
+                                        <h2 className="text-lg font-black">{t('template.requirements')}</h2>
                                         <div className="mt-4 space-y-2">
                                             {requirements.map((requirement, index) => (
                                                 <div key={`${requirement}-${index}`} className="flex gap-2 text-sm font-semibold text-slate-700">
@@ -210,8 +212,8 @@ export default function CourseBundleTemplate({ bundle }) {
                                         <Store className="h-5 w-5 text-slate-600" />
                                     </div>
                                     <div>
-                                        <p className="font-black">{merchant.display_name || merchant.name || 'Training provider'}</p>
-                                        <p className="text-sm text-slate-500">View more courses and offers</p>
+                                        <p className="font-black">{merchant.display_name || merchant.name || copy('Training provider', 'Mtoa mafunzo')}</p>
+                                        <p className="text-sm text-slate-500">{t('template.viewMoreCourses')}</p>
                                     </div>
                                 </div>
                                 <ChevronRight className="h-5 w-5 text-slate-400" />
@@ -221,16 +223,16 @@ export default function CourseBundleTemplate({ bundle }) {
 
                     <aside className="space-y-4 md:sticky md:top-5 md:self-start">
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Enrollment price</p>
+                            <p className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.enrollmentPrice')}</p>
                             <p className="mt-1 text-3xl font-black text-brand-700">TZS {Number(bundle?.price || 0).toLocaleString()}</p>
                             <div className="mt-5 grid grid-cols-3 gap-2 text-center">
-                                <MiniStat label="Lessons" value={lessonCount || 0} />
-                                <MiniStat label="Modules" value={modules.length || 0} />
-                                <MiniStat label="Cohorts" value={cohorts.length || 0} />
+                                <MiniStat label={t('templateExtra.lessons')} value={lessonCount || 0} />
+                                <MiniStat label={t('templateExtra.modules')} value={modules.length || 0} />
+                                <MiniStat label={t('templateExtra.cohorts')} value={cohorts.length || 0} />
                             </div>
                             <Button className="mt-5 h-12 w-full rounded-xl text-base font-black" onClick={openCheckout}>
                                 <Zap className="mr-2 h-5 w-5" />
-                                Enroll now
+                                {t('template.enrollNow')}
                             </Button>
                         </section>
 
@@ -238,8 +240,8 @@ export default function CourseBundleTemplate({ bundle }) {
                             <div className="flex gap-3">
                                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />
                                 <div>
-                                    <p className="font-black">Learning access</p>
-                                    <p className="mt-1 text-sm text-emerald-900/75">After payment, lessons and course materials are managed from the buyer learning area.</p>
+                                    <p className="font-black">{t('template.learningAccess')}</p>
+                                    <p className="mt-1 text-sm text-emerald-900/75">{t('template.confirmLearning')}</p>
                                 </div>
                             </div>
                         </section>
@@ -249,12 +251,12 @@ export default function CourseBundleTemplate({ bundle }) {
                 <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:hidden">
                     <div className="mx-auto flex max-w-5xl items-center gap-3">
                         <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold uppercase text-slate-500">Enrollment price</p>
+                            <p className="text-xs font-bold uppercase text-slate-500">{t('template.enrollmentPrice')}</p>
                             <p className="truncate text-lg font-black text-brand-700">TZS {Number(bundle?.price || 0).toLocaleString()}</p>
                         </div>
                         <Button className="h-12 rounded-xl font-black" onClick={openCheckout}>
                             <CalendarClock className="mr-2 h-4 w-4" />
-                            Enroll
+                            {t('template.enroll')}
                         </Button>
                     </div>
                 </div>

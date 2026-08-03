@@ -10,7 +10,7 @@ return new class extends Migration {
         Schema::create('fee_policies', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->enum('category', ['sale', 'withdrawal', 'subscription', 'storage']);
+            $table->enum('category', ['sale', 'subscription', 'storage']);
             $table->enum('scope', ['global', 'country', 'currency', 'merchant', 'payment_channel'])->default('global');
             $table->string('country_code', 2)->nullable();
             $table->string('currency_code', 3)->nullable();

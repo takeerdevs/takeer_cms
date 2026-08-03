@@ -6,7 +6,9 @@ use Illuminate\Support\Facades\DB;
 return new class extends Migration {
     public function up(): void
     {
-        DB::statement('ALTER TABLE merchant_locations ALTER COLUMN pickup_grace_hours SET DEFAULT 0');
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            DB::statement('ALTER TABLE merchant_locations ALTER COLUMN pickup_grace_hours SET DEFAULT 0');
+        }
 
         DB::table('merchant_locations')->update([
             'pickup_grace_hours' => 0,
@@ -15,6 +17,8 @@ return new class extends Migration {
 
     public function down(): void
     {
-        DB::statement('ALTER TABLE merchant_locations ALTER COLUMN pickup_grace_hours SET DEFAULT 12');
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            DB::statement('ALTER TABLE merchant_locations ALTER COLUMN pickup_grace_hours SET DEFAULT 12');
+        }
     }
 };

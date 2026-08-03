@@ -75,7 +75,9 @@ class DetectUserCountry
 
                     // Set default language and currency based on country
                     if (!$request->session()->has('user_session_language')) {
-                        $defaultLanguage = $countrydata->default_language ?? 'en';
+                        $defaultLanguage = strtoupper((string) $countrydata->iso_alpha2) === 'TZ'
+                            ? 'sw'
+                            : ($countrydata->default_language ?? 'en');
                         $request->session()->put('user_session_language', $defaultLanguage);
                     }
                     if (!$request->session()->has('user_session_currency')) {
@@ -129,4 +131,3 @@ class DetectUserCountry
         return $request->ip();
     }
 }
-

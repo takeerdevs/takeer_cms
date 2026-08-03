@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { businessToolLabel } from '@/lib/businessToolCopy';
+import { useLocale } from '@/lib/i18n';
 
 import {
     Dialog as CreateDialog,
@@ -41,6 +42,7 @@ function orderIconFromKey(key) {
 }
 
 function RecentOrderThumb({ order }) {
+    const { copy } = useLocale();
     const [imageFailed, setImageFailed] = useState(false);
     const imageUrl = order.image_url && !imageFailed ? order.image_url : null;
     const Icon = orderIconFromKey(order.display_icon);
@@ -53,7 +55,7 @@ function RecentOrderThumb({ order }) {
             {imageUrl ? (
                 <img
                     src={imageUrl}
-                    alt={order.display_title || 'Order item'}
+                    alt={order.display_title || copy('Order item', 'Bidhaa ya oda')}
                     onError={() => setImageFailed(true)}
                     className="h-full w-full object-cover"
                 />
@@ -83,6 +85,7 @@ export default function Profile({
     hasVerifiedPersonalProfile = false
 }) {
     const { auth } = usePage().props;
+    const { t, copy } = useLocale();
     const merchants = auth?.user?.merchant_profiles ?? [];
 
     const [isSecurityOpen, setIsSecurityOpen] = useState(false);
@@ -113,24 +116,24 @@ export default function Profile({
         return (item.modules || []).some(hasModule) || (item.modes || []).some(hasMode);
     };
     const commerceHubItems = [
-        { key: 'products', title: 'Bidhaa za Kushikika', count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products`, permission: 'products.view', modules: ['products'], modes: ['physical_products'] },
-        { key: 'digital', title: businessToolLabel('digital_products'), count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view', modules: ['digital_products'], modes: ['digital_products'] },
-        { key: 'services', title: 'Huduma / Booking', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services`, permission: 'services.view', modules: ['services'], modes: ['services_bookings'] },
-        { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts`, permission: 'posts.view', modules: ['marketing'], modes: [] },
-        { key: 'offerings', title: 'Makundi ya Huduma', count: commerceHubSummary.offerings ?? 0, icon: Layers, href: `/merchant/${merchantSlug}/offering-groups`, permission: 'services.view', modules: ['services', 'menu', 'courses', 'tour_departures'], modes: ['services_bookings', 'food_menu', 'courses_learning'] },
-        { key: 'bundles', title: 'Kozi & Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view', modules: [], modes: [] },
-        { key: 'subscriptions', title: 'Subscriptions', count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permission: 'subscriptions.view', modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
+        { key: 'products', title: t('profile.hub.physical'), count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products`, permission: 'products.view', modules: ['products'], modes: ['physical_products'] },
+        { key: 'digital', title: t('profile.hub.digital'), count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view', modules: ['digital_products'], modes: ['digital_products'] },
+        { key: 'services', title: t('profile.hub.services'), count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services`, permission: 'services.view', modules: ['services'], modes: ['services_bookings'] },
+        { key: 'posts', title: t('profile.hub.posts'), count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts`, permission: 'posts.view', modules: ['marketing'], modes: [] },
+        { key: 'offerings', title: t('profile.hub.offerings'), count: commerceHubSummary.offerings ?? 0, icon: Layers, href: `/merchant/${merchantSlug}/offering-groups`, permission: 'services.view', modules: ['services', 'menu', 'courses', 'tour_departures'], modes: ['services_bookings', 'food_menu', 'courses_learning'] },
+        { key: 'bundles', title: t('profile.hub.bundles'), count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view', modules: [], modes: [] },
+        { key: 'subscriptions', title: t('profile.hub.subscriptions'), count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permission: 'subscriptions.view', modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
     ].filter((item) => can(item.permission) && (!item.businessOnly || isBusinessMerchant) && shouldShowHubItem(item) && (item.requiresModules || []).every(hasModule));
     const forwarderStatus = forwarderApplication?.verification_status || null;
     const forwarderApproved = forwarderStatus === 'verified' || forwarderApplication?.is_verified;
     const forwarderApplied = Boolean(forwarderApplication);
     const freightHubItems = [
-        { key: 'forwarder_profile', title: 'Forwarder Profile', icon: Truck, href: `/merchant/${merchantSlug}/forwarders/setup`, description: 'Manage freight business profile.', permission: 'services.view' },
-        { key: 'locations', title: 'Locations', icon: MapPin, href: `/merchant/${merchantSlug}/forwarders/locations`, description: 'Warehouses and collection offices.', permission: 'services.create' },
-        { key: 'routes', title: 'Routes', icon: Globe, href: `/merchant/${merchantSlug}/forwarders/routes`, description: 'Origin to destination routes.', permission: 'services.create' },
-        { key: 'schedules', title: 'Schedules', icon: CalendarClock, href: `/merchant/${merchantSlug}/forwarders/schedules`, description: 'Route shipping schedules.', permission: 'services.create' },
-        { key: 'shipments', title: 'Shipments', icon: Ship, href: `/merchant/${merchantSlug}/forwarders/shipments`, description: 'Incoming customer cargo requests.', permission: 'services.view' },
-        { key: 'updates', title: 'Updates', icon: Megaphone, href: `/merchant/${merchantSlug}/posts?compose=1&source=forwarder_update`, description: 'Post logistics announcements.', permission: 'posts.create' },
+        { key: 'forwarder_profile', title: t('profile.freight.profile'), icon: Truck, href: `/merchant/${merchantSlug}/forwarders/setup`, description: t('profile.freight.profileDescription'), permission: 'services.view' },
+        { key: 'locations', title: t('profile.freight.locations'), icon: MapPin, href: `/merchant/${merchantSlug}/forwarders/locations`, description: t('profile.freight.locationsDescription'), permission: 'services.create' },
+        { key: 'routes', title: t('profile.freight.routes'), icon: Globe, href: `/merchant/${merchantSlug}/forwarders/routes`, description: t('profile.freight.routesDescription'), permission: 'services.create' },
+        { key: 'schedules', title: t('profile.freight.schedules'), icon: CalendarClock, href: `/merchant/${merchantSlug}/forwarders/schedules`, description: t('profile.freight.schedulesDescription'), permission: 'services.create' },
+        { key: 'shipments', title: t('profile.freight.shipments'), icon: Ship, href: `/merchant/${merchantSlug}/forwarders/shipments`, description: t('profile.freight.shipmentsDescription'), permission: 'services.view' },
+        { key: 'updates', title: t('profile.freight.updates'), icon: Megaphone, href: `/merchant/${merchantSlug}/posts?compose=1&source=forwarder_update`, description: t('profile.freight.updatesDescription'), permission: 'posts.create' },
     ].filter((item) => can(item.permission));
     const canAddNew = can('products.create') || can('digital_products.create') || can('services.create');
 
@@ -181,7 +184,7 @@ export default function Profile({
             const firstError = err.response?.data?.errors
                 ? Object.values(err.response.data.errors).flat()[0]
                 : null;
-            toast.error(firstError || err.response?.data?.message || 'Imefeli kuongeza biashara.');
+            toast.error(firstError || err.response?.data?.message || t('profile.createBusinessFailed'));
         } finally {
             setCreatingBiz(false);
         }
@@ -189,13 +192,13 @@ export default function Profile({
 
     const statusBadge = (status) => {
         const map = {
-            awaiting_merchant_confirmation: { label: 'MPYA', cls: 'bg-amber-500/10 text-amber-600' },
-            escrow_locked: { label: 'ESCROW', cls: 'bg-brand-500/10 text-brand-700' },
-            shipped: { label: 'IN DELIVERY', cls: 'bg-sky-500/10 text-sky-700' },
-            resolved_merchant_paid: { label: 'IMEKAMILIKA', cls: 'bg-emerald-500/10 text-emerald-700' },
-            disputed: { label: 'MGOGORO', cls: 'bg-red-500/10 text-red-700' },
-            resolved_buyer_refunded: { label: 'REFUNDED', cls: 'bg-slate-500/10 text-slate-700' },
-            pending: { label: 'PENDING', cls: 'bg-slate-500/10 text-slate-700' },
+            pending_fulfillment: { label: t('profile.status.fulfillment'), cls: 'bg-amber-500/10 text-amber-600' },
+            release_eligible: { label: t('profile.status.readyForPsp'), cls: 'bg-brand-500/10 text-brand-700' },
+            payout_processing: { label: t('profile.status.pspPayout'), cls: 'bg-sky-500/10 text-sky-700' },
+            paid_out: { label: t('profile.status.completed'), cls: 'bg-emerald-500/10 text-emerald-700' },
+            disputed: { label: t('profile.status.disputed'), cls: 'bg-red-500/10 text-red-700' },
+            refunded: { label: t('profile.status.refunded'), cls: 'bg-slate-500/10 text-slate-700' },
+            pending: { label: t('profile.status.pending'), cls: 'bg-slate-500/10 text-slate-700' },
         };
         const s = map[status] ?? { label: status, cls: 'bg-muted text-muted-foreground' };
         return (
@@ -205,13 +208,13 @@ export default function Profile({
 
     const typeMeta = (kind) => {
         const map = {
-            physical_product: { label: 'Physical Product', icon: ShoppingBag, cls: 'bg-amber-500/10 text-amber-700' },
-            post_content: { label: 'Post Content', icon: BookOpenText, cls: 'bg-sky-500/10 text-sky-700' },
-            subscription_plan: { label: 'Membership', icon: Crown, cls: 'bg-violet-500/10 text-violet-700' },
-            digital_file: { label: 'Digital File', icon: DownloadCloud, cls: 'bg-indigo-500/10 text-indigo-700' },
-            service_booking: { label: 'Service/Booking', icon: CalendarClock, cls: 'bg-emerald-500/10 text-emerald-700' },
-            offering_group: { label: 'Offering Group', icon: Layers, cls: 'bg-teal-500/10 text-teal-700' },
-            physical_bundle: { label: 'Physical Bundle', icon: Boxes, cls: 'bg-amber-500/10 text-amber-700' },
+            physical_product: { label: t('profile.types.physical'), icon: ShoppingBag, cls: 'bg-amber-500/10 text-amber-700' },
+            post_content: { label: t('profile.types.post'), icon: BookOpenText, cls: 'bg-sky-500/10 text-sky-700' },
+            subscription_plan: { label: t('profile.types.membership'), icon: Crown, cls: 'bg-violet-500/10 text-violet-700' },
+            digital_file: { label: t('profile.types.digital'), icon: DownloadCloud, cls: 'bg-indigo-500/10 text-indigo-700' },
+            service_booking: { label: t('profile.types.service'), icon: CalendarClock, cls: 'bg-emerald-500/10 text-emerald-700' },
+            offering_group: { label: t('profile.types.offering'), icon: Layers, cls: 'bg-teal-500/10 text-teal-700' },
+            physical_bundle: { label: t('profile.types.physicalBundle'), icon: Boxes, cls: 'bg-amber-500/10 text-amber-700' },
         };
         return map[kind] || { label: 'Post Content', icon: BookOpenText, cls: 'bg-muted text-muted-foreground' };
     };
@@ -251,9 +254,9 @@ export default function Profile({
                 code: checkupCode.trim(),
             });
             setCheckupOrder(res.data.order);
-            toast.success('Oda imepatikana.');
+            toast.success(t('profile.orderFound'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Oda haikupatikana.');
+            toast.error(error.response?.data?.message || t('profile.orderNotFound'));
         } finally {
             setCheckupLoading(false);
         }
@@ -267,7 +270,7 @@ export default function Profile({
             const res = await axios.post(`/api/merchant/${merchantSlug}/orders/${checkupOrder.id}/verify-pickup`, {
                 pickup_pin: checkupPickupPin,
             });
-            toast.success(res.data.message || 'Pickup imethibitishwa.');
+            toast.success(res.data.message || t('profile.pickupConfirmed'));
             setCheckupPickupPin('');
             setCheckupOrder(prev => res.data.order ? {
                 ...prev,
@@ -275,7 +278,7 @@ export default function Profile({
                 can_verify_pickup: false,
             } : prev);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kuthibitisha pickup.');
+            toast.error(error.response?.data?.message || t('profile.pickupConfirmFailed'));
         } finally {
             setCheckupVerifying(false);
         }
@@ -343,10 +346,10 @@ export default function Profile({
             await axios.post(`/merchant/${merchantSlug}/kyc/api`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            toast.success('Ombi lako limepokelewa!');
+            toast.success(t('profile.verificationReceived'));
             router.reload();
         } catch (err) {
-            const msg = err.response?.data?.message || 'Kuna tatizo. Tafadhali jaribu tena.';
+            const msg = err.response?.data?.message || t('profile.genericError');
             toast.error(msg);
         } finally {
             setSubmitting(false);
@@ -355,7 +358,7 @@ export default function Profile({
 
     return (
         <AppLayout>
-            <Head title="Akaunti Yangu | Takeer" />
+            <Head title={`${t('profile.pageTitle')} | Takeer`} />
 
             <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24 space-y-6">
 
@@ -383,19 +386,19 @@ export default function Profile({
                     <CreateDialogContent className="max-w-md p-0 overflow-hidden border-none rounded-[2rem] bg-slate-50">
                         <div className="p-8 space-y-6">
                             <CreateDialogHeader className="space-y-2">
-                                <CreateDialogTitle className="text-2xl font-black text-slate-900 tracking-tight">Ongeza Biashara Mpya</CreateDialogTitle>
-                                <CreateDialogDescription className="text-slate-500 font-medium">Anzisha wasifu mpya wa biashara yako Takeer.</CreateDialogDescription>
+                                <CreateDialogTitle className="text-2xl font-black text-slate-900 tracking-tight">{t('profile.createBusiness')}</CreateDialogTitle>
+                                <CreateDialogDescription className="text-slate-500 font-medium">{t('profile.createBusinessDescription')}</CreateDialogDescription>
                             </CreateDialogHeader>
 
                             <form onSubmit={handleCreateBusiness} className="space-y-4">
                                 <div className="space-y-4">
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Aina ya Biashara</label>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{t('profile.businessType')}</label>
                                         <div className="grid grid-cols-1 gap-2">
                                             {[
-                                                { id: 'sole_proprietor', label: 'Sole Proprietor', desc: 'Verified Identity + TIN', icon: Store },
-                                                { id: 'business', label: 'Registered Business', desc: 'BRELA + License + TIN', icon: Building2 },
-                                                { id: 'ngo', label: 'NGO / Non-Profit', desc: 'Registration Doc', icon: Landmark }
+                                                { id: 'sole_proprietor', label: t('profile.soleProprietor'), desc: t('profile.soleProprietorDescription'), icon: Store },
+                                                { id: 'business', label: t('profile.registeredBusiness'), desc: t('profile.registeredBusinessDescription'), icon: Building2 },
+                                                { id: 'ngo', label: t('profile.ngo'), desc: t('profile.ngoDescription'), icon: Landmark }
                                             ].map((type) => (
                                                 <button
                                                     key={type.id}
@@ -427,9 +430,9 @@ export default function Profile({
                                     </div>
 
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Jina la Biashara</label>
-                                        <Input
-                                            placeholder="Mfano: Takeer Store"
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{t('profile.businessName')}</label>
+                                            <Input
+                                            placeholder={copy('Example: Takeer Store', 'Mfano: Takeer Store')}
                                             value={bizForm.display_name}
                                             onChange={e => setBizForm(prev => ({ ...prev, display_name: e.target.value }))}
                                             className="h-12 rounded-xl border-slate-200 font-bold bg-white"
@@ -438,11 +441,11 @@ export default function Profile({
                                     </div>
 
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Username (ID ya Biashara)</label>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{t('profile.businessUsername')}</label>
                                         <div className="relative">
                                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">@</span>
                                             <Input
-                                                placeholder="username"
+                                                placeholder={copy('username', 'jina la mtumiaji')}
                                                 value={bizForm.username}
                                                 onChange={e => setBizForm(prev => ({ ...prev, username: e.target.value.toLowerCase().replace(/\s+/g, '-') }))}
                                                 className="h-12 rounded-xl border-slate-200 font-bold pl-8 bg-white"
@@ -459,14 +462,14 @@ export default function Profile({
                                         onClick={() => setIsCreateShopModalOpen(false)}
                                         className="h-12 rounded-xl font-bold flex-1"
                                     >
-                                        Ghairi
+                                        {t('common.cancel')}
                                     </Button>
                                     <Button
                                         type="submit"
                                         disabled={creatingBiz}
                                         className="h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold flex-1 shadow-lg shadow-brand-600/20"
                                     >
-                                        {creatingBiz ? 'Inatengeneza...' : 'Tengeneza Biashara'}
+                                        {creatingBiz ? t('profile.creatingBusiness') : t('profile.createBusiness')}
                                     </Button>
                                 </CreateDialogFooter>
                             </form>
@@ -488,9 +491,9 @@ export default function Profile({
                                 <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
                                     <KeyRound className="h-6 w-6" />
                                 </div>
-                                <DialogTitle className="text-2xl font-black tracking-tight text-slate-900">Order Checkup</DialogTitle>
+                                <DialogTitle className="text-2xl font-black tracking-tight text-slate-900">{t('common.orderCheckup')}</DialogTitle>
                                 <DialogDescription className="text-sm font-medium text-slate-500">
-                                    Enter the order reference or pickup code first, then ask the customer for their 4-digit pickup PIN.
+                                    {t('common.orderCheckupDescription')}
                                 </DialogDescription>
                             </DialogHeader>
 
@@ -499,7 +502,7 @@ export default function Profile({
                                 <Input
                                     value={checkupCode}
                                     onChange={(event) => setCheckupCode(event.target.value.toUpperCase())}
-                                    placeholder="Order Ref au Pickup Code"
+                                    placeholder={t('common.orderRefOrPickupCode')}
                                     className="h-14 rounded-2xl border-brand-100 bg-brand-50/40 pl-11 pr-24 text-base font-black tracking-widest text-brand-900 focus:border-brand-300"
                                 />
                                 <Button
@@ -507,7 +510,7 @@ export default function Profile({
                                     disabled={checkupLoading || !checkupCode.trim()}
                                     className="absolute right-1.5 top-1/2 h-11 -translate-y-1/2 rounded-xl bg-brand-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-brand-700"
                                 >
-                                    {checkupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check'}
+                                    {checkupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.check')}
                                 </Button>
                             </form>
 
@@ -530,18 +533,18 @@ export default function Profile({
                                                     "rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest",
                                                     checkupOrder.can_verify_pickup ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
                                                 )}>
-                                                    {checkupOrder.can_verify_pickup ? 'Ready' : String(checkupOrder.payment_status || '').replaceAll('_', ' ')}
+                                                    {checkupOrder.can_verify_pickup ? t('common.ready') : String(checkupOrder.payment_status || '').replaceAll('_', ' ')}
                                                 </span>
                                             </div>
                                             <h4 className="line-clamp-2 text-sm font-black leading-snug text-slate-900">{checkupOrder.title}</h4>
                                             <p className="mt-1 text-xs font-bold text-slate-500">
-                                                {checkupOrder.customer_name || checkupOrder.customer_phone || 'Customer'} · {String(checkupOrder.delivery_type || 'order').replaceAll('_', ' ')}
+                                                {checkupOrder.customer_name || checkupOrder.customer_phone || t('common.customer')} · {String(checkupOrder.delivery_type || 'order').replaceAll('_', ' ')}
                                             </p>
                                         </div>
                                     </div>
 
                                     <div className="space-y-2 border-t border-slate-100 bg-slate-50/70 p-4">
-                                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Items in order</p>
+                                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">{t('common.itemsInOrder')}</p>
                                         {(checkupOrder.items || []).map((item) => (
                                             <div key={item.key || item.title} className="flex items-center gap-3 rounded-2xl bg-white p-2">
                                                 <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50 text-slate-400">
@@ -554,7 +557,7 @@ export default function Profile({
                                                 <div className="min-w-0 flex-1">
                                                     <p className="truncate text-xs font-black text-slate-900">{item.title}</p>
                                                     <p className="text-[10px] font-bold text-slate-500">
-                                                        Qty {Number(item.quantity || 1).toLocaleString()} · {formatMoney(item.line_total || 0)}
+                                                        {t('common.quantity')} {Number(item.quantity || 1).toLocaleString()} · {formatMoney(item.line_total || 0)}
                                                     </p>
                                                 </div>
                                             </div>
@@ -563,22 +566,22 @@ export default function Profile({
 
                                     <div className="grid grid-cols-3 gap-2 border-t border-slate-100 bg-slate-50/70 p-4">
                                         <div className="rounded-2xl bg-white px-3 py-2">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Total</p>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{t('common.total')}</p>
                                             <p className="mt-0.5 text-sm font-black text-slate-900">{formatMoney(checkupOrder.amount_total ?? checkupOrder.total_paid ?? 0)}</p>
                                         </div>
                                         <div className="rounded-2xl bg-emerald-50 px-3 py-2">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600">Paid</p>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600">{t('common.paid')}</p>
                                             <p className="mt-0.5 text-sm font-black text-emerald-800">{formatMoney(checkupOrder.amount_paid || 0)}</p>
                                         </div>
                                         <div className="rounded-2xl bg-amber-50 px-3 py-2">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-600">Left</p>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-600">{t('common.left')}</p>
                                             <p className="mt-0.5 text-sm font-black text-amber-800">{formatMoney(checkupOrder.amount_remaining || 0)}</p>
                                         </div>
                                     </div>
 
                                     <div className="border-t border-slate-100 px-4 py-3">
                                         <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Pickup status</span>
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{t('common.pickupStatus')}</span>
                                             <span className="text-xs font-black text-slate-900">{String(checkupOrder.delivery_status || 'pending').replaceAll('_', ' ')}</span>
                                         </div>
                                     </div>
@@ -593,7 +596,7 @@ export default function Profile({
                                                         onChange={(event) => setCheckupPickupPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
                                                         inputMode="numeric"
                                                         autoComplete="one-time-code"
-                                                        placeholder="PIN ya mteja"
+                                                        placeholder={t('common.customerPin')}
                                                         className="h-14 rounded-2xl border-emerald-100 bg-emerald-50/45 pl-11 text-center text-xl font-black tracking-[0.35em] text-emerald-900 focus:border-emerald-300"
                                                     />
                                                 </div>
@@ -603,12 +606,12 @@ export default function Profile({
                                                     className="h-12 w-full rounded-2xl bg-emerald-600 text-[11px] font-black uppercase tracking-widest text-white hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400"
                                                 >
                                                     {checkupVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                                                    Confirm & Release Order
+                                                    {t('common.confirmReleaseOrder')}
                                                 </Button>
                                             </div>
                                         ) : (
                                             <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-[11px] font-bold leading-relaxed text-amber-800">
-                                                {checkupOrder.release_blocked_reason || 'This order cannot be released from this code right now.'}
+                                                {checkupOrder.release_blocked_reason || t('common.releaseBlocked')}
                                             </div>
                                         )}
                                         {checkupOrder.chat_url && (
@@ -640,7 +643,7 @@ export default function Profile({
                                         <CardHeader className="pb-2">
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
-                                                    <CardTitle className="text-sm font-black uppercase tracking-wider text-slate-900">Creator Monetization</CardTitle>
+                                                    <CardTitle className="text-sm font-black uppercase tracking-wider text-slate-900">{t('profileUi.creatorMonetization')}</CardTitle>
                                                     <p className="mt-1 text-xs font-semibold text-slate-500">{creatorMonetization.window}</p>
                                                 </div>
                                                 <Button
@@ -649,55 +652,47 @@ export default function Profile({
                                                     onClick={() => router.visit(`/m/${merchantSlug}`)}
                                                 >
                                                     <ExternalLink className="h-3.5 w-3.5 mr-1" />
-                                                    Storefront
+                                                    {t('profileUi.storefront')}
                                                 </Button>
                                             </div>
                                         </CardHeader>
                                         <CardContent className="min-w-0 space-y-4">
                                             <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                                                <MiniMetric label="Revenue" value={formatMoney(creatorMonetization.total_revenue || 0)} icon={BarChart3} tone="brand" />
-                                                <MiniMetric label="Orders" value={Number(creatorMonetization.total_orders || 0).toLocaleString()} icon={ShoppingBag} tone="amber" />
+                                                <MiniMetric label={t('profileUi.revenue')} value={formatMoney(creatorMonetization.total_revenue || 0)} icon={BarChart3} tone="brand" />
+                                                <MiniMetric label={t('profileUi.orders')} value={Number(creatorMonetization.total_orders || 0).toLocaleString()} icon={ShoppingBag} tone="amber" />
                                                 <MiniMetric
-                                                    label="Members"
+                                                    label={t('profileUi.members')}
                                                     value={Number(creatorMonetization.active_members || 0).toLocaleString()}
                                                     icon={User2}
                                                     tone="sky"
                                                     onClick={() => router.visit(`/merchant/${merchantSlug}/subscription-members`)}
-                                                    actionLabel="View subscribers"
+                                                    actionLabel={t('profileUi.viewSubscribers')}
                                                 />
                                             </div>
                                             <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                                <MiniMetric label="Released" value={formatMoney(creatorMonetization.released_revenue || 0)} icon={FileCheck} tone="emerald" compact />
-                                                <MiniMetric label="Pending" value={formatMoney(creatorMonetization.pending_revenue || 0)} icon={Clock} tone="orange" compact />
-                                                <MiniMetric label="Est. net" value={formatMoney(creatorMonetization.estimated_net || 0)} icon={Wallet} tone="slate" compact />
-                                                <MiniMetric label="Change" value={`${Number(creatorMonetization.revenue_change_percent || 0).toLocaleString()}%`} icon={TrendingUp} tone="blue" compact />
+                                                <MiniMetric label={t('profileUi.released')} value={formatMoney(creatorMonetization.released_revenue || 0)} icon={FileCheck} tone="emerald" compact />
+                                                <MiniMetric label={t('profileUi.pending')} value={formatMoney(creatorMonetization.pending_revenue || 0)} icon={Clock} tone="orange" compact />
+                                                <MiniMetric label={t('profileUi.estimatedNet')} value={formatMoney(creatorMonetization.estimated_net || 0)} icon={Wallet} tone="slate" compact />
+                                                <MiniMetric label={t('profileUi.change')} value={`${Number(creatorMonetization.revenue_change_percent || 0).toLocaleString()}%`} icon={TrendingUp} tone="blue" compact />
                                             </div>
                                             <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                                <PayoutMetric
-                                                    label="Available payout"
-                                                    value={formatMoney(creatorMonetization.payouts?.available_balance || 0)}
-                                                    icon={Wallet}
-                                                    tone="emerald"
-                                                    href={`/merchant/${merchantSlug}/wallet`}
-                                                    actionLabel="Withdraw"
-                                                    actionHref={`/merchant/${merchantSlug}/wallet?withdraw=1`}
-                                                />
-                                                <PayoutMetric label="Held / escrow" value={formatMoney(creatorMonetization.payouts?.held_balance || 0)} icon={ShieldCheck} tone="blue" />
-                                                <PayoutMetric label="Pending withdrawals" value={formatMoney(creatorMonetization.payouts?.pending_withdrawals || 0)} icon={Banknote} tone="amber" />
+                                                <PayoutMetric label={t('profileUi.providerPayoutCompleted')} value={formatMoney(creatorMonetization.payouts?.provider_payouts_completed || 0)} icon={FileCheck} tone="emerald" />
+                                                <PayoutMetric label={t('profileUi.awaitingProviderPayout')} value={formatMoney(creatorMonetization.payouts?.provider_payouts_pending || 0)} icon={ShieldCheck} tone="blue" />
+                                                <PayoutMetric label={t('profileUi.settlementOperations')} value={t('profileUi.providerControlled')} icon={Banknote} tone="amber" href={`/merchant/${merchantSlug}/overview`} actionLabel={t('profileUi.viewEarnings')} />
                                             </div>
                                             <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
                                                 <div className="min-w-0 rounded-2xl border border-white bg-white/80 p-3">
                                                     <div className="flex items-center justify-between gap-3 mb-3">
                                                         <div>
-                                                            <p className="text-xs font-black uppercase tracking-wider text-slate-900">Revenue by content type</p>
-                                                            <p className="text-[11px] font-semibold text-slate-500">Gross sales grouped by creator monetization format.</p>
+                                                            <p className="text-xs font-black uppercase tracking-wider text-slate-900">{t('profileUi.revenueByContent')}</p>
+                                                            <p className="text-[11px] font-semibold text-slate-500">{t('profileUi.revenueByContentDescription')}</p>
                                                         </div>
                                                         <Button
                                                             variant="outline"
                                                             className="rounded-xl text-[11px] font-black h-8"
-                                                            onClick={() => router.visit(`/merchant/${merchantSlug}/wallet/ledger`)}
+                                                            onClick={() => router.visit(`/merchant/${merchantSlug}/overview`)}
                                                         >
-                                                            Ledger
+                                                            {t('profileUi.ledger')}
                                                         </Button>
                                                     </div>
                                                     <div className="space-y-2">
@@ -714,15 +709,15 @@ export default function Profile({
                                                     </div>
                                                 </div>
                                                 <div className="min-w-0 rounded-2xl border border-white bg-white/80 p-3">
-                                                    <p className="text-xs font-black uppercase tracking-wider text-slate-900">Top earners</p>
-                                                    <p className="text-[11px] font-semibold text-slate-500 mb-3">Best selling offers in this window.</p>
+                                                    <p className="text-xs font-black uppercase tracking-wider text-slate-900">{t('profileUi.topEarners')}</p>
+                                                    <p className="text-[11px] font-semibold text-slate-500 mb-3">{t('profileUi.topEarnersDescription')}</p>
                                                     <div className="space-y-2">
                                                         {(creatorMonetization.top_items || []).length > 0 ? (
                                                             creatorMonetization.top_items.map((item, index) => (
                                                                 <TopCreatorItem key={`${item.kind}-${item.id || item.product_id || item.order_id || item.title}-${index}`} item={item} formatMoney={formatMoney} iconFromKey={orderIconFromKey} />
                                                             ))
                                                         ) : (
-                                                            <p className="text-sm font-semibold text-slate-500 py-4 text-center">No paid creator sales yet.</p>
+                                                            <p className="text-sm font-semibold text-slate-500 py-4 text-center">{t('profileUi.noPaidSales')}</p>
                                                         )}
                                                     </div>
                                                 </div>
@@ -734,31 +729,28 @@ export default function Profile({
                                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                                     <div className="xl:col-span-1 space-y-6">
                                         <div className="space-y-3">
-                                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Quick Actions</h3>
+                                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">{t('profileUi.quickActions')}</h3>
                                             <div className="grid grid-cols-2 gap-3">
                                                 {canAddNew && (
-                                                    <ActionBtn icon={Plus} label="Add New" href={`/merchant/${merchantSlug}/upload`} color="bg-brand-600" textColor="text-white" />
+                                                    <ActionBtn icon={Plus} label={t('profileUi.addNew')} href={`/merchant/${merchantSlug}/upload`} color="bg-brand-600" textColor="text-white" />
                                                 )}
                                                 {can('orders.verify_pickup') && (
-                                                    <ActionBtn icon={KeyRound} label="Order Checkup" onClick={() => setIsOrderCheckupOpen(true)} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
+                                                    <ActionBtn icon={KeyRound} label={t('common.orderCheckup')} onClick={() => setIsOrderCheckupOpen(true)} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
                                                 )}
                                                 {retailEligible && (can('retail.dashboard') || can('retail.pos')) && (
-                                                    <ActionBtn icon={Store} label="Retail" href={`/merchant/${merchantSlug}/retail/${can('retail.dashboard') ? 'dashboard' : 'pos'}`} color="bg-brand-50" textColor="text-brand-700" borderColor="border-brand-100" />
+                                                    <ActionBtn icon={Store} label={t('profileUi.retail')} href={`/merchant/${merchantSlug}/retail/${can('retail.dashboard') ? 'dashboard' : 'pos'}`} color="bg-brand-50" textColor="text-brand-700" borderColor="border-brand-100" />
                                                 )}
                                                 {can('settings.update') && (
-                                                    <ActionBtn icon={HardDrive} label="Storage Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/storage`} color="bg-sky-50" textColor="text-sky-700" borderColor="border-sky-100" />
+                                                    <ActionBtn icon={HardDrive} label={t('profileUi.storagePlan')} href={`/merchant/${merchantSlug}/platform-subscriptions/storage`} color="bg-sky-50" textColor="text-sky-700" borderColor="border-sky-100" />
                                                 )}
                                                 {can('dashboard.view') && (
-                                                    <ActionBtn icon={Clock} label="Pulse" href={`/merchant/${merchantSlug}/pulse`} color="bg-blue-50" textColor="text-blue-700" borderColor="border-blue-100" />
+                                                    <ActionBtn icon={Clock} label={t('orders.tabs.pulse')} href={`/merchant/${merchantSlug}/pulse`} color="bg-blue-50" textColor="text-blue-700" borderColor="border-blue-100" />
                                                 )}
                                                 {can('marketing.view') && (
-                                                    <ActionBtn icon={Megaphone} label="Marketing" href={`/merchant/${merchantSlug}/marketing`} color="bg-violet-50" textColor="text-violet-700" borderColor="border-violet-100" />
-                                                )}
-                                                {can('wallet.view') && (
-                                                    <ActionBtn icon={Wallet} label="Wallet" href={`/merchant/${merchantSlug}/wallet`} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
+                                                    <ActionBtn icon={Megaphone} label={t('profileUi.marketing')} href={`/merchant/${merchantSlug}/marketing`} color="bg-violet-50" textColor="text-violet-700" borderColor="border-violet-100" />
                                                 )}
                                                 {can('settings.view') && (
-                                                    <ActionBtn icon={Settings} label="Settings" href={`/merchant/${merchantSlug}/settings`} color="bg-slate-50" textColor="text-slate-700" borderColor="border-slate-100" />
+                                                    <ActionBtn icon={Settings} label={t('profileUi.settings')} href={`/merchant/${merchantSlug}/settings`} color="bg-slate-50" textColor="text-slate-700" borderColor="border-slate-100" />
                                                 )}
                                             </div>
                                         </div>
@@ -771,9 +763,9 @@ export default function Profile({
                                                             <ShieldCheck className="h-5 w-5" />
                                                         </div>
                                                         <div>
-                                                            <p className="text-sm font-black text-slate-950">Verify personal profile first</p>
+                                                            <p className="text-sm font-black text-slate-950">{t('profileUi.verifyPersonalFirst')}</p>
                                                             <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
-                                                                Freight and forwarding applications unlock after the owner has a verified personal profile.
+                                                                {t('profileUi.verifyPersonalDescription')}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -810,7 +802,7 @@ export default function Profile({
 
                                         <Card className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                                             <CardHeader className="pb-2">
-                                                <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-400">Mgawanyo wa Mauzo</CardTitle>
+                                            <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-400">{t('common.salesBreakdown')}</CardTitle>
                                             </CardHeader>
                                             <CardContent className="space-y-4">
                                                 <BreakdownRow label="Digital / Unlockables" count={salesBreakdown.digital} color="bg-indigo-500" total={salesBreakdown.digital + salesBreakdown.physical + salesBreakdown.services} />
@@ -824,8 +816,8 @@ export default function Profile({
                                         <div className="space-y-3">
                                             <div className="flex items-center justify-between px-1">
                                                 <div>
-                                                    <h3 className="text-xs font-bold uppercase tracking-wider">Commerce Hub</h3>
-                                                    <p className="mt-1 text-xs text-slate-500">Nenda moja kwa moja kwenye sehemu unayotaka kusimamia.</p>
+                                                    <h3 className="text-xs font-bold uppercase tracking-wider">{t('common.commerceHub')}</h3>
+                                                    <p className="mt-1 text-xs text-slate-500">{t('common.commerceHubDescription')}</p>
                                                 </div>
                                             </div>
 
@@ -844,7 +836,7 @@ export default function Profile({
                                                             <span className="text-2xl font-black text-slate-900">{Number(item.count || 0).toLocaleString()}</span>
                                                         </div>
                                                         <p className="mt-3 text-sm font-black text-slate-900 leading-tight">{item.title}</p>
-                                                        <p className="mt-1 text-[11px] font-semibold text-slate-400">Tap to manage</p>
+                                                        <p className="mt-1 text-[11px] font-semibold text-slate-400">{t('common.tapToManage')}</p>
                                                     </button>
                                                 ))}
                                             </div>
@@ -854,11 +846,11 @@ export default function Profile({
                                             <div className="space-y-3">
                                                 <div className="flex items-center justify-between px-1">
                                                     <div>
-                                                        <h3 className="text-xs font-bold uppercase tracking-wider">Freight Hub</h3>
-                                                        <p className="mt-1 text-xs text-slate-500">Forwarding tools enabled after being verified.</p>
+                                                        <h3 className="text-xs font-bold uppercase tracking-wider">{t('common.freightHub')}</h3>
+                                                        <p className="mt-1 text-xs text-slate-500">{t('common.freightHubDescription')}</p>
                                                     </div>
                                                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">
-                                                        <ShieldCheck className="h-3.5 w-3.5" /> Verified
+                                                        <ShieldCheck className="h-3.5 w-3.5" /> {t('common.verified')}
                                                     </span>
                                                 </div>
 
@@ -883,9 +875,9 @@ export default function Profile({
 
                                         <div className="space-y-3">
                                             <div className="flex items-center justify-between px-1">
-                                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Miamala ya Hivi Karibuni</h3>
+                                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">{t('common.recentTransactions')}</h3>
                                                 {can('orders.view') && (
-                                                    <Link href={`/merchant/${merchantSlug}/orders`} className="text-xs font-bold text-brand-600 hover:underline">Ona Zote</Link>
+                                                    <Link href={`/merchant/${merchantSlug}/orders`} className="text-xs font-bold text-brand-600 hover:underline">{t('common.viewAll')}</Link>
                                                 )}
                                             </div>
 
@@ -893,7 +885,7 @@ export default function Profile({
                                                 {recentOrders.length === 0 ? (
                                                     <div className="py-12 text-center rounded-2xl border border-dashed border-slate-200">
                                                         <ShoppingBag className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                                                        <p className="text-slate-400 font-medium text-sm">Huna miamala bado.</p>
+                                                        <p className="text-slate-400 font-medium text-sm">{t('common.noTransactions')}</p>
                                                     </div>
                                                 ) : (
                                                     recentOrders.map(order => (
@@ -907,7 +899,7 @@ export default function Profile({
                                                                                 <span className="text-[10px] font-bold text-slate-400">#{order.id}</span>
                                                                                 {statusBadge(order.status)}
                                                                             </div>
-                                                                            <p className="font-bold text-slate-900 truncate text-sm">{order.display_title || 'Order item'}</p>
+        <p className="font-bold text-slate-900 truncate text-sm">{order.display_title || copy('Order item', 'Bidhaa ya oda')}</p>
                                                                             <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">
                                                                                 {order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}
                                                                             </p>
@@ -942,9 +934,9 @@ export default function Profile({
                                                         <Clock className="h-8 w-8" />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <h2 className="text-xl font-bold text-slate-900">Taarifa zinahakikiwa</h2>
+                                                        <h2 className="text-xl font-bold text-slate-900">{copy('Information is under review', 'Taarifa zinahakikiwa')}</h2>
                                                         <p className="text-slate-600 text-sm max-w-sm mx-auto">
-                                                            Tumepokea nyaraka zako. Timu yetu inazihakiki. Huu mchakato huchukua masaa 12-24.
+                                                            {copy('We received your documents. Our team is reviewing them. This process takes 12–24 hours.', 'Tumepokea nyaraka zako. Timu yetu inazihakiki. Huu mchakato huchukua masaa 12–24.')}
                                                         </p>
                                                     </div>
                                                 </motion.div>
@@ -960,12 +952,12 @@ export default function Profile({
                                                             <AlertTriangle className="h-6 w-6" />
                                                         </div>
                                                         <div className="space-y-2">
-                                                            <h2 className="text-lg font-bold text-slate-900">Uhakiki Umekataliwa</h2>
+                                                            <h2 className="text-lg font-bold text-slate-900">{copy('Verification rejected', 'Uhakiki Umekataliwa')}</h2>
                                                             <p className="text-slate-600 text-sm font-medium">
-                                                                Maelezo yako hayajakubaliwa kutokana na sababu ifuatayo:
+                                                                {copy('Your information was not accepted for the following reason:', 'Maelezo yako hayajakubaliwa kutokana na sababu ifuatayo:')}
                                                             </p>
                                                             <div className="mt-3 p-4 rounded-xl bg-white border border-red-100 text-red-700 font-bold text-sm italic shadow-sm">
-                                                                "{merchantKyc?.rejection_reason || 'Nyaraka zako haziko wazi au hazitoshi.'}"
+                                                                "{merchantKyc?.rejection_reason || copy('Your documents are unclear or incomplete.', 'Nyaraka zako haziko wazi au hazitoshi.')}"
                                                             </div>
                                                             <div className="pt-2">
                                                                 <Button
@@ -975,7 +967,7 @@ export default function Profile({
                                                                         setVerifView('selection');
                                                                     }}
                                                                 >
-                                                                    Jaribu Tena
+                                                                    {copy('Try again', 'Jaribu Tena')}
                                                                 </Button>
                                                             </div>
                                                         </div>
@@ -985,7 +977,7 @@ export default function Profile({
                                                 <motion.div key="main" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
                                                     <div className="space-y-3">
                                                         <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
-                                                            {activeMerchant?.type === 'personal' ? '1. Uthibitisho wa Mawasiliano' : '1. Mawasiliano ya Biashara'}
+                                                            {activeMerchant?.type === 'personal' ? copy('1. Contact verification', '1. Uthibitisho wa Mawasiliano') : copy('1. Business contact', '1. Mawasiliano ya Biashara')}
                                                         </h2>
                                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                             {activeMerchant?.type === 'personal' ? (
@@ -996,12 +988,12 @@ export default function Profile({
                                                                                 <Phone className="h-5 w-5" />
                                                                             </div>
                                                                             <div>
-                                                                                <p className="font-bold text-slate-900 text-sm">Nambari ya Simu</p>
+                                                                                <p className="font-bold text-slate-900 text-sm">{copy('Phone number', 'Nambari ya Simu')}</p>
                                                                                 <p className="text-xs text-slate-500">{auth?.user?.phone_number}</p>
                                                                             </div>
                                                                         </div>
                                                                         <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase">
-                                                                            <CheckCircle2 className="h-3 w-3" /> Imethibitishwa
+                                                                            <CheckCircle2 className="h-3 w-3" /> {copy('Verified', 'Imethibitishwa')}
                                                                         </div>
                                                                     </div>
 
@@ -1011,13 +1003,13 @@ export default function Profile({
                                                                                 <Mail className="h-5 w-5" />
                                                                             </div>
                                                                             <div>
-                                                                                <p className="font-bold text-slate-900 text-sm">Barua Pepe</p>
+                                                                                    <p className="font-bold text-slate-900 text-sm">{copy('Email', 'Barua Pepe')}</p>
                                                                                 <p className="text-xs text-slate-500">{auth?.user?.email || 'Google Verification'}</p>
                                                                             </div>
                                                                         </div>
                                                                         {auth?.user?.email_verified_at ? (
                                                                             <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase">
-                                                                                <CheckCircle2 className="h-3 w-3" /> Imethibitishwa
+                                                                                <CheckCircle2 className="h-3 w-3" /> {copy('Verified', 'Imethibitishwa')}
                                                                             </div>
                                                                         ) : (
                                                                             <Button
@@ -1026,7 +1018,7 @@ export default function Profile({
                                                                                 onClick={() => window.location.href = '/auth/google/redirect'}
                                                                             >
                                                                                 <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-3.5 w-3.5" alt="Google" />
-                                                                                Unganisha
+                                                                                {copy('Connect', 'Unganisha')}
                                                                             </Button>
                                                                         )}
                                                                     </div>
@@ -1041,7 +1033,7 @@ export default function Profile({
                                                                                         <Store className="h-4 w-4" />
                                                                                     </div>
                                                                                     {loc.is_primary && (
-                                                                                        <span className="text-[9px] font-black uppercase tracking-widest bg-brand-600 text-white px-2 py-0.5 rounded-full">Primary</span>
+                                                                                        <span className="text-[9px] font-black uppercase tracking-widest bg-brand-600 text-white px-2 py-0.5 rounded-full">{copy('Primary', 'Kuu')}</span>
                                                                                     )}
                                                                                 </div>
                                                                                 <div>
@@ -1049,7 +1041,7 @@ export default function Profile({
                                                                                     <p className="text-[10px] text-slate-500 truncate">{loc.address}</p>
                                                                                 </div>
                                                                                 <div className="pt-2 flex items-center gap-2 text-[11px] font-bold text-slate-600">
-                                                                                    <Phone className="h-3 w-3 text-slate-400" /> {loc.contact_phone || 'Hakuna Simu'}
+                                                                                    <Phone className="h-3 w-3 text-slate-400" /> {loc.contact_phone || copy('No phone', 'Hakuna Simu')}
                                                                                 </div>
                                                                             </div>
                                                                         )) : (
@@ -1058,11 +1050,11 @@ export default function Profile({
                                                                                     <Truck className="h-6 w-6 text-slate-400" />
                                                                                 </div>
                                                                                 <div>
-                                                                                    <p className="font-bold text-slate-900">Hakuna Maeneo ya Biashara</p>
-                                                                                    <p className="text-xs text-slate-500">Ongeza maeneo ya biashara yako kwenye mipangilio ili wateja wakupate.</p>
+                                                                                    <p className="font-bold text-slate-900">{copy('No business locations', 'Hakuna Maeneo ya Biashara')}</p>
+                                                                                    <p className="text-xs text-slate-500">{copy('Add your business locations in settings so customers can find you.', 'Ongeza maeneo ya biashara yako kwenye mipangilio ili wateja wakupate.')}</p>
                                                                                 </div>
                                                                                 <Link href={`/merchant/${activeMerchant?.username}/settings`} className="inline-flex h-9 items-center justify-center px-4 rounded-lg bg-brand-600 text-white font-bold text-xs">
-                                                                                    Weka Mipangilio
+                                                                                    {copy('Open settings', 'Weka Mipangilio')}
                                                                                 </Link>
                                                                             </div>
                                                                         )}
@@ -1073,16 +1065,16 @@ export default function Profile({
                                                     </div>
 
                                                     <div className="space-y-3">
-                                                        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">2. Uthibitisho wa Utambulisho</h2>
+                                                        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">{copy('2. Identity verification', '2. Uthibitisho wa Utambulisho')}</h2>
                                                         <div className="p-6 rounded-2xl border border-brand-200 bg-brand-50/30 flex flex-col md:flex-row md:items-center justify-between gap-6">
                                                             <div className="flex gap-4">
                                                                 <div className="h-12 w-12 rounded-xl bg-brand-600 text-white flex items-center justify-center shrink-0">
                                                                     <ShieldCheck className="h-6 w-6" />
                                                                 </div>
                                                                 <div>
-                                                                    <h3 className="text-lg font-bold text-slate-900">Uthibitisho wa KYC</h3>
+                                                                    <h3 className="text-lg font-bold text-slate-900">{copy('KYC verification', 'Uthibitisho wa KYC')}</h3>
                                                                     <p className="text-slate-600 text-sm font-medium mt-0.5 leading-relaxed max-w-sm">
-                                                                        Hakiki utambulisho wako ili kuanza kutoa pesa na kuuza bidhaa zako kwa usalama.
+                                                                        {copy('Verify your identity to start receiving payouts and sell your products securely.', 'Hakiki utambulisho wako ili kuanza kutoa pesa na kuuza bidhaa zako kwa usalama.')}
                                                                     </p>
                                                                 </div>
                                                             </div>
@@ -1101,7 +1093,7 @@ export default function Profile({
                                                                     }
                                                                 }}
                                                             >
-                                                                Anza Sasa
+                                                                {copy('Start now', 'Anza Sasa')}
                                                             </Button>
                                                         </div>
                                                     </div>
@@ -1114,16 +1106,16 @@ export default function Profile({
                                                     className="space-y-6"
                                                 >
                                                     <div className="space-y-1 text-center md:text-left">
-                                                        <h3 className="text-xl font-bold text-slate-900">Supported business types</h3>
-                                                        <p className="text-sm text-slate-500">Select your business legal structure to continue.</p>
+                                                        <h3 className="text-xl font-bold text-slate-900">{copy('Supported business types', 'Aina za biashara zinazoungwa mkono')}</h3>
+                                                        <p className="text-sm text-slate-500">{copy('Select your business legal structure to continue.', 'Chagua muundo wa kisheria wa biashara yako ili kuendelea.')}</p>
                                                     </div>
 
                                                     <div className="space-y-3">
                                                         {[
-                                                            { id: 'individual', label: 'Individual / Personal', desc: 'National ID', icon: User },
-                                                            { id: 'sole_proprietor', label: 'Sole Proprietor', desc: 'National ID + TIN', icon: Store },
-                                                            { id: 'business', label: 'Registered Business', desc: 'BRELA + License + TIN', icon: Building2 },
-                                                            { id: 'ngo', label: 'NGO / Non-Profit', desc: 'Registration Doc', icon: Landmark }
+                                                            { id: 'individual', label: copy('Individual / personal', 'Mtu binafsi / binafsi'), desc: copy('National ID', 'Kitambulisho cha Taifa'), icon: User },
+                                                            { id: 'sole_proprietor', label: copy('Sole proprietor', 'Mmiliki binafsi wa biashara'), desc: copy('National ID + TIN', 'Kitambulisho cha Taifa + TIN'), icon: Store },
+                                                            { id: 'business', label: copy('Registered business', 'Biashara iliyosajiliwa'), desc: copy('BRELA + licence + TIN', 'BRELA + leseni + TIN'), icon: Building2 },
+                                                            { id: 'ngo', label: copy('NGO / non-profit', 'NGO / isiyo ya faida'), desc: copy('Registration document', 'Nyaraka za usajili'), icon: Landmark }
                                                         ].map((type) => (
                                                             <button
                                                                 key={type.id}
@@ -1157,14 +1149,14 @@ export default function Profile({
                                                     </div>
 
                                                     <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
-                                                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Hatua 1 kati ya 3</p>
+                                                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">{copy('Step 1 of 3', 'Hatua 1 kati ya 3')}</p>
                                                         <Button
                                                             variant="ghost"
                                                             size="sm"
                                                             className="text-slate-400 hover:text-slate-600"
                                                             onClick={() => setVerifView('main')}
                                                         >
-                                                            Ghairi
+                                                            {copy('Cancel', 'Ghairi')}
                                                         </Button>
                                                     </div>
                                                 </motion.div>
@@ -1174,12 +1166,12 @@ export default function Profile({
                                                         <Button variant="ghost" size="icon" onClick={() => setVerifView('business_selection')} className="rounded-lg border border-slate-200 h-9 w-9">
                                                             <ArrowLeft className="h-4 w-4" />
                                                         </Button>
-                                                        <h2 className="text-lg font-bold text-slate-900">Chagua Aina ya Kitambulisho</h2>
+                                                        <h2 className="text-lg font-bold text-slate-900">{copy('Choose ID type', 'Chagua Aina ya Kitambulisho')}</h2>
                                                     </div>
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                        <DocTypeCard icon={Fingerprint} title="NIDA" desc="Kitambulisho cha Taifa" onClick={() => handleDocSelect('NIDA')} />
-                                                        <DocTypeCard icon={FileText} title="Pasipoti" desc="Passport ya Kimataifa" onClick={() => handleDocSelect('Passport')} />
-                                                        <DocTypeCard icon={CreditCard} title="Voters ID" desc="Mpiga Kura" onClick={() => handleDocSelect('Voters ID')} />
+                                                        <DocTypeCard icon={Fingerprint} title="NIDA" desc={copy('National ID', 'Kitambulisho cha Taifa')} onClick={() => handleDocSelect('NIDA')} />
+                                                        <DocTypeCard icon={FileText} title={copy('Passport', 'Pasipoti')} desc={copy('International passport', 'Pasipoti ya kimataifa')} onClick={() => handleDocSelect('Passport')} />
+                                                        <DocTypeCard icon={CreditCard} title={copy('Voter ID', 'Kitambulisho cha mpiga kura')} desc={copy('Voter identification', 'Kitambulisho cha mpiga kura')} onClick={() => handleDocSelect('Voters ID')} />
                                                     </div>
                                                 </motion.div>
                                             ) : verifView === 'form' && (
@@ -1201,8 +1193,8 @@ export default function Profile({
                                                         </Button>
                                                         <h2 className="text-lg font-bold text-slate-900">
                                                             {form.business_type !== 'personal' && form.business_type !== 'individual'
-                                                                ? 'Uhakiki wa Biashara'
-                                                                : `Maelezo ya ${selectedDoc}`}
+                                                                ? copy('Business verification', 'Uhakiki wa Biashara')
+                                                                : `${copy('Details for', 'Maelezo ya')} ${selectedDoc}`}
                                                         </h2>
                                                     </div>
 
@@ -1212,53 +1204,53 @@ export default function Profile({
                                                             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
                                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                                     <div className="space-y-1.5">
-                                                                        <label className="text-xs font-bold text-slate-500 ml-1">Jina la Kwanza</label>
+                                                                        <label className="text-xs font-bold text-slate-500 ml-1">{copy('First name', 'Jina la Kwanza')}</label>
                                                                         <Input value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
                                                                     </div>
                                                                     <div className="space-y-1.5">
-                                                                        <label className="text-xs font-bold text-slate-500 ml-1">Jina la Mwisho</label>
+                                                                        <label className="text-xs font-bold text-slate-500 ml-1">{copy('Last name', 'Jina la Mwisho')}</label>
                                                                         <Input value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
                                                                     </div>
                                                                 </div>
 
                                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                                     <div className="space-y-1.5">
-                                                                        <label className="text-xs font-bold text-slate-500 ml-1">Jinsia (Gender)</label>
+                                                                        <label className="text-xs font-bold text-slate-500 ml-1">{copy('Gender', 'Jinsia')}</label>
                                                                         <select value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })} className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:border-brand-500 outline-none" required>
-                                                                            <option value="">Chagua</option>
-                                                                            <option value="Male">Mwanaume</option>
-                                                                            <option value="Female">Mwanamke</option>
-                                                                            <option value="Other">Nyingine</option>
+                                                                            <option value="">{copy('Choose', 'Chagua')}</option>
+                                                                            <option value="Male">{copy('Male', 'Mwanaume')}</option>
+                                                                            <option value="Female">{copy('Female', 'Mwanamke')}</option>
+                                                                            <option value="Other">{copy('Other', 'Nyingine')}</option>
                                                                         </select>
                                                                     </div>
                                                                     <div className="space-y-1.5">
-                                                                        <label className="text-xs font-bold text-slate-500 ml-1">Tarehe ya Kuzaliwa</label>
+                                                                    <label className="text-xs font-bold text-slate-500 ml-1">{copy('Date of birth', 'Tarehe ya Kuzaliwa')}</label>
                                                                         <Input type="date" value={form.date_of_birth} onChange={e => setForm({ ...form, date_of_birth: e.target.value })} className="h-11 rounded-xl border-slate-200 text-sm" required />
                                                                     </div>
                                                                 </div>
 
                                                                 <div className="space-y-1.5">
-                                                                    <label className="text-xs font-bold text-slate-500 ml-1">Namba ya Kitambulisho ({selectedDoc})</label>
+                                                                    <label className="text-xs font-bold text-slate-500 ml-1">{copy('Identification number', 'Namba ya Kitambulisho')} ({selectedDoc})</label>
                                                                     <Input value={form.id_number} onChange={e => setForm({ ...form, id_number: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
                                                                 </div>
 
                                                                 <div className="space-y-1.5">
-                                                                    <label className="text-xs font-bold text-slate-500 ml-1">Anwani ya Makazi</label>
-                                                                    <Input placeholder="Mfano: Mbezi, Dar es Salaam" value={form.residential_address} onChange={e => setForm({ ...form, residential_address: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
+                                                                    <label className="text-xs font-bold text-slate-500 ml-1">{copy('Residential address', 'Anwani ya Makazi')}</label>
+                                                                    <Input placeholder={copy('Example: Mbezi, Dar es Salaam', 'Mfano: Mbezi, Dar es Salaam')} value={form.residential_address} onChange={e => setForm({ ...form, residential_address: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
                                                                 </div>
 
                                                                 <div className="space-y-1.5">
-                                                                    <label className="text-xs font-bold text-slate-500 ml-1">Kazi / Taaluma</label>
-                                                                    <Input placeholder="Mfano: Retailer" value={form.occupation} onChange={e => setForm({ ...form, occupation: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
+                                                                    <label className="text-xs font-bold text-slate-500 ml-1">{copy('Occupation / profession', 'Kazi / Taaluma')}</label>
+                                                                    <Input placeholder={copy('Example: Retailer', 'Mfano: Retailer')} value={form.occupation} onChange={e => setForm({ ...form, occupation: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
                                                                 </div>
 
                                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                                                                     <div className="space-y-2">
-                                                                        <label className="text-xs font-bold text-slate-500 ml-1">Picha ya Mbele</label>
+                                                                        <label className="text-xs font-bold text-slate-500 ml-1">{copy('Front image', 'Picha ya Mbele')}</label>
                                                                         <UploadBox id="id_front" preview={previews.id_front} onChange={(e) => handleFileChange(e, 'id_front')} />
                                                                     </div>
                                                                     <div className="space-y-2">
-                                                                        <label className="text-xs font-bold text-slate-500 ml-1">Picha ya Nyuma</label>
+                                                                        <label className="text-xs font-bold text-slate-500 ml-1">{copy('Back image', 'Picha ya Nyuma')}</label>
                                                                         <UploadBox id="id_back" preview={previews.id_back} onChange={(e) => handleFileChange(e, 'id_back')} />
                                                                     </div>
                                                                 </div>
@@ -1273,19 +1265,19 @@ export default function Profile({
                                                                         <ShieldCheck className="h-5 w-5" />
                                                                     </div>
                                                                     <div>
-                                                                        <p className="font-bold text-emerald-900 text-sm">Identity Verified</p>
-                                                                        <p className="text-[11px] text-emerald-700 leading-tight">Kitambulisho chako kimeshakubaliwa. Jaza nyaraka za biashara pekee.</p>
+                                                                        <p className="font-bold text-emerald-900 text-sm">{copy('Identity verified', 'Utambulisho umethibitishwa')}</p>
+                                                                        <p className="text-[11px] text-emerald-700 leading-tight">{copy('Your identity is already approved. Complete only the business documents.', 'Kitambulisho chako kimeshakubaliwa. Jaza nyaraka za biashara pekee.')}</p>
                                                                     </div>
                                                                 </div>
 
                                                                 {(form.business_type === 'sole_proprietor' || form.business_type === 'business') && (
                                                                     <div className="space-y-5">
                                                                         <div className="space-y-1.5">
-                                                                            <label className="text-xs font-bold text-slate-500 ml-1">Namba ya TIN</label>
-                                                                            <Input placeholder="9-digit TIN number" value={form.tin_number} onChange={e => setForm({ ...form, tin_number: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
+                                                                            <label className="text-xs font-bold text-slate-500 ml-1">{copy('TIN number', 'Namba ya TIN')}</label>
+                                                                            <Input placeholder={copy('9-digit TIN number', 'Namba ya TIN ya tarakimu 9')} value={form.tin_number} onChange={e => setForm({ ...form, tin_number: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
                                                                         </div>
                                                                         <div className="space-y-2">
-                                                                            <label className="text-xs font-bold text-slate-500 ml-1">Cheti cha TIN (Upload)</label>
+                                                                            <label className="text-xs font-bold text-slate-500 ml-1">{copy('TIN certificate (Upload)', 'Cheti cha TIN (Upload)')}</label>
                                                                             <UploadBox id="tin_document" preview={previews.tin_document} onChange={(e) => handleFileChange(e, 'tin_document')} />
                                                                         </div>
                                                                     </div>
@@ -1294,11 +1286,11 @@ export default function Profile({
                                                                 {form.business_type === 'business' && (
                                                                     <div className="space-y-5">
                                                                         <div className="space-y-1.5">
-                                                                            <label className="text-xs font-bold text-slate-500 ml-1">Namba ya Usajili wa BRELA</label>
-                                                                            <Input placeholder="BRELA Registration No" value={form.brela_number} onChange={e => setForm({ ...form, brela_number: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
+                                                                            <label className="text-xs font-bold text-slate-500 ml-1">{copy('BRELA registration number', 'Namba ya Usajili wa BRELA')}</label>
+                                                                            <Input placeholder={copy('BRELA registration number', 'Namba ya usajili wa BRELA')} value={form.brela_number} onChange={e => setForm({ ...form, brela_number: e.target.value })} className="h-11 rounded-xl border-slate-200" required />
                                                                         </div>
                                                                         <div className="space-y-2">
-                                                                            <label className="text-xs font-bold text-slate-500 ml-1">Leseni ya Biashara</label>
+                                                                            <label className="text-xs font-bold text-slate-500 ml-1">{copy('Business licence', 'Leseni ya Biashara')}</label>
                                                                             <UploadBox id="business_license" preview={previews.business_license} onChange={(e) => handleFileChange(e, 'business_license')} />
                                                                         </div>
                                                                     </div>
@@ -1306,7 +1298,7 @@ export default function Profile({
 
                                                                 {form.business_type === 'ngo' && (
                                                                     <div className="space-y-2">
-                                                                        <label className="text-xs font-bold text-slate-500 ml-1">Nyaraka za Usajili wa NGO</label>
+                                                                        <label className="text-xs font-bold text-slate-500 ml-1">{copy('NGO registration documents', 'Nyaraka za Usajili wa NGO')}</label>
                                                                         <UploadBox id="registration_doc" preview={previews.registration_doc} onChange={(e) => handleFileChange(e, 'registration_doc')} />
                                                                     </div>
                                                                 )}
@@ -1318,7 +1310,7 @@ export default function Profile({
                                                             className="w-full h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold mt-4 shadow-lg shadow-brand-600/20"
                                                             disabled={submitting}
                                                         >
-                                                            {submitting ? 'Inatuma...' : 'Wasilisha kwa Uhakiki'}
+                                                            {submitting ? copy('Submitting...', 'Inatuma...') : copy('Submit for verification', 'Wasilisha kwa Uhakiki')}
                                                         </Button>
                                                     </form>
                                                 </motion.div>
@@ -1330,17 +1322,17 @@ export default function Profile({
                                 {!auth?.user?.is_merchant && (
                                     <div className="p-8 rounded-2xl border border-dashed border-brand-200 bg-brand-50/10 flex flex-col items-center text-center space-y-5">
                                         <div className="space-y-2">
-                                            <h2 className="text-xl font-bold text-slate-900">Anzisha Biashara Yako</h2>
+                                            <h2 className="text-xl font-bold text-slate-900">{copy('Set up your business', 'Anzisha Biashara Yako')}</h2>
                                             <p className="text-slate-600 font-medium text-sm max-w-2xl mx-auto">
-                                                Tengeneza kipato cha ziada kwa kuuza bidhaa za kawaida, digital downloads, huduma za booking, au maarifa yako kama paid content, bundles, courses na memberships.
+                                                {copy('Create extra income by selling physical products, digital downloads, booking services, or your knowledge as paid content, bundles, courses, and memberships.', 'Tengeneza kipato cha ziada kwa kuuza bidhaa za kawaida, digital downloads, huduma za booking, au maarifa yako kama paid content, bundles, courses na memberships.')}
                                             </p>
                                         </div>
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full max-w-2xl">
                                             {[
-                                                { icon: Package, label: 'Bidhaa za kushikika' },
-                                                { icon: DownloadCloud, label: 'Bidhaa za digital' },
-                                                { icon: Briefcase, label: 'Huduma' },
-                                                { icon: BookOpenText, label: 'Maarifa ya kulipia' },
+                                                { icon: Package, label: copy('Physical products', 'Bidhaa za kushikika') },
+                                                { icon: DownloadCloud, label: copy('Digital products', 'Bidhaa za kidijitali') },
+                                                { icon: Briefcase, label: copy('Services', 'Huduma') },
+                                                { icon: BookOpenText, label: copy('Paid knowledge', 'Maarifa ya kulipia') },
                                             ].map((item) => {
                                                 const Icon = item.icon;
 
@@ -1354,17 +1346,17 @@ export default function Profile({
                                         </div>
                                         {!hasVerifiedEmail && (
                                             <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-full px-3 py-1.5">
-                                                Unganisha Google kwanza ili tupate email iliyothibitishwa kwa risiti, notifications na usalama wa akaunti.
+                                                {copy('Connect Google first so we can use a verified email for receipts, notifications, and account security.', 'Unganisha Google kwanza ili tupate email iliyothibitishwa kwa risiti, notifications na usalama wa akaunti.')}
                                             </p>
                                         )}
                                         {hasVerifiedEmail ? (
                                             <Link href="/merchant/register" className="h-11 px-6 rounded-xl bg-brand-600 text-white font-bold text-sm flex items-center justify-center hover:bg-brand-700 transition-all active:scale-95">
-                                                Jiunge Sasa <ChevronRight className="ml-1 h-4 w-4" />
+                                                {copy('Join now', 'Jiunge Sasa')} <ChevronRight className="ml-1 h-4 w-4" />
                                             </Link>
                                         ) : (
                                             <a href="/auth/google/redirect" className="h-11 px-6 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-50 transition-all active:scale-95 shadow-sm">
                                                 <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-4 w-4" alt="Google" />
-                                                Unganisha Google
+                                                {copy('Connect Google', 'Unganisha Google')}
                                             </a>
                                         )}
                                     </div>
@@ -1383,8 +1375,8 @@ export default function Profile({
                                         <Shield className="h-5 w-5" />
                                     </div>
                                     <div>
-                                        <span className="font-bold text-slate-900 text-base">Wasifu na Usalama</span>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">Profile & Security</p>
+                                        <span className="font-bold text-slate-900 text-base">{copy('Profile and security', 'Wasifu na Usalama')}</span>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">{copy('Profile & Security', 'Wasifu na Usalama')}</p>
                                     </div>
                                 </div>
                                 {isSecurityOpen ? <ChevronUp className="h-5 w-5 text-slate-400" /> : <ChevronDown className="h-5 w-5 text-slate-400" />}
@@ -1394,9 +1386,9 @@ export default function Profile({
                                 {isSecurityOpen && (
                                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t border-slate-50 overflow-hidden">
                                         <div className="p-6 space-y-4">
-                                            <DetailRow label="Namba ya Simu" value={auth?.user?.phone_number ? `${auth.user.phone_number.slice(0, 4)} ••• ••• ${auth.user.phone_number.slice(-3)}` : '+255 ••• ••• ***'} />
+                                            <DetailRow label={copy('Phone number', 'Namba ya Simu')} value={auth?.user?.phone_number ? `${auth.user.phone_number.slice(0, 4)} ••• ••• ${auth.user.phone_number.slice(-3)}` : '+255 ••• ••• ***'} />
                                             <DetailRow
-                                                label="Barua Pepe"
+                                                label={copy('Email', 'Barua Pepe')}
                                                 value={auth?.user?.email_verified_at ? (
                                                     maskEmail(auth?.user?.email)
                                                 ) : (
@@ -1405,35 +1397,35 @@ export default function Profile({
                                                         className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50"
                                                     >
                                                         <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-3.5 w-3.5" alt="Google" />
-                                                        {auth?.user?.email ? 'Thibitisha kwa Google' : 'Unganisha Google'}
+                                                        {auth?.user?.email ? copy('Verify with Google', 'Thibitisha kwa Google') : copy('Connect Google', 'Unganisha Google')}
                                                     </a>
                                                 )}
                                             />
                                             <DetailRow
-                                                label="Authenticator 2FA"
+                                                label={copy('Authenticator 2FA', 'Authenticator 2FA')}
                                                 value={(
                                                     <div className="flex flex-wrap items-center justify-end gap-2">
                                                         <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${hasTotpEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                                                             <span className={`h-1.5 w-1.5 rounded-full ${hasTotpEnabled ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                                            {hasTotpEnabled ? 'Already set' : 'Not set'}
+                                                            {hasTotpEnabled ? copy('Already set', 'Imewekwa') : copy('Not set', 'Haijawekwa')}
                                                         </span>
                                                         <Link
                                                             href="/profile/security"
                                                             className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50"
                                                         >
-                                                            {hasTotpEnabled ? 'Manage' : 'Set up'}
+                                                            {hasTotpEnabled ? copy('Manage', 'Simamia') : copy('Set up', 'Sanidi')}
                                                             <ChevronRight className="h-3.5 w-3.5" />
                                                         </Link>
                                                     </div>
                                                 )}
                                             />
-                                            <DetailRow label="Jina la Mtumiaji" value={`@${activeMerchant?.username || 'user'}`} />
+                                            <DetailRow label={copy('Username', 'Jina la Mtumiaji')} value={`@${activeMerchant?.username || 'user'}`} />
                                             <div className="flex items-center justify-between py-3">
-                                                <span className="text-slate-500 font-medium text-sm">Hali ya Akaunti</span>
+                                                <span className="text-slate-500 font-medium text-sm">{copy('Account status', 'Hali ya Akaunti')}</span>
                                                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-50 border border-slate-100">
                                                     <div className={`h-1.5 w-1.5 rounded-full ${isVerified ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                                                     <span className={`font-bold text-[10px] uppercase ${isVerified ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                                        {isVerified ? 'Verified' : 'Verification Required'}
+                                                        {isVerified ? copy('Verified', 'Imethibitishwa') : copy('Verification required', 'Uthibitisho unahitajika')}
                                                     </span>
                                                 </div>
                                             </div>
@@ -1442,7 +1434,7 @@ export default function Profile({
                                                     href="/profile/settings"
                                                     className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 shadow-sm transition-colors hover:bg-white"
                                                 >
-                                                    <span>Mipangilio ya Wasifu</span>
+                                                    <span>{copy('Profile settings', 'Mipangilio ya Wasifu')}</span>
                                                     <ChevronRight className="h-4 w-4 text-slate-500" />
                                                 </Link>
                                             </div>
@@ -1488,11 +1480,17 @@ function ActionBtn({ icon: Icon, label, href, onClick, color, textColor, borderC
 }
 
 function BreakdownRow({ label, count, color, total }) {
+    const { copy } = useLocale();
+    const translations = {
+        'Digital / Unlockables': 'Kidijitali / Vinavyofunguliwa',
+        'Physical Products': 'Bidhaa halisi',
+        'Huduma (Services)': 'Huduma',
+    };
     const percentage = total > 0 ? (count / total) * 100 : 0;
     return (
         <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase text-slate-500">
-                <span>{label}</span>
+                <span>{copy(label, translations[label] || label)}</span>
                 <span className="text-slate-900">{count}</span>
             </div>
             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -1663,13 +1661,14 @@ function DocTypeCard({ icon: Icon, title, desc, onClick }) {
 }
 
 function UploadBox({ id, preview, onChange }) {
+    const { copy } = useLocale();
     return (
         <div className="relative group">
             <input type="file" id={id} className="hidden" accept="image/*" onChange={onChange} />
             <label htmlFor={id} className={`flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-xl cursor-pointer transition-all ${preview ? 'border-brand-300 bg-brand-50/10' : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'}`}>
                 {preview ? (
                     <div className="relative w-full h-full p-1.5">
-                        <img src={preview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
+                        <img src={preview} alt={copy('Preview', 'Mwonekano')} className="w-full h-full object-cover rounded-lg" />
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
                             <Camera className="h-5 w-5 text-white" />
                         </div>
@@ -1679,7 +1678,7 @@ function UploadBox({ id, preview, onChange }) {
                         <div className="h-9 w-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 mb-2">
                             <Camera className="h-4.5 w-4.5" />
                         </div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">Pakia Picha</p>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">{copy('Upload image', 'Pakia Picha')}</p>
                     </>
                 )}
             </label>

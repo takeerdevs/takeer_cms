@@ -5,6 +5,7 @@ import { Textarea } from '@/Components/ui/Textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const emptyForm = {
     id: null,
@@ -23,6 +24,7 @@ const policyOptions = [
 ];
 
 export default function ReturnPoliciesManager() {
+    const { copy } = useLocale();
     const [policies, setPolicies] = useState([]);
     const [form, setForm] = useState(emptyForm);
     const [loading, setLoading] = useState(true);
@@ -34,7 +36,7 @@ export default function ReturnPoliciesManager() {
             const res = await window.axios.get('/api/merchant/return-policies');
             setPolicies(res.data.data || []);
         } catch (error) {
-            toast.error('Imeshindikana kupakia return policies.');
+            toast.error(copy('Could not load return policies.', 'Imeshindikana kupakia return policies.'));
         } finally {
             setLoading(false);
         }
@@ -56,15 +58,15 @@ export default function ReturnPoliciesManager() {
             };
             if (form.id) {
                 await window.axios.put(`/api/merchant/return-policies/${form.id}`, payload);
-                toast.success('Sera ya kurudisha bidhaa imesasishwa.');
+                toast.success(copy('Return policy updated.', 'Sera ya kurudisha bidhaa imesasishwa.'));
             } else {
                 await window.axios.post('/api/merchant/return-policies', payload);
-                toast.success('Sera ya kurudisha bidhaa imetengenezwa.');
+                toast.success(copy('Return policy created.', 'Sera ya kurudisha bidhaa imetengenezwa.'));
             }
             setForm(emptyForm);
             fetchPolicies();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindikana kuhifadhi return policy.');
+            toast.error(error.response?.data?.message || copy('Could not save return policy.', 'Imeshindikana kuhifadhi return policy.'));
         } finally {
             setSaving(false);
         }
@@ -73,30 +75,37 @@ export default function ReturnPoliciesManager() {
     const setDefault = async (policy) => {
         try {
             await window.axios.post(`/api/merchant/return-policies/${policy.id}/set-default`);
-            toast.success('Sera ya kawaida imesasishwa.');
+            toast.success(copy('Default policy updated.', 'Sera ya kawaida imesasishwa.'));
             fetchPolicies();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindikana kubadilisha default policy.');
+            toast.error(error.response?.data?.message || copy('Could not change the default policy.', 'Imeshindikana kubadilisha default policy.'));
         }
     };
 
     const remove = async (policy) => {
         try {
             await window.axios.delete(`/api/merchant/return-policies/${policy.id}`);
-            toast.success('Sera ya kurudisha bidhaa imefutwa.');
+            toast.success(copy('Return policy deleted.', 'Sera ya kurudisha bidhaa imefutwa.'));
             fetchPolicies();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindikana kufuta return policy.');
+            toast.error(error.response?.data?.message || copy('Could not delete return policy.', 'Imeshindikana kufuta return policy.'));
         }
     };
 
-    const policyLabel = (policyKey) => policyOptions.find((option) => option.key === policyKey)?.label || policyKey;
+    const policyLabel = (policyKey) => {
+        const option = policyOptions.find((item) => item.key === policyKey);
+        if (!option) return policyKey;
+        return copy(
+            { standard: 'Return or exchange', strict: 'Exchange only', final_sale: 'Final sale' }[policyKey] || option.label,
+            option.label,
+        );
+    };
 
     return (
         <Card className="glass-card shadow-sm">
             <CardHeader className="p-5 pb-2">
                 <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-muted-foreground uppercase tracking-wider">
-                    <RotateCcw className="h-4 w-4" /> Sera za kurudisha bidhaa
+                    <RotateCcw className="h-4 w-4" /> {copy('Return policies', 'Sera za kurudisha bidhaa')}
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-5 space-y-4">
@@ -104,23 +113,23 @@ export default function ReturnPoliciesManager() {
                     <form onSubmit={submit} className="space-y-3 rounded-2xl border border-border bg-muted/20 p-4">
                         <div className="space-y-1.5">
                             <label className="text-xs font-black uppercase tracking-wide text-muted-foreground" htmlFor="return-policy-name">
-                                Jina la sera
+                                {copy('Policy name', 'Jina la sera')}
                             </label>
                             <Input
                                 id="return-policy-name"
                                 value={form.name}
                                 onChange={(e) => updateForm('name', e.target.value)}
-                                placeholder="Mf. Kurudisha ndani ya siku 3"
+                                placeholder={copy('E.g. Return within 3 days', 'Mf. Kurudisha ndani ya siku 3')}
                                 className="h-10 rounded-xl"
                                 required
                             />
                             <p className="text-[11px] font-semibold text-muted-foreground">
-                                Andika jina fupi litakaloonekana kwa bidhaa.
+                                {copy('Write a short name that will appear for the product.', 'Andika jina fupi litakaloonekana kwa bidhaa.')}
                             </p>
                         </div>
                         <div className="grid gap-2">
                             <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">
-                                Aina ya sera
+                                {copy('Policy type', 'Aina ya sera')}
                             </p>
                             {policyOptions.map((option) => (
                                 <button
@@ -129,15 +138,15 @@ export default function ReturnPoliciesManager() {
                                     onClick={() => updateForm('policy', option.key)}
                                     className={`rounded-xl border px-3 py-2 text-left ${form.policy === option.key ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-200' : 'border-border bg-white'}`}
                                 >
-                                    <span className="block text-xs font-black">{option.label}</span>
-                                    <span className="mt-0.5 block text-[10px] font-semibold text-muted-foreground">{option.hint}</span>
+                                    <span className="block text-xs font-black">{copy({ standard: 'Return or exchange', strict: 'Exchange only', final_sale: 'Final sale' }[option.key], option.label)}</span>
+                                    <span className="mt-0.5 block text-[10px] font-semibold text-muted-foreground">{copy({ standard: 'Buyer can return or exchange within the period you set.', strict: 'Useful when an item can only be exchanged if damaged, incorrect, or poor quality.', final_sale: 'Useful for perishable, personal-hygiene, or custom-made items.' }[option.key], option.hint)}</span>
                                 </button>
                             ))}
                         </div>
                         {form.policy !== 'final_sale' && (
                             <div className="space-y-1.5">
                                 <label className="text-xs font-black uppercase tracking-wide text-muted-foreground" htmlFor="return-window-days">
-                                    Muda wa kurudisha
+                                    {copy('Return window', 'Muda wa kurudisha')}
                                 </label>
                                 <Input
                                     id="return-window-days"
@@ -146,27 +155,27 @@ export default function ReturnPoliciesManager() {
                                     max="30"
                                     value={form.window_days}
                                     onChange={(e) => updateForm('window_days', e.target.value)}
-                                    placeholder="Mf. 3"
+                                    placeholder={copy('E.g. 3', 'Mf. 3')}
                                     className="h-10 rounded-xl"
                                 />
                                 <p className="text-[11px] font-semibold text-muted-foreground">
-                                    Idadi ya siku ambazo mteja anaweza kurudisha au kubadilisha bidhaa.
+                                    {copy('Number of days the customer can return or exchange the item.', 'Idadi ya siku ambazo mteja anaweza kurudisha au kubadilisha bidhaa.')}
                                 </p>
                             </div>
                         )}
                         <div className="space-y-1.5">
                             <label className="text-xs font-black uppercase tracking-wide text-muted-foreground" htmlFor="return-policy-note">
-                                Maelezo kwa mteja
+                                {copy('Customer note', 'Maelezo kwa mteja')}
                             </label>
                             <Textarea
                                 id="return-policy-note"
                                 value={form.note}
                                 onChange={(e) => updateForm('note', e.target.value)}
-                                placeholder="Mf. Tunakubali kubadilisha bidhaa ndani ya siku 3 kama imeharibika au si sahihi."
+                                placeholder={copy('E.g. We accept exchanges within 3 days if the item is damaged or incorrect.', 'Mf. Tunakubali kubadilisha bidhaa ndani ya siku 3 kama imeharibika au si sahihi.')}
                                 className="min-h-24 rounded-xl"
                             />
                             <p className="text-[11px] font-semibold text-muted-foreground">
-                                Eleza masharti muhimu kwa lugha rahisi.
+                                {copy('Explain the important terms in simple language.', 'Eleza masharti muhimu kwa lugha rahisi.')}
                             </p>
                         </div>
                         <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
@@ -175,25 +184,25 @@ export default function ReturnPoliciesManager() {
                                 checked={Boolean(form.is_default)}
                                 onChange={(e) => updateForm('is_default', e.target.checked)}
                             />
-                            Tumia kama sera ya kawaida kwa bidhaa za dukani
+                            {copy('Use as the default policy for shop products', 'Tumia kama sera ya kawaida kwa bidhaa za dukani')}
                         </label>
                         <div className="flex gap-2">
                             <Button type="submit" className="h-10 rounded-xl" disabled={saving}>
-                                {form.id ? 'Hifadhi sera' : 'Tengeneza sera'}
+                                {form.id ? copy('Save policy', 'Hifadhi sera') : copy('Create policy', 'Tengeneza sera')}
                             </Button>
                             {form.id && (
                                 <Button type="button" variant="outline" className="h-10 rounded-xl" onClick={() => setForm(emptyForm)}>
-                                    Ghairi
+                                    {copy('Cancel', 'Ghairi')}
                                 </Button>
                             )}
                         </div>
                     </form>
 
                     <div className="space-y-2">
-                        {loading && <p className="text-sm text-muted-foreground">Inapakia sera...</p>}
+                        {loading && <p className="text-sm text-muted-foreground">{copy('Loading policies...', 'Inapakia sera...')}</p>}
                         {!loading && policies.length === 0 && (
                             <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                                Tengeneza angalau sera moja ya kurudisha bidhaa. Sera ya kwanza itawekwa kuwa ya kawaida moja kwa moja.
+                                {copy('Create at least one return policy. The first policy will automatically become the default.', 'Tengeneza angalau sera moja ya kurudisha bidhaa. Sera ya kwanza itawekwa kuwa ya kawaida moja kwa moja.')}
                             </p>
                         )}
                         {policies.map((policy) => (
@@ -202,8 +211,8 @@ export default function ReturnPoliciesManager() {
                                     <div>
                                         <p className="text-sm font-black">{policy.name}</p>
                                         <p className="text-xs font-semibold text-muted-foreground">
-                                            {policyLabel(policy.policy)}{policy.window_days !== null ? ` · siku ${policy.window_days}` : ''}
-                                            {policy.is_default ? ' · Kawaida' : ''}
+                                            {policyLabel(policy.policy)}{policy.window_days !== null ? ` · ${policy.window_days} ${copy('days', 'siku')}` : ''}
+                                            {policy.is_default ? ` · ${copy('Default', 'Kawaida')}` : ''}
                                         </p>
                                     </div>
                                     <button
@@ -218,11 +227,11 @@ export default function ReturnPoliciesManager() {
                                 {policy.note && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{policy.note}</p>}
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <Button type="button" variant="outline" className="h-8 rounded-lg text-xs" onClick={() => setForm({ ...emptyForm, ...policy, window_days: policy.window_days ?? '' })}>
-                                        Hariri
+                                        {copy('Edit', 'Hariri')}
                                     </Button>
                                     {!policy.is_default && (
                                         <Button type="button" variant="ghost" className="h-8 rounded-lg text-xs" onClick={() => setDefault(policy)}>
-                                            Weka kama kawaida
+                                            {copy('Set as default', 'Weka kama kawaida')}
                                         </Button>
                                     )}
                                 </div>

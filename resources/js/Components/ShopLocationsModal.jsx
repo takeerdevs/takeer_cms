@@ -3,6 +3,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, Dr
 import { Button } from '@/Components/ui/Button';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { MapPin, Navigation, X, Store, CheckCircle2, AlertTriangle, ChevronRight } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 const MAP_CONTAINER_STYLE = {
     width: '100%',
@@ -19,6 +20,7 @@ export default function ShopLocationsModal({
     inventories = [],
     productName = 'Bidhaa'
 }) {
+    const { copy } = useLocale();
     const [selectedLocation, setSelectedLocation] = useState(locations.find(l => l.is_primary) || locations[0] || null);
 
     const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -42,10 +44,10 @@ export default function ShopLocationsModal({
                             <div className="bg-brand-600 p-1.5 rounded-lg text-white">
                                 <Store className="h-4 w-4" />
                             </div>
-                            <DrawerTitle className="text-xl font-black">Ona Bidhaa Ilipo</DrawerTitle>
+                            <DrawerTitle className="text-xl font-black">{copy('See where the product is available', 'Ona bidhaa ilipo')}</DrawerTitle>
                         </div>
                         <DrawerDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest leading-none">
-                            Shop na maeneo yanayopatikana kwa pickup
+                            {copy('Shops and locations available for pickup', 'Maduka na maeneo yanayopatikana kwa pickup')}
                         </DrawerDescription>
                     </DrawerHeader>
 
@@ -80,7 +82,7 @@ export default function ShopLocationsModal({
                     )}
 
                     <div className="space-y-3 pt-2">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Orodha ya Maduka</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">{copy('Shop list', 'Orodha ya maduka')}</p>
                         
                         <div className="grid gap-2.5">
                             {locations.map((loc) => {
@@ -101,13 +103,13 @@ export default function ShopLocationsModal({
                                                 <div className="flex items-center gap-2 mb-0.5">
                                                     <p className={`font-black uppercase tracking-widest text-[11px] ${isSelected ? 'text-brand-700' : 'text-slate-900'}`}>{loc.name}</p>
                                                     {loc.is_primary && (
-                                                        <span className="bg-brand-100 text-brand-700 text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-tighter">Primary</span>
+                                                        <span className="bg-brand-100 text-brand-700 text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-tighter">{copy('Primary', 'Kuu')}</span>
                                                     )}
                                                 </div>
                                                 <p className="text-xs font-bold text-slate-500 truncate mb-1.5">{loc.address}</p>
                                                 {loc.contact_phone && (
                                                     <p className="text-[10px] font-bold text-brand-600 mb-1.5 flex items-center gap-1">
-                                                        Simu: {loc.contact_phone}
+                                                        {copy('Phone', 'Simu')}: {loc.contact_phone}
                                                     </p>
                                                 )}
                                                 
@@ -115,12 +117,12 @@ export default function ShopLocationsModal({
                                                     {stock > 0 ? (
                                                         <div className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100">
                                                             <CheckCircle2 className="h-3 w-3" />
-                                                            <span className="text-[9px] font-black uppercase tracking-widest">Inapatikana ({stock})</span>
+                                                            <span className="text-[9px] font-black uppercase tracking-widest">{copy('Available', 'Inapatikana')} ({stock})</span>
                                                         </div>
                                                     ) : (
                                                         <div className="flex items-center gap-1 bg-red-50 text-red-700 px-2 py-0.5 rounded-full border border-red-100">
                                                             <AlertTriangle className="h-3 w-3" />
-                                                            <span className="text-[9px] font-black uppercase tracking-widest">Stock Imeisha</span>
+                                                            <span className="text-[9px] font-black uppercase tracking-widest">{copy('Out of stock', 'Stoo imeisha')}</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -139,7 +141,7 @@ export default function ShopLocationsModal({
                             onClick={() => onOpenChange(false)}
                             className="h-14 rounded-2xl bg-slate-900 hover:bg-black font-black uppercase tracking-widest text-xs shadow-lg"
                         >
-                            Funga
+                            {copy('Close', 'Funga')}
                         </Button>
                     </DrawerFooter>
                 </div>

@@ -42,8 +42,8 @@ class DispatchCourier implements ShouldQueue
             $bodaPhones = ['+255712345678', '+255789123456', '+255755112233'];
             $bodaPhone = $bodaPhones[array_rand($bodaPhones)];
 
-            // Ensure order is locked in escrow
-            $this->order->update(['payment_status' => 'escrow_locked']);
+            // Keep the order in the provider-backed fulfillment state.
+            $this->order->update(['payment_status' => 'pending_fulfillment']);
 
             // Gen PIN
             $pin = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);

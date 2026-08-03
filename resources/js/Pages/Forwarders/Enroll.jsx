@@ -4,6 +4,8 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { ArrowLeft, CheckCircle2, FileCheck, ShieldCheck, Ship, UploadCloud, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
+import LanguageSwitcher from '@/Components/LanguageSwitcher';
 
 const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
 const inputClass = 'h-12 rounded-xl border border-slate-200 bg-white px-4 text-base font-semibold text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 focus-visible:ring-brand-500/10 focus-visible:ring-4 focus-visible:ring-offset-0 transition-all duration-200';
@@ -22,6 +24,17 @@ const ENABLED_SERVICE_KEYS = new Set(SERVICE_OPTIONS.map((option) => option.key)
 
 const normalizeCountryId = (id) => Number(id);
 
+function verificationStatusLabel(value, copy) {
+    const labels = {
+        pending: ['Pending', 'Inasubiri'],
+        verified: ['Verified', 'Imethibitishwa'],
+        rejected: ['Rejected', 'Imekataliwa'],
+        suspended: ['Suspended', 'Imesimamishwa'],
+    };
+    const [english, swahili] = labels[value] || labels.pending;
+    return copy(english, swahili);
+}
+
 function Field({ label, children, hint }) {
     return (
         <label className="block space-y-1.5">
@@ -33,6 +46,7 @@ function Field({ label, children, hint }) {
 }
 
 export default function ForwarderEnroll({ countries = [], merchantUsername = null, merchantName = null, mode = 'public', application = null, hasVerifiedPersonalProfile = false }) {
+    const { copy } = useLocale();
     const [submitted, setSubmitted] = useState(false);
     const [loading, setLoading] = useState(false);
     const [countrySearch, setCountrySearch] = useState('');
@@ -105,7 +119,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
             const data = await res.json();
             if (!res.ok) {
                 const firstError = data.errors ? Object.values(data.errors).flat()[0] : null;
-                throw new Error(firstError || data.message || 'Application could not be submitted.');
+                throw new Error(firstError || data.message || copy('Application could not be submitted.', 'Ombi halikuweza kutumwa.'));
             }
             setSubmitted(true);
         } catch (error) {
@@ -117,7 +131,8 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900">
-            <Head title="Freight Application | Takeer" />
+            <Head title={`${copy('Freight application', 'Ombi la freight')} | Takeer`} />
+            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
             <div className="border-b border-slate-200 bg-white">
                 <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
                     <Link href={merchantUsername ? '/profile' : '/'} className="flex items-center gap-3 text-sm font-black text-slate-900">
@@ -127,7 +142,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                         <span>{merchantName || 'Takeer Logistics'}</span>
                     </Link>
                     <span className="rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-black text-brand-700">
-                        {mode === 'merchant_setup' ? 'Freight Application' : 'Forwarder Verification'}
+                        {mode === 'merchant_setup' ? copy('Freight application', 'Ombi la freight') : copy('Forwarder verification', 'Uhakiki wa forwarder')}
                     </span>
                 </div>
             </div>
@@ -138,7 +153,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
                             <ShieldCheck className="h-7 w-7" />
                         </div>
-                        <h1 className="mt-4 text-2xl font-black">Verify your personal profile first</h1>
+                        <h1 className="mt-4 text-2xl font-black">{copy('Verify your personal profile first', 'Thibitisha profile yako binafsi kwanza')}</h1>
                         <p className="mx-auto mt-2 max-w-xl text-sm font-semibold leading-6 text-slate-600">
                             Freight and forwarding applications require the owner to be personally verified before the business can apply.
                         </p>
@@ -149,7 +164,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                 ) : submitted ? (
                     <div className="mt-10 rounded-3xl border border-emerald-100 bg-white p-10 text-center shadow-sm">
                         <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
-                        <h1 className="mt-4 text-2xl font-black">Application received</h1>
+                        <h1 className="mt-4 text-2xl font-black">{copy('Application received', 'Ombi limepokelewa')}</h1>
                         <p className="mx-auto mt-2 max-w-xl text-sm font-semibold leading-6 text-slate-600">
                             Admin will review your freight/forwarding documents. Once approved, logistics management cards will appear in your profile.
                         </p>
@@ -161,16 +176,16 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                                 <Ship className="h-7 w-7" />
                             </div>
                             <p className="mt-5 text-xs font-black uppercase tracking-[0.24em] text-brand-700">
-                                DIGITIZE YOUR FREIGHT OPERATIONS
+                                {copy('Digitize your freight operations', 'Badilisha shughuli zako za freight kuwa za kidijitali')}
                             </p>
-                            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Freight & forwarding application</h1>
+                            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">{copy('Freight & forwarding application', 'Ombi la freight na forwarding')}</h1>
                             <p className="mt-3 max-w-2xl text-sm font-semibold leading-7 text-slate-600">
-                                Submit your company details and operating proof. Warehouses, routes, schedules, and address templates for customers to one click import unlock after approval.
+                                {copy('Submit your company details and operating proof. Warehouses, routes, schedules, and address templates for customers to one-click import unlock after approval.', 'Wasilisha maelezo ya kampuni yako na ushahidi wa uendeshaji. Maghala, njia, ratiba na templeti za anwani za wateja za kuagiza kwa kubofya mara moja zitafunguliwa baada ya kuidhinishwa.')}
                             </p>
                             {application && (
                                 <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
                                     <p className="text-xs font-black uppercase tracking-widest text-amber-800">
-                                        Current status: {application.verification_status || 'pending'}
+                                        {copy('Current status', 'Hali ya sasa')}: {verificationStatusLabel(application.verification_status, copy)}
                                     </p>
                                     {application.admin_notes && (
                                         <p className="mt-1 text-sm font-semibold leading-6 text-amber-900">{application.admin_notes}</p>
@@ -181,44 +196,44 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
 
                         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div className="mb-4">
-                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">Company Details</h2>
-                                <p className="mt-1 text-xs font-semibold text-slate-500">This is used to verify the forwarder business.</p>
+                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">{copy('Company details', 'Maelezo ya kampuni')}</h2>
+                                <p className="mt-1 text-xs font-semibold text-slate-500">{copy('This is used to verify the forwarder business.', 'Hii hutumika kuthibitisha biashara ya forwarder.')}</p>
                             </div>
                             <div className="grid gap-4 md:grid-cols-2">
-                                <Field label="Trading name">
+                                <Field label={copy('Trading name', 'Jina la biashara')}>
                                     <Input className={inputClass} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                                 </Field>
-                                <Field label="Legal registered name">
+                                <Field label={copy('Legal registered name', 'Jina la kisheria lililosajiliwa')}>
                                     <Input className={inputClass} required value={form.legal_name} onChange={(e) => setForm({ ...form, legal_name: e.target.value })} />
                                 </Field>
-                                <Field label="Business registration number">
+                                <Field label={copy('Business registration number', 'Namba ya usajili wa biashara')}>
                                     <Input className={inputClass} value={form.business_registration_number} onChange={(e) => setForm({ ...form, business_registration_number: e.target.value })} />
                                 </Field>
-                                <Field label="Website / social profile">
+                                <Field label={copy('Website / social profile', 'Tovuti / wasifu wa kijamii')}>
                                     <Input className={inputClass} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://..." />
                                 </Field>
-                                <Field label="Contact person">
+                                <Field label={copy('Contact person', 'Mtu wa mawasiliano')}>
                                     <Input className={inputClass} required value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} />
                                 </Field>
-                                <Field label="Primary phone">
+                                <Field label={copy('Primary phone', 'Simu kuu')}>
                                     <Input className={inputClass} required value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} />
                                 </Field>
-                                <Field label="Email address">
+                                <Field label={copy('Email address', 'Anwani ya barua pepe')}>
                                     <Input className={inputClass} type="email" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} />
                                 </Field>
-                                <Field label="WhatsApp phone">
+                                <Field label={copy('WhatsApp phone', 'Simu ya WhatsApp')}>
                                     <Input className={inputClass} value={form.whatsapp_phone} onChange={(e) => setForm({ ...form, whatsapp_phone: e.target.value })} />
                                 </Field>
                             </div>
                             <div className="mt-4">
-                                <Field label="How does this freight business operate?">
-                                    <textarea className={textAreaClass} value={form.application_summary} onChange={(e) => setForm({ ...form, application_summary: e.target.value })} placeholder="Explain the flow of process the customer will do to a point of collecting their cargo." />
+                                <Field label={copy('How does this freight business operate?', 'Biashara hii ya freight inafanyaje kazi?')}>
+                                    <textarea className={textAreaClass} value={form.application_summary} onChange={(e) => setForm({ ...form, application_summary: e.target.value })} placeholder={copy('Explain the customer journey from placing an order to collecting cargo.', 'Eleza hatua ambazo mteja atapitia kutoka kuweka oda hadi kuchukua mzigo.')} />
                                 </Field>
                             </div>
                         </section>
 
                         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                            <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">Services Offered</h2>
+                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">{copy('Services offered', 'Huduma zinazotolewa')}</h2>
                             <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                 {SERVICE_OPTIONS.map((option) => {
                                     const selected = form.service_types.includes(option.key);
@@ -229,7 +244,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                                             onClick={() => toggleService(option.key)}
                                             className={`min-h-12 rounded-xl border px-3 text-sm font-black transition ${selected ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-white text-slate-600 hover:border-brand-200'}`}
                                         >
-                                            {option.label}
+                                            {copy(option.label, option.key === 'sea_cargo' ? 'Mizigo ya baharini' : 'Mizigo ya angani')}
                                         </button>
                                     );
                                 })}
@@ -238,8 +253,8 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
 
                         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div className="flex flex-col gap-1">
-                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">Countries You Operate In</h2>
-                                <p className="text-xs font-semibold text-slate-500">Select countries where you are licensed directly or through verified partners.</p>
+                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">{copy('Countries you operate in', 'Nchi unazofanyia kazi')}</h2>
+                                <p className="text-xs font-semibold text-slate-500">{copy('Select countries where you are licensed directly or through verified partners.', 'Chagua nchi ambazo una leseni moja kwa moja au kupitia washirika waliothibitishwa.')}</p>
                             </div>
 
                             {/* Search Input Container */}
@@ -247,7 +262,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                                 <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                 <input
                                     type="text"
-                                    placeholder="Search countries..."
+                                    placeholder={copy('Search countries...', 'Tafuta nchi...')}
                                     value={countrySearch}
                                     onChange={(e) => setCountrySearch(e.target.value)}
                                     className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-10 text-base font-semibold text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 focus-visible:ring-brand-500/10 focus-visible:ring-4 focus-visible:ring-offset-0 transition-all duration-200"
@@ -270,7 +285,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                                 return (
                                     <div className="mt-3 flex flex-wrap gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/30 p-3">
                                         <span className="w-full text-[10px] font-black uppercase tracking-[0.15em] text-emerald-800 mb-1">
-                                            Selected ({selectedCountries.length})
+                                            {copy('Selected', 'Zilizochaguliwa')} ({selectedCountries.length})
                                         </span>
                                         {selectedCountries.map((country) => (
                                             <div
@@ -302,7 +317,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                                 return (
                                     <div className="mt-4">
                                         <span className="block text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 mb-2">
-                                            {countrySearch ? 'Matching Countries' : 'Available Countries'}
+                                            {countrySearch ? copy('Matching countries', 'Nchi zinazolingana') : copy('Available countries', 'Nchi zinazopatikana')}
                                         </span>
                                         {filteredCountries.length > 0 ? (
                                             <div className="grid max-h-64 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -323,7 +338,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                                         ) : (
                                             <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center">
                                                 <p className="text-sm font-semibold text-slate-500">
-                                                    {countrySearch ? 'No other matching countries found.' : 'All countries have been selected.'}
+                                                    {countrySearch ? copy('No other matching countries found.', 'Hakuna nchi nyingine zinazolingana.') : copy('All countries have been selected.', 'Nchi zote zimechaguliwa.')}
                                                 </p>
                                             </div>
                                         )}
@@ -338,23 +353,23 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                                     <FileCheck className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">Permits / Proof</h2>
-                                    <p className="text-xs font-semibold text-slate-500">Upload licenses, certificates, registration, or partner proof.</p>
+                                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-700">{copy('Permits / proof', 'Leseni / ushahidi')}</h2>
+                                    <p className="text-xs font-semibold text-slate-500">{copy('Upload licenses, certificates, registration, or partner proof.', 'Pakia leseni, vyeti, usajili au ushahidi wa partner.')}</p>
                                 </div>
                             </div>
                             <div className="grid gap-4 md:grid-cols-2">
-                                <Field label="Upload documents" hint="PDF, Word, JPG, PNG. Max 10MB each.">
+                                <Field label={copy('Upload documents', 'Pakia nyaraka')} hint={copy('PDF, Word, JPG, PNG. Max 10MB each.', 'PDF, Word, JPG, PNG. Kila moja isizidi 10MB.')}>
                                     <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center hover:border-brand-300 hover:bg-brand-50">
                                         <UploadCloud className="h-7 w-7 text-slate-500" />
-                                        <span className="mt-2 text-sm font-black text-slate-700">Choose files</span>
-                                        <span className="mt-1 text-xs font-semibold text-slate-500">{Array.from(form.document_files || []).length} selected</span>
+                                        <span className="mt-2 text-sm font-black text-slate-700">{copy('Choose files', 'Chagua mafaili')}</span>
+                                        <span className="mt-1 text-xs font-semibold text-slate-500">{Array.from(form.document_files || []).length} {copy('selected', 'zimechaguliwa')}</span>
                                         {(existingDocuments.files || []).length > 0 && (
-                                            <span className="mt-1 text-xs font-semibold text-emerald-700">{existingDocuments.files.length} already uploaded</span>
+                                            <span className="mt-1 text-xs font-semibold text-emerald-700">{existingDocuments.files.length} {copy('already uploaded', 'zimekwishapakiwa')}</span>
                                         )}
                                         <input type="file" multiple className="hidden" onChange={(e) => setForm({ ...form, document_files: e.target.files })} />
                                     </label>
                                 </Field>
-                                <Field label="Document links" hint="One link per line, if documents are hosted elsewhere.">
+                                <Field label={copy('Document links', 'Viungo vya nyaraka')} hint={copy('One link per line, if documents are hosted elsewhere.', 'Weka kiungo kimoja kwa kila mstari ikiwa nyaraka zimehifadhiwa sehemu nyingine.')}>
                                     <textarea className={textAreaClass} value={form.document_links} onChange={(e) => setForm({ ...form, document_links: e.target.value })} placeholder="https://..." />
                                 </Field>
                             </div>
@@ -362,7 +377,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
 
                         <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                             <Button type="submit" disabled={loading} className="h-14 w-full rounded-2xl text-base font-black">
-                                {loading ? 'Submitting...' : 'Submit Application'}
+                                {loading ? copy('Submitting...', 'Inawasilisha...') : copy('Submit application', 'Wasilisha ombi')}
                             </Button>
                         </div>
                     </form>

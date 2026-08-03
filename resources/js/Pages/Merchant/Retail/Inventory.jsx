@@ -8,8 +8,10 @@ import { toast } from 'sonner';
 import { Boxes, Search, Save, ArrowLeftRight, RefreshCw } from 'lucide-react';
 import { formatQuantity, productQuantityLabel } from '@/lib/productUnits';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
+import { useLocale } from '@/lib/i18n';
 
 export default function Inventory({ merchant }) {
+    const { copy } = useLocale();
     const { can } = useMerchantPermissions(merchant?.username);
     const [locations, setLocations] = useState([]);
     const [selectedLocationId, setSelectedLocationId] = useState('');
@@ -72,7 +74,7 @@ export default function Inventory({ merchant }) {
             });
             setRows(items);
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindikana kupakia inventory.');
+            toast.error(err.response?.data?.message || copy('Failed to load inventory.', 'Imeshindikana kupakia inventory.'));
         } finally {
             setLoading(false);
         }
@@ -121,7 +123,7 @@ export default function Inventory({ merchant }) {
     const submitDailyCount = async () => {
         const changedRows = rows.filter((row) => Number(row.counted_quantity) !== Number(row.expected_quantity));
         if (changedRows.length === 0) {
-            toast.info('Hakuna tofauti ya stock ya kuhifadhi.');
+            toast.info(copy('There is no stock variance to save.', 'Hakuna tofauti ya stock ya kuhifadhi.'));
             return;
         }
 
@@ -135,10 +137,10 @@ export default function Inventory({ merchant }) {
                     counted_quantity: Number(row.counted_quantity),
                 })),
             });
-            toast.success('Daily count imehifadhiwa kikamilifu.');
+            toast.success(copy('Daily count saved successfully.', 'Daily count imehifadhiwa kikamilifu.'));
             fetchInventory(selectedLocationId, search);
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindikana kuhifadhi count.');
+            toast.error(err.response?.data?.message || copy('Failed to save count.', 'Imeshindikana kuhifadhi count.'));
         } finally {
             setSaving(false);
         }
@@ -148,19 +150,19 @@ export default function Inventory({ merchant }) {
 
     return (
         <AppLayout>
-            <Head title="Retail Inventory | Takeer" />
+            <Head title={`${copy('Retail Inventory', 'Inventory ya Rejareja')} | Takeer`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-24">
                 <div className="flex flex-wrap gap-3 items-center justify-between">
                     <div>
                         <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
-                            Inventory Count <Boxes className="h-7 w-7 text-brand-600" />
+                            {copy('Inventory Count', 'Hesabu ya Stock')} <Boxes className="h-7 w-7 text-brand-600" />
                         </h1>
-                        <p className="text-muted-foreground">Storekeeper anaingiza physical stock ya leo kwa location moja moja.</p>
+                        <p className="text-muted-foreground">{copy("The storekeeper records today's physical stock for each location.", 'Storekeeper anaingiza physical stock ya leo kwa location moja moja.')}</p>
                     </div>
                     <div className="flex items-center gap-2">
                         {canManageTransfers && (
                             <Button variant="outline" onClick={() => router.visit(`/merchant/${merchant.username}/retail/transfers`)}>
-                                <ArrowLeftRight className="h-4 w-4 mr-2" /> Transfers
+                                <ArrowLeftRight className="h-4 w-4 mr-2" /> {copy('Transfers', 'Uhamishaji')}
                             </Button>
                         )}
                     </div>
@@ -168,19 +170,19 @@ export default function Inventory({ merchant }) {
 
                 <Card className="glass-card shadow-sm">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-black uppercase tracking-wider text-muted-foreground">Daily Count Sheet</CardTitle>
+                        <CardTitle className="text-sm font-black uppercase tracking-wider text-muted-foreground">{copy('Daily Count Sheet', 'Fomu ya Hesabu ya Kila Siku')}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                             <div className="md:col-span-1">
-                                <label className="text-[10px] font-black uppercase text-muted-foreground">Location</label>
+                                <label className="text-[10px] font-black uppercase text-muted-foreground">{copy('Location', 'Eneo')}</label>
                                 <select
                                     value={selectedLocationId}
                                     onChange={(e) => setSelectedLocationId(e.target.value)}
                                     disabled={Boolean(assignedLocationId)}
                                     className="w-full h-10 rounded-xl border border-input bg-white px-3 text-sm font-bold mt-1"
                                 >
-                                    <option value="">Chagua Location</option>
+                                    <option value="">{copy('Choose Location', 'Chagua Eneo')}</option>
                                     {locations.map((loc) => (
                                         <option key={loc.id} value={loc.id}>
                                             {loc.name} ({String(loc.type || 'shop').toLowerCase()})
@@ -189,30 +191,30 @@ export default function Inventory({ merchant }) {
                                 </select>
                             </div>
                             <div className="md:col-span-2">
-                                <label className="text-[10px] font-black uppercase text-muted-foreground">Search</label>
+                                <label className="text-[10px] font-black uppercase text-muted-foreground">{copy('Search', 'Tafuta')}</label>
                                 <div className="relative mt-1">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                     <Input
                                         className="pl-9 rounded-xl"
                                         value={search}
                                         onChange={(e) => setSearch(e.target.value)}
-                                        placeholder="Search bidhaa, variant, sku..."
+                                        placeholder={copy('Search product, variant, SKU...', 'Search bidhaa, variant, SKU...')}
                                     />
                                 </div>
                             </div>
                             <div className="md:col-span-1 flex items-end gap-2">
                                 <Button variant="outline" className="h-10 w-full" onClick={handleSearch}>
-                                    <RefreshCw className="h-4 w-4 mr-2" /> Refresh
+                                    <RefreshCw className="h-4 w-4 mr-2" /> {copy('Refresh', 'Onyesha upya')}
                                 </Button>
                             </div>
                         </div>
 
                         <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-brand-50/40 border border-brand-100">
                             <p className="text-xs font-bold text-brand-700">
-                                Lines changed: <span className="font-black">{varianceSummary.changed}</span> | Net variance: <span className="font-black">{formatQuantity(varianceSummary.net)}</span>
+                                {copy('Lines changed:', 'Mistari iliyobadilika:')} <span className="font-black">{varianceSummary.changed}</span> | {copy('Net variance:', 'Tofauti halisi:')} <span className="font-black">{formatQuantity(varianceSummary.net)}</span>
                             </p>
                             <Button onClick={submitDailyCount} disabled={saving || loading || varianceSummary.changed === 0}>
-                                <Save className="h-4 w-4 mr-2" /> {saving ? 'Inahifadhi...' : 'Submit Daily Count'}
+                                <Save className="h-4 w-4 mr-2" /> {saving ? copy('Saving...', 'Inahifadhi...') : copy('Submit Daily Count', 'Tuma Hesabu ya Kila Siku')}
                             </Button>
                         </div>
 
@@ -220,22 +222,22 @@ export default function Inventory({ merchant }) {
                             <table className="w-full text-sm">
                                 <thead className="bg-muted/40">
                                     <tr>
-                                        <th className="text-left p-3 font-black text-xs uppercase tracking-wider">Bidhaa</th>
-                                        <th className="text-left p-3 font-black text-xs uppercase tracking-wider">Variant/SKU</th>
-                                        <th className="text-right p-3 font-black text-xs uppercase tracking-wider">Expected</th>
-                                        <th className="text-right p-3 font-black text-xs uppercase tracking-wider">Counted</th>
-                                        <th className="text-right p-3 font-black text-xs uppercase tracking-wider">Variance</th>
+                                        <th className="text-left p-3 font-black text-xs uppercase tracking-wider">{copy('Product', 'Bidhaa')}</th>
+                                        <th className="text-left p-3 font-black text-xs uppercase tracking-wider">{copy('Variant/SKU', 'Variant/SKU')}</th>
+                                        <th className="text-right p-3 font-black text-xs uppercase tracking-wider">{copy('Expected', 'Inayotarajiwa')}</th>
+                                        <th className="text-right p-3 font-black text-xs uppercase tracking-wider">{copy('Counted', 'Iliyoesabiwa')}</th>
+                                        <th className="text-right p-3 font-black text-xs uppercase tracking-wider">{copy('Variance', 'Tofauti')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {loading && (
                                         <tr>
-                                            <td colSpan={5} className="p-6 text-center text-muted-foreground">Inapakia inventory...</td>
+                                            <td colSpan={5} className="p-6 text-center text-muted-foreground">{copy('Loading inventory...', 'Inapakia inventory...')}</td>
                                         </tr>
                                     )}
                                     {!loading && rows.length === 0 && (
                                         <tr>
-                                            <td colSpan={5} className="p-6 text-center text-muted-foreground">Hakuna stock records kwa location hii.</td>
+                                            <td colSpan={5} className="p-6 text-center text-muted-foreground">{copy('No stock records for this location.', 'Hakuna stock records kwa eneo hili.')}</td>
                                         </tr>
                                     )}
                                     {!loading && rows.map((row) => {

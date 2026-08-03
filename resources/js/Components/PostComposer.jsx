@@ -8,6 +8,7 @@ import PolicyNotice from '@/Components/PolicyNotice';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { hasMerchantPermission } from '@/lib/merchantPermissions';
+import { useLocale } from '@/lib/i18n';
 
 const BG_OPTIONS = [
     { key: null, label: 'Normal', preview: '' },
@@ -19,6 +20,16 @@ const BG_OPTIONS = [
     { key: 'solid_black', label: '⬛ Black', preview: '#000' },
     { key: 'solid_brand', label: '🔵 Brand', preview: '#0284c7' },
 ];
+const BG_OPTION_TRANSLATIONS = {
+    Normal: 'Kawaida',
+    '🌅 Sunset': '🌅 Machweo',
+    '🌊 Ocean': '🌊 Bahari',
+    '🌿 Forest': '🌿 Msitu',
+    '🌌 Midnight': '🌌 Usiku wa manane',
+    '🔥 Fire': '🔥 Moto',
+    '⬛ Black': '⬛ Nyeusi',
+    '🔵 Brand': '🔵 Chapa',
+};
 const SHORT_LOCKED_INTERNAL_TITLE = '__short_locked__';
 
 function AccessGateIcon({ type, className = '' }) {
@@ -150,6 +161,7 @@ function MediaGrid({ files, onRemove }) {
 }
 
 export default function PostComposer({ isOpen, onClose, prefillProduct = null, prefillMedia = [], prefillFiles = [], initialMode = 'short', initialMerchantUsername = null, prefillText = '', forwarderRoutes = [] }) {
+    const { copy } = useLocale();
     const { auth } = usePage().props;
     const merchantProfiles = auth.user?.merchant_profiles || [];
     const postableProfiles = useMemo(() => (
@@ -416,17 +428,17 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
 
     const handlePost = async () => {
         if (merchantProfiles.length > 0 && !selectedProfile) {
-            toast.error('You do not have permission to post as any business account.');
+            toast.error(copy('You do not have permission to post as any business account.', 'Huna ruhusa ya kuchapisha kwa akaunti yoyote ya biashara.'));
             return;
         }
         if (composerMode === 'short' && !text.trim() && mediaFiles.length === 0) return;
         if (composerMode === 'long' && (!longForm.title.trim() || !longForm.body.trim())) return;
         if (shouldRequireShortTitle && !shortTitle.trim()) {
-            toast.error('Paid short content must have a clear title.');
+            toast.error(copy('Paid short content must have a clear title.', 'Content fupi ya kulipia lazima iwe na kichwa wazi.'));
             return;
         }
         if (hasSingleUnlockPrice && parsedShortPrice !== null && parsedShortPrice < 0) {
-            toast.error('Unlock price cannot be negative.');
+            toast.error(copy('Unlock price cannot be negative.', 'Bei ya kufungua content haiwezi kuwa hasi.'));
             return;
         }
 
@@ -509,11 +521,11 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
 
             // Redirect to feed or profile
             router.visit('/feed');
-            toast.success('Post published successfully!');
+            toast.success(copy('Post published successfully!', 'Post imechapishwa kikamilifu!'));
 
         } catch (error) {
             console.error('Publishing failed:', error);
-            toast.error(error.response?.data?.message || 'Failed to publish post. Please try again.');
+            toast.error(error.response?.data?.message || copy('Failed to publish post. Please try again.', 'Imeshindikana kuchapisha post. Jaribu tena.'));
             setSubmitting(false);
         }
     };
@@ -556,7 +568,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                         >
                             <X className="h-5 w-5" />
                         </button>
-                        <h2 className="font-black text-lg text-foreground tracking-tight drop-shadow-sm">Chapisho Jipya</h2>
+                        <h2 className="font-black text-lg text-foreground tracking-tight drop-shadow-sm">{copy('New post', 'Chapisho jipya')}</h2>
                         <motion.button
                             whileTap={{ scale: 0.92 }}
                             onClick={handlePost}
@@ -568,7 +580,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                             }
                             className="h-10 px-6 rounded-full bg-brand-600 text-white text-sm font-bold disabled:opacity-40 transition-all hover:bg-brand-700 shadow-lg shadow-brand-500/20 drop-shadow-sm active:scale-95"
                         >
-                            {submitting ? 'Inatuma...' : 'Chapisha'}
+                            {submitting ? copy('Sending...', 'Inatuma...') : copy('Publish', 'Chapisha')}
                         </motion.button>
                     </div>
 
@@ -578,10 +590,10 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                             {/* Instagram-style Account Picker */}
                             {merchantProfiles.length > 0 && (
                                 <div className="bg-card/40 backdrop-blur-md border border-border/50 rounded-3xl p-4 shadow-sm">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3 px-1 text-center sm:text-left">Tuma kama...</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3 px-1 text-center sm:text-left">{copy('Post as...', 'Tuma kama...')}</p>
                                     {postableProfiles.length === 0 ? (
                                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">
-                                            You do not have permission to create posts for any business account.
+                                            {copy('You do not have permission to create posts for any business account.', 'Huna ruhusa ya kuunda posts kwa akaunti yoyote ya biashara.')}
                                         </div>
                                     ) : (
                                         <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 justify-center sm:justify-start">
@@ -612,7 +624,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                         @{profile.username}
                                                     </span>
                                                     <span className="text-[8px] uppercase tracking-tighter font-black opacity-60">
-                                                        {profile.type === 'personal' ? 'Binafsi' : 'Biashara'}
+                                                        {profile.type === 'personal' ? copy('Personal', 'Binafsi') : copy('Business', 'Biashara')}
                                                     </span>
                                                 </button>
                                             );
@@ -625,13 +637,13 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                             {forwarderRoutes.length > 0 && (
                                 <div className="bg-card/70 backdrop-blur-md border border-border/50 rounded-3xl p-4 shadow-sm">
                                     <label className="block space-y-2">
-                                        <span className="block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Attach freight route</span>
+                                        <span className="block text-[10px] font-black uppercase tracking-widest text-muted-foreground">{copy('Attach freight route', 'Ambatanisha route ya freight')}</span>
                                         <select
                                             value={forwarderRouteId}
                                             onChange={(event) => setForwarderRouteId(event.target.value)}
                                             className="h-12 w-full rounded-2xl border border-border bg-background px-4 text-sm font-bold text-foreground"
                                         >
-                                            <option value="">General freight update</option>
+                                            <option value="">{copy('General freight update', 'Taarifa ya jumla ya freight')}</option>
                                             {forwarderRoutes.map((route) => (
                                                 <option key={route.id} value={route.id}>
                                                     {route.label}{route.estimate ? ` · ${route.estimate}` : ''}
@@ -640,7 +652,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                         </select>
                                     </label>
                                     <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">
-                                        Pick a route only when this update applies to a specific shipping lane.
+                                        {copy('Pick a route only when this update applies to a specific shipping lane.', 'Chagua route tu kama taarifa hii inahusu njia maalum ya usafirishaji.')}
                                     </p>
                                 </div>
                             )}
@@ -696,7 +708,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                             ref={textRef}
                                             value={text}
                                             onChange={e => setText(e.target.value)}
-                                            placeholder="What's on your mind?"
+                                            placeholder={copy("What's on your mind?", 'Unafikiria nini?')}
                                             className={cn(
                                                 "w-full bg-transparent resize-none outline-none transition-all placeholder-opacity-70",
                                                 textAreaClass
@@ -719,35 +731,35 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                 <div className="bg-card/60 backdrop-blur-md border border-border/50 rounded-3xl p-4 space-y-4">
                                     <div className="grid gap-4 md:grid-cols-1">
                                         <div className="space-y-2">
-                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Title</label>
+                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Title', 'Kichwa')}</label>
                                             <input
                                                 type="text"
                                                 value={longForm.title}
                                                 onChange={(e) => setLongForm((current) => ({ ...current, title: e.target.value }))}
                                                 className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
-                                                placeholder="Enter article title..."
+                                                placeholder={copy('Enter article title...', 'Weka kichwa cha makala...')}
                                             />
                                         </div>
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Excerpt</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Excerpt', 'Muhtasari')}</label>
                                         <textarea
                                             value={longForm.excerpt}
                                             onChange={(e) => setLongForm((current) => ({ ...current, excerpt: e.target.value }))}
                                             rows={3}
                                             className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
-                                            placeholder="Muhtasari mfupi unaoonekana kabla ya kufungua content."
+                                            placeholder={copy('Short summary shown before opening the content.', 'Muhtasari mfupi unaoonekana kabla ya kufungua content.')}
                                         />
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Body</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Body', 'Mwili wa makala')}</label>
                                         <LongFormBlockEditor
                                             key={`composer-long-editor-${longEditorKey}`}
                                             value={longForm.body}
                                             onChange={(nextBody) => setLongForm((current) => ({ ...current, body: nextBody }))}
-                                            placeholder="Write your article, add headings, links, images, and embeds..."
+                                            placeholder={copy('Write your article, add headings, links, images, and embeds...', 'Andika makala yako, ongeza vichwa, links, picha na embeds...')}
                                             uploadUrl={`${merchantApiBase}/upload/media`}
                                             uploadFields={merchantPayload}
                                         />
@@ -772,12 +784,12 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="text-[10px] font-black uppercase tracking-widest text-brand-600/80 px-1.5 py-0.5 bg-brand-500/10 rounded-md">
-                                                            {item.type === 'bundle' ? 'Bundle' : 'Subscription'}
+                                                            {item.type === 'bundle' ? copy('Bundle', 'Bundle') : copy('Subscription', 'Subscription')}
                                                         </span>
                                                     </div>
                                                     <p className="font-bold text-[14px] truncate text-foreground leading-tight mt-0.5">{item.title}</p>
                                                     <p className="text-brand-600 font-black text-[11px]">
-                                                        {item.price > 0 ? `TZS ${Number(item.price).toLocaleString()}` : 'Free'}
+                                                        {item.price > 0 ? `TZS ${Number(item.price).toLocaleString()}` : copy('Free', 'Bure')}
                                                     </p>
                                                 </div>
                                                 <button
@@ -807,18 +819,18 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-2">
                                                 <Lock className={cn("h-4 w-4", isRestricted ? "text-brand-600" : "text-muted-foreground")} />
-                                                <span className="text-xs font-black uppercase tracking-widest text-foreground">Restrict Content</span>
+                                                <span className="text-xs font-black uppercase tracking-widest text-foreground">{copy('Restrict content', 'Zuia content')}</span>
                                             </div>
                                             <p className="text-[10px] text-muted-foreground mt-0.5">
                                                 {selectedProfileKycComplete
-                                                    ? 'Toggle to lock this content behind a paywall'
-                                                    : 'Complete KYC before locking content for payment'}
+                                                    ? copy('Toggle to lock this content behind a paywall', 'Washa ili kufunga content nyuma ya malipo')
+                                                    : copy('Complete KYC before locking content for payment', 'Kamilisha KYC kabla ya kufunga content kwa malipo')}
                                             </p>
                                         </div>
                                         <button
                                             onClick={() => {
                                                 if (!selectedProfileKycComplete) {
-                                                    toast.error('Complete KYC before locking content for payment.');
+                                                    toast.error(copy('Complete KYC before locking content for payment.', 'Kamilisha KYC kabla ya kufunga content kwa malipo.'));
                                                     return;
                                                 }
 
@@ -855,7 +867,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                             >
                                                 {/* Unlock Price Entry */}
                                                 <div className="space-y-2">
-                                                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">Unlock Price (Single Price)</label>
+                                                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">{copy('Unlock price (single price)', 'Bei ya kufungua (bei moja)')}</label>
                                                     <div className="flex items-center gap-3">
                                                         <div className="relative flex-1">
                                                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground">TZS</span>
@@ -864,28 +876,28 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                                 value={shortPrice}
                                                                 onChange={(e) => setShortPrice(e.target.value)}
                                                                 className="h-11 w-full pl-10 pr-3 rounded-xl border border-input bg-background text-sm font-bold"
-                                                                placeholder="Example: 5,000"
+                                                                placeholder={copy('Example: 5,000', 'Mfano: 5,000')}
                                                             />
                                                         </div>
-                                                        <p className="text-[10px] text-muted-foreground italic leading-tight">Optional: leave blank if this should unlock only via subscription or bundle</p>
+                                                        <p className="text-[10px] text-muted-foreground italic leading-tight">{copy('Optional: leave blank if this should unlock only via subscription or bundle', 'Si lazima: acha wazi kama ifunguke kupitia subscription au bundle pekee')}</p>
                                                     </div>
                                                 </div>
 
                                                 {shouldShowShortTitleInput && (
                                                     <div className="space-y-2">
                                                         <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">
-                                                            Premium Short Title
+                                                            {copy('Premium short title', 'Kichwa kifupi cha premium')}
                                                         </label>
                                                         <input
                                                             type="text"
                                                             value={shortTitle}
                                                             onChange={(e) => setShortTitle(e.target.value)}
                                                             className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                            placeholder="What customers will unlock"
+                                                            placeholder={copy('What customers will unlock', 'Kile ambacho wateja watafungua')}
                                                             required
                                                         />
                                                         <p className="text-[10px] text-muted-foreground italic leading-tight">
-                                                            Required so customers know what they will unlock.
+                                                            {copy('Required so customers know what they will unlock.', 'Inahitajika ili wateja wajue watakachofungua.')}
                                                         </p>
                                                     </div>
                                                 )}
@@ -894,7 +906,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
 
                                                 {/* Access Group Selection (Bundles / Subscriptions) */}
                                                 <div className="space-y-3">
-                                                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">Assign to Access Group</label>
+                                                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">{copy('Assign to access group', 'Weka kwenye kundi la ufikiaji')}</label>
 
                                                     <div className="flex p-1 bg-background/50 rounded-2xl border border-border/50">
                                                         {['plan', 'bundle'].map((tab) => (
@@ -906,16 +918,16 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                                     activePromotionTab === tab ? "bg-background text-brand-600 shadow-sm" : "text-muted-foreground hover:text-foreground"
                                                                 )}
                                                             >
-                                                                {tab === 'plan' ? 'Subscriptions' : 'Bundles'}
+                                                                {tab === 'plan' ? copy('Subscriptions', 'Usajili') : copy('Bundles', 'Vifurushi')}
                                                             </button>
                                                         ))}
                                                     </div>
 
                                                     <div className="grid gap-2 max-h-[220px] overflow-y-auto pr-1 no-scrollbar pt-1">
                                                         {promotablesLoading ? (
-                                                            <div className="flex items-center justify-center py-8"><p className="text-xs text-muted-foreground italic">Loading groups...</p></div>
+                                                            <div className="flex items-center justify-center py-8"><p className="text-xs text-muted-foreground italic">{copy('Loading groups...', 'Inapakia makundi...')}</p></div>
                                                         ) : promotables[activePromotionTab === 'plan' ? 'plans' : 'bundles'].length === 0 ? (
-                                                            <p className="text-[11px] text-muted-foreground text-center py-6 italic">No {activePromotionTab}s available for selection.</p>
+                                                            <p className="text-[11px] text-muted-foreground text-center py-6 italic">{activePromotionTab === 'plan' ? copy('No subscriptions available for selection.', 'Hakuna usajili wa kuchagua.') : copy('No bundles available for selection.', 'Hakuna vifurushi vya kuchagua.')}</p>
                                                         ) : (
                                                             promotables[activePromotionTab === 'plan' ? 'plans' : 'bundles'].map(item => {
                                                                 const mappedType = activePromotionTab === 'plan' ? 'subscription_plan' : activePromotionTab;
@@ -942,7 +954,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                                         <div className="min-w-0 flex-1">
                                                                             <p className="font-bold text-[13px] truncate text-foreground leading-tight">{item.title || item.name}</p>
                                                                             <p className="text-muted-foreground text-[10px] leading-tight font-medium mt-0.5">
-                                                                                {item.price > 0 ? `TZS ${Number(item.price).toLocaleString()}` : 'Free'}
+                                                                                {item.price > 0 ? `TZS ${Number(item.price).toLocaleString()}` : copy('Free', 'Bure')}
                                                                             </p>
                                                                         </div>
                                                                         {isSelected && <div className="h-2 w-2 rounded-full bg-brand-600 shadow-none ring-2 ring-brand-100" />}
@@ -973,7 +985,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-1.5">
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-brand-600/80 px-1.5 py-0.5 bg-brand-500/10 rounded-md">PROMOTED PRODUCT</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-600/80 px-1.5 py-0.5 bg-brand-500/10 rounded-md">{copy('Promoted product', 'Bidhaa iliyokuzwa')}</span>
                                         </div>
                                         <p className="font-bold text-[14px] truncate text-foreground">{promotedProduct.title}</p>
                                         <p className="text-brand-600 font-black text-[12px]">TZS {Number(promotedProduct.price).toLocaleString()}</p>
@@ -993,14 +1005,14 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                     className="overflow-hidden bg-card/60 backdrop-blur-md border border-border/50 p-4 rounded-3xl shadow-lg mb-4 space-y-3"
                                 >
                                     <div className="flex items-center justify-between">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">Select Product to Promote</label>
-                                        <button onClick={() => setShowProducts(false)} className="text-[10px] text-muted-foreground font-bold hover:text-foreground">Done</button>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">{copy('Select product to promote', 'Chagua bidhaa ya kukuzwa')}</label>
+                                        <button onClick={() => setShowProducts(false)} className="text-[10px] text-muted-foreground font-bold hover:text-foreground">{copy('Done', 'Imekamilika')}</button>
                                     </div>
                                     <div className="grid gap-2 max-h-[220px] overflow-y-auto pr-1 no-scrollbar pt-1">
                                         {promotablesLoading ? (
-                                            <p className="text-xs text-muted-foreground italic py-4">Checking catalog...</p>
+                                            <p className="text-xs text-muted-foreground italic py-4">{copy('Checking catalog...', 'Inakagua katalogi...')}</p>
                                         ) : promotables.products.length === 0 ? (
-                                            <p className="text-[11px] text-muted-foreground py-6 text-center">No products found to promote.</p>
+                                            <p className="text-[11px] text-muted-foreground py-6 text-center">{copy('No products found to promote.', 'Hakuna bidhaa za kukuzwa zilizopatikana.')}</p>
                                         ) : (
                                             promotables.products.map(item => (
                                                 <button
@@ -1036,7 +1048,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                 >
                                     {disableStyles ? (
                                         <p className="px-2 py-3 text-center text-xs font-semibold text-muted-foreground">
-                                            Background styles are available for short text posts without media.
+                                            {copy('Background styles are available for short text posts without media.', 'Mitindo ya mandharinyuma inapatikana kwa post fupi za maandishi bila media.')}
                                         </p>
                                     ) : (
                                         <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
@@ -1054,8 +1066,8 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                                 ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm'
                                                                 : 'border-border/50 bg-background/50 text-muted-foreground hover:border-brand-200 hover:text-foreground'
                                                         )}
-                                                        aria-label={`${option.label} background`}
-                                                        title={option.label}
+                                                        aria-label={`${copy(option.label, BG_OPTION_TRANSLATIONS[option.label] || option.label)} ${copy('background', 'mandharinyuma')}`}
+                                                        title={copy(option.label, BG_OPTION_TRANSLATIONS[option.label] || option.label)}
                                                     >
                                                         <span
                                                             className={cn(
@@ -1065,7 +1077,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                             style={option.preview ? { background: option.preview } : {}}
                                                         />
                                                         <span className="max-w-full truncate text-[10px] font-black">
-                                                            {option.label.replace(/^\S+\s/, '')}
+                                                            {copy(option.label, BG_OPTION_TRANSLATIONS[option.label] || option.label).replace(/^\S+\s/, '')}
                                                         </span>
                                                     </button>
                                                 );
@@ -1085,7 +1097,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                         whileTap={{ scale: 0.9 }}
                                         onClick={() => fileRef.current?.click()}
                                         className="h-12 w-12 rounded-full flex items-center justify-center hover:bg-background transition-colors text-brand-600 shadow-sm"
-                                        title="Photo/Video"
+                                        title={copy('Photo/Video', 'Picha/Video')}
                                     >
                                         <Image className="h-[22px] w-[22px]" />
                                     </motion.button>
@@ -1100,7 +1112,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                             "h-12 w-12 rounded-full flex items-center justify-center shadow-sm transition-all",
                                             showBg ? "bg-background scale-105" : "hover:bg-background text-foreground"
                                         )}
-                                        title="Background style"
+                                        title={copy('Background style', 'Mtindo wa mandharinyuma')}
                                     >
                                         <div className="h-6 w-6 rounded-full bg-gradient-to-br from-brand-400 via-purple-500 to-pink-500 shadow-inner" />
                                     </motion.button>
@@ -1114,7 +1126,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                             "h-12 w-12 rounded-full flex items-center justify-center shadow-sm transition-all",
                                             showProducts ? "bg-background scale-105 text-brand-600" : "hover:bg-background text-foreground"
                                         )}
-                                        title="Promote a product"
+                                        title={copy('Promote a product', 'Promote bidhaa')}
                                     >
                                         <ShoppingBag className="h-[22px] w-[22px]" />
                                     </motion.button>

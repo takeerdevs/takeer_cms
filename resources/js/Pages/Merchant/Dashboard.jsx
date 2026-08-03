@@ -4,7 +4,7 @@ import { Head, Link, usePage } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import {
-    Wallet, Package, ShoppingBag, Video, UploadCloud,
+    Package, ShoppingBag, Video, UploadCloud,
     TrendingUp, Store, ChevronRight, Truck, ShieldCheck,
     AlertTriangle, FileCheck, CheckCircle2, Settings, BookOpenText, Boxes, Crown, Download, CalendarClock, MapPin, MessageSquare,
     Users, ClipboardList, BarChart3, Calculator, UserCog, Utensils, BedDouble, Clock3, Megaphone, LayoutGrid, Layers
@@ -13,15 +13,15 @@ import { router } from '@inertiajs/react';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
 import { businessToolLabel } from '@/lib/businessToolCopy';
+import { useLocale } from '@/lib/i18n';
 
 export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const { auth } = usePage().props;
+    const { locale, t, copy } = useLocale();
 
     // In production, these should come from a dedicated API endpoint / Inertia props
     // We default them to empty/0 so the dashboard doesn't crash before the backend sends them
     const summary = auth?.user?.merchant_summary || {
-        wallet_balance: 0,
-        frozen_balance: 0,
         total_products: 0,
         orders_today: 0,
         orders_pending: 0,
@@ -60,14 +60,14 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
 
     const statusBadge = (status) => {
         const map = {
-            awaiting_merchant_confirmation: { label: 'MPYA', cls: 'bg-amber-500/20 text-amber-600 dark:text-amber-400' },
-            escrow_locked: { label: 'ESCROW', cls: 'bg-brand-500/20 text-brand-700 dark:text-brand-300' },
-            shipped: { label: 'IN DELIVERY', cls: 'bg-sky-500/20 text-sky-700 dark:text-sky-300' },
-            resolved_merchant_paid: { label: 'IMEKAMILIKA', cls: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' },
-            disputed: { label: 'MGOGORO', cls: 'bg-red-500/20 text-red-700 dark:text-red-300' },
-            resolved_buyer_refunded: { label: 'REFUNDED', cls: 'bg-slate-500/20 text-slate-700 dark:text-slate-300' },
-            pending: { label: 'PENDING', cls: 'bg-slate-500/20 text-slate-700 dark:text-slate-300' },
-            failed: { label: 'IMESITISHWA', cls: 'bg-red-500/20 text-red-700 dark:text-red-300' },
+            pending_fulfillment: { label: copy('FULFILLMENT', 'UTIMILISHAJI'), cls: 'bg-amber-500/20 text-amber-600 dark:text-amber-400' },
+            release_eligible: { label: copy('READY FOR PSP', 'IKO TAYARI KWA PSP'), cls: 'bg-brand-500/20 text-brand-700 dark:text-brand-300' },
+            payout_processing: { label: copy('PSP PAYOUT', 'MALIPO YA PSP'), cls: 'bg-sky-500/20 text-sky-700 dark:text-sky-300' },
+            paid_out: { label: copy('COMPLETED', 'IMEKAMILIKA'), cls: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' },
+            disputed: { label: copy('DISPUTED', 'MGOGORO'), cls: 'bg-red-500/20 text-red-700 dark:text-red-300' },
+            refunded: { label: copy('REFUNDED', 'IMEREJESHWA'), cls: 'bg-slate-500/20 text-slate-700 dark:text-slate-300' },
+            pending: { label: copy('PENDING', 'INASUBIRI'), cls: 'bg-slate-500/20 text-slate-700 dark:text-slate-300' },
+            failed: { label: copy('FAILED', 'IMESHINDWA'), cls: 'bg-red-500/20 text-red-700 dark:text-red-300' },
         };
         const s = map[status] ?? { label: status, cls: 'bg-muted text-muted-foreground' };
         return (
@@ -77,15 +77,15 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
 
     const typeMeta = (kind) => {
         const map = {
-            physical_product: { label: 'Physical Product', icon: ShoppingBag, cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
-            post_content: { label: 'Post Content', icon: BookOpenText, cls: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
-            subscription_plan: { label: 'Membership', icon: Crown, cls: 'bg-violet-500/15 text-violet-700 dark:text-violet-300' },
-            digital_file: { label: 'Digital File', icon: Download, cls: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300' },
-            service_booking: { label: 'Service/Booking', icon: CalendarClock, cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
-            offering_group: { label: 'Offering Group', icon: Layers, cls: 'bg-teal-500/15 text-teal-700 dark:text-teal-300' },
-            physical_bundle: { label: 'Physical Bundle', icon: Boxes, cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
+            physical_product: { label: copy('Physical product', 'Bidhaa ya kawaida'), icon: ShoppingBag, cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
+            post_content: { label: copy('Post content', 'Maudhui ya chapisho'), icon: BookOpenText, cls: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
+            subscription_plan: { label: copy('Membership', 'Uanachama'), icon: Crown, cls: 'bg-violet-500/15 text-violet-700 dark:text-violet-300' },
+            digital_file: { label: copy('Digital file', 'Faili ya kidijitali'), icon: Download, cls: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300' },
+            service_booking: { label: copy('Service/booking', 'Huduma/booking'), icon: CalendarClock, cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
+            offering_group: { label: copy('Offering group', 'Kikundi cha ofa'), icon: Layers, cls: 'bg-teal-500/15 text-teal-700 dark:text-teal-300' },
+            physical_bundle: { label: copy('Physical bundle', 'Kifurushi cha kawaida'), icon: Boxes, cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
         };
-        return map[kind] || { label: 'Post Content', icon: BookOpenText, cls: 'bg-muted text-muted-foreground' };
+        return map[kind] || { label: copy('Post content', 'Maudhui ya chapisho'), icon: BookOpenText, cls: 'bg-muted text-muted-foreground' };
     };
 
     const iconFromKey = (key) => {
@@ -104,94 +104,94 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const setupQuickActions = [
         ...(canAny(['settings.view', 'settings.update']) ? [{
             key: 'modules',
-            label: 'Zana za Biashara',
+            label: copy('Business tools', 'Zana za Biashara'),
             icon: Settings,
             href: `/merchant/${merchantSlug}/modules`,
         }] : []),
         ...((hasModule('products') || hasMode('physical_products')) && can('products.create') ? [{
             key: 'product',
-            label: 'Ongeza Bidhaa',
+            label: copy('Add product', 'Ongeza Bidhaa'),
             icon: Package,
             href: `/merchant/${merchantSlug}/upload?type=physical`,
             primary: true,
         }] : []),
         ...((hasModule('menu') || hasMode('food_menu')) && can('products.create') ? [{
             key: 'menu',
-            label: 'Ongeza Menu Item',
+            label: copy('Add menu item', 'Ongeza kipengele cha menyu'),
             icon: ShoppingBag,
             href: `/merchant/${merchantSlug}/upload?type=physical&module=menu`,
             primary: !hasModule('products') && !hasMode('physical_products'),
         }] : []),
         ...((hasModule('services') || hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('workshops') || hasModule('rooms') || hasModule('tour_departures') || hasMode('services_bookings')) && can('services.create') ? [{
             key: 'service',
-            label: hasModule('rooms') ? 'Ongeza Chumba / Malazi' : hasModule('tour_departures') ? 'Ongeza Safari' : hasModule('rentals') ? 'Ongeza cha Kukodisha' : hasModule('workshops') ? 'Ongeza Darasa / Tukio' : hasModule('appointments') ? 'Ongeza Miadi' : hasModule('reservations') ? 'Ongeza Reservation' : 'Ongeza Huduma',
+            label: hasModule('rooms') ? copy('Add room / accommodation', 'Ongeza chumba / malazi') : hasModule('tour_departures') ? copy('Add tour', 'Ongeza safari') : hasModule('rentals') ? copy('Add rental', 'Ongeza cha kukodisha') : hasModule('workshops') ? copy('Add class / event', 'Ongeza darasa / tukio') : hasModule('appointments') ? copy('Add appointment', 'Ongeza miadi') : hasModule('reservations') ? copy('Add reservation', 'Ongeza reservation') : copy('Add service', 'Ongeza huduma'),
             icon: hasModule('tour_departures') && !hasModule('rooms') ? MapPin : CalendarClock,
             href: `/merchant/${merchantSlug}/upload?type=service${hasModule('rooms') ? '&module=rooms' : hasModule('tour_departures') ? '&module=tour_departures' : hasModule('rentals') ? '&module=rentals' : hasModule('workshops') ? '&module=workshops' : hasModule('appointments') ? '&module=appointments' : hasModule('reservations') ? '&module=reservations' : ''}`,
             primary: !hasModule('products') && !hasMode('physical_products') && !hasModule('menu') && !hasMode('food_menu'),
         }] : []),
         ...((hasModule('availability') || hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('rooms') || hasModule('tour_departures') || hasModule('workshops') || hasMode('services_bookings')) && canAny(['services.view', 'services.schedule']) ? [{
             key: 'availability',
-            label: 'Ratiba',
+            label: copy('Schedule', 'Ratiba'),
             icon: Settings,
             href: `/merchant/${merchantSlug}/availability`,
         }] : []),
         ...((hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('rooms') || hasModule('tour_departures') || hasModule('workshops') || hasMode('services_bookings')) && canAny(['services.view', 'services.schedule']) ? [{
             key: 'booking-calendar',
-            label: 'Kalenda ya Booking',
+            label: copy('Booking calendar', 'Kalenda ya booking'),
             icon: CalendarClock,
             href: `/merchant/${merchantSlug}/bookings`,
         }] : []),
         ...((hasModule('digital_products') || hasMode('digital_products')) && can('digital_products.create') ? [{
             key: 'digital',
-            label: 'Ongeza Bidhaa ya Digital',
+            label: copy('Add digital product', 'Ongeza bidhaa ya kidijitali'),
             icon: Download,
             href: `/merchant/${merchantSlug}/upload?type=digital`,
         }] : []),
         ...((hasModule('custom_orders') || hasModule('quotes') || hasMode('custom_orders_quotes')) && can('services.create') ? [{
             key: 'custom-order',
-            label: 'Ongeza Oda Maalum',
+            label: copy('Add custom order', 'Ongeza oda maalum'),
             icon: Boxes,
             href: `/merchant/${merchantSlug}/upload?type=service&module=custom_orders`,
         }] : []),
         ...((hasModule('courses') || hasModule('workshops') || hasMode('courses_learning')) && can('bundles.view') ? [{
             key: 'course',
-            label: 'Kozi / Madarasa',
+            label: copy('Courses / classes', 'Kozi / madarasa'),
             icon: BookOpenText,
             href: `/merchant/${merchantSlug}/courses`,
         }] : []),
         ...((hasModule('enrollments') || hasModule('courses') || hasModule('workshops') || hasMode('courses_learning')) && canAny(['bundles.manage_course', 'orders.view']) ? [{
             key: 'enrollments',
-            label: 'Simamia Usajili',
+            label: copy('Manage enrollments', 'Simamia usajili'),
             icon: FileCheck,
             href: `/merchant/${merchantSlug}/enrollments`,
         }] : []),
         ...((hasModule('subscriptions') || hasMode('subscriptions_memberships')) && can('subscriptions.view') ? [{
             key: 'subscriptions',
-            label: 'Subscriptions',
+            label: copy('Subscriptions', 'Usajili wa mara kwa mara'),
             icon: Crown,
             href: `/merchant/${merchantSlug}/subscriptions`,
         }] : []),
         ...((hasModule('customers') || hasModule('orders') || hasModule('marketing') || hasMode('physical_products') || hasMode('services_bookings') || hasMode('courses_learning') || hasMode('subscriptions_memberships')) && canAny(['orders.view', 'marketing.view', 'retail.customers']) ? [{
             key: 'customers',
-            label: 'Wateja',
+            label: copy('Customers', 'Wateja'),
             icon: ShieldCheck,
             href: `/merchant/${merchantSlug}/customers`,
         }] : []),
         ...((hasModule('communications') || hasModule('customers') || hasModule('marketing') || hasModule('orders') || hasMode('physical_products') || hasMode('services_bookings') || hasMode('courses_learning') || hasMode('subscriptions_memberships')) && canAny(['marketing.view', 'orders.view', 'services.view']) ? [{
             key: 'communications',
-            label: 'Mawasiliano',
+            label: copy('Communications', 'Mawasiliano'),
             icon: MessageSquare,
             href: `/merchant/${merchantSlug}/communications`,
         }] : []),
         ...((hasModule('team') || hasModule('retail_ops')) && can('team.view') ? [{
             key: 'team',
-            label: 'Timu',
+            label: copy('Team', 'Timu'),
             icon: Store,
             href: `/merchant/${merchantSlug}/team`,
         }] : []),
         ...((hasModule('reports') || hasModule('bookkeeping') || hasModule('orders')) && canAny(['dashboard.view', 'orders.view', 'bookkeeping.view']) ? [{
             key: 'overview',
-            label: 'Muhtasari wa Biashara',
+            label: copy('Business overview', 'Muhtasari wa biashara'),
             icon: TrendingUp,
             href: `/merchant/${merchantSlug}/overview`,
         }] : []),
@@ -199,24 +199,24 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const primaryAction = setupQuickActions.find(action => action.primary) || setupQuickActions[0];
     const secondaryActions = setupQuickActions.filter(action => action.key !== primaryAction?.key).slice(0, 5);
     const workspaceItems = [
-        { key: 'products', label: 'Bidhaa', description: 'Inventory, variants, stock, na product listings.', icon: Package, href: `/merchant/${merchantSlug}/products`, permissions: ['products.view'], modules: ['products'], modes: ['physical_products'] },
-        { key: 'menu', label: 'Menu', description: 'Chakula, vinywaji, add-ons, na bei za menu.', icon: Utensils, href: `/merchant/${merchantSlug}/menu`, permissions: ['products.view'], modules: ['menu'], modes: ['food_menu'] },
-        { key: 'orders', label: 'Oda', description: 'Manunuzi, payment status, fulfillment, na dispatch.', icon: ShoppingBag, href: `/merchant/${merchantSlug}/orders`, permissions: ['orders.view'], modules: ['orders'], modes: ['physical_products', 'food_menu', 'digital_products', 'custom_orders_quotes', 'subscriptions_memberships'] },
-        { key: 'services', label: hasModule('rooms') ? 'Vyumba / Malazi' : hasModule('tour_departures') ? 'Safari' : hasModule('rentals') ? 'Kukodisha' : hasModule('appointments') ? 'Miadi' : hasModule('reservations') ? 'Reservations' : 'Huduma', description: 'Huduma, packages, maulizo, na booking offers.', icon: hasModule('rooms') ? BedDouble : CalendarClock, href: hasModule('rooms') ? `/merchant/${merchantSlug}/rooms` : hasModule('tour_departures') ? `/merchant/${merchantSlug}/tours` : hasModule('rentals') ? `/merchant/${merchantSlug}/rentals` : hasModule('workshops') ? `/merchant/${merchantSlug}/workshops` : hasModule('appointments') ? `/merchant/${merchantSlug}/appointments` : hasModule('reservations') ? `/merchant/${merchantSlug}/reservations` : `/merchant/${merchantSlug}/services`, permissions: ['services.view'], modules: ['services', 'rooms', 'tour_departures', 'rentals', 'appointments', 'reservations', 'workshops'], modes: ['services_bookings'] },
-        { key: 'custom_orders', label: 'Oda Maalum', description: 'Mahitaji ya mteja, quotes, na kazi za made-to-order.', icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permissions: ['services.view'], modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
-        { key: 'availability', label: 'Ratiba', description: 'Rules, slots, capacity, buffers, na sessions za tarehe maalum.', icon: Clock3, href: `/merchant/${merchantSlug}/availability`, permissions: ['services.view', 'services.schedule'], modules: ['availability', 'bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
-        { key: 'bookings', label: 'Kalenda ya Booking', description: 'Maombi yaliyopangwa, sessions, reservations, na kazi zijazo.', icon: CalendarClock, href: `/merchant/${merchantSlug}/bookings`, permissions: ['services.view', 'services.schedule'], modules: ['bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
-        { key: 'digital_products', label: 'Bidhaa za Digital', description: 'Downloads, files, content access, na license keys.', icon: Download, href: `/merchant/${merchantSlug}/downloads`, permissions: ['digital_products.view'], modules: ['digital_products'], modes: ['digital_products'] },
-        { key: 'courses', label: 'Kozi / Madarasa', description: 'Huduma za kujifunza, masomo, cohorts, na materials.', icon: BookOpenText, href: `/merchant/${merchantSlug}/courses`, permissions: ['bundles.view'], modules: ['courses', 'workshops'], modes: ['courses_learning'] },
-        { key: 'enrollments', label: 'Usajili', description: 'Wanafunzi, washiriki, applicants, na status za darasa.', icon: ClipboardList, href: `/merchant/${merchantSlug}/enrollments`, permissions: ['bundles.manage_course', 'orders.view'], modules: ['enrollments', 'courses', 'workshops'], modes: ['courses_learning'] },
-        { key: 'subscriptions', label: 'Subscriptions', description: 'Membership plans, recurring access, na members.', icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permissions: ['subscriptions.view'], modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
-        { key: 'customers', label: 'Wateja / CRM', description: 'Wanunuzi, wageni, wanafunzi, members, na wateja wanaorudi.', icon: Users, href: `/merchant/${merchantSlug}/customers`, permissions: ['orders.view', 'marketing.view', 'retail.customers'], modules: ['customers'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
-        { key: 'communications', label: 'Mawasiliano', description: 'Follow-ups, reminders, updates, na contact logs.', icon: MessageSquare, href: `/merchant/${merchantSlug}/communications`, permissions: ['marketing.view', 'orders.view', 'services.view'], modules: ['communications'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
-        { key: 'marketing', label: 'Masoko', description: 'Campaigns, coupons, referrals, SMS, social DMs, na WhatsApp.', icon: Megaphone, href: `/merchant/${merchantSlug}/marketing`, permissions: ['marketing.view'], modules: ['marketing'], modes: [] },
-        { key: 'reports', label: 'Muhtasari wa Biashara', description: 'Mapato, wateja, booking, catalog, timu, na operations.', icon: BarChart3, href: `/merchant/${merchantSlug}/overview`, permissions: ['dashboard.view', 'orders.view', 'bookkeeping.view'], modules: ['reports'], modes: [] },
-        { key: 'bookkeeping', label: 'Bookkeeping', description: 'Mapato, matumizi, statements, audit support, na utayari wa tax.', icon: Calculator, href: `/merchant/${merchantSlug}/retail/bookkeeping`, permissions: ['bookkeeping.view'], modules: ['bookkeeping'], modes: [], requiresModules: ['retail_ops'] },
-        { key: 'team', label: 'Timu', description: 'Staff roles, workplace access, PINs, na permissions.', icon: UserCog, href: `/merchant/${merchantSlug}/team`, permissions: ['team.view'], modules: ['team', 'retail_ops'], modes: [] },
-        { key: 'retail_ops', label: 'Retail / POS', description: 'POS, inventory, transfers, storekeeper tools, na counters.', icon: Store, href: `/merchant/${merchantSlug}/retail/dashboard`, permissions: ['retail.dashboard', 'retail.pos', 'retail.inventory'], modules: ['retail_ops'], modes: [] },
+        { key: 'products', label: copy('Products', 'Bidhaa'), description: copy('Inventory, variants, stock, and product listings.', 'Inventory, variants, stock na orodha za bidhaa.'), icon: Package, href: `/merchant/${merchantSlug}/products`, permissions: ['products.view'], modules: ['products'], modes: ['physical_products'] },
+        { key: 'menu', label: copy('Menu', 'Menyu'), description: copy('Food, drinks, add-ons, and menu prices.', 'Chakula, vinywaji, viongezi na bei za menyu.'), icon: Utensils, href: `/merchant/${merchantSlug}/menu`, permissions: ['products.view'], modules: ['menu'], modes: ['food_menu'] },
+        { key: 'orders', label: copy('Orders', 'Oda'), description: copy('Purchases, payment status, fulfillment, and dispatch.', 'Manunuzi, hali ya malipo, utimilishaji na usafirishaji.'), icon: ShoppingBag, href: `/merchant/${merchantSlug}/orders`, permissions: ['orders.view'], modules: ['orders'], modes: ['physical_products', 'food_menu', 'digital_products', 'custom_orders_quotes', 'subscriptions_memberships'] },
+        { key: 'services', label: hasModule('rooms') ? copy('Rooms / accommodation', 'Vyumba / malazi') : hasModule('tour_departures') ? copy('Tours', 'Safari') : hasModule('rentals') ? copy('Rentals', 'Kukodisha') : hasModule('appointments') ? copy('Appointments', 'Miadi') : hasModule('reservations') ? copy('Reservations', 'Reservations') : copy('Services', 'Huduma'), description: copy('Services, packages, enquiries, and booking offers.', 'Huduma, vifurushi, maulizo na ofa za booking.'), icon: hasModule('rooms') ? BedDouble : CalendarClock, href: hasModule('rooms') ? `/merchant/${merchantSlug}/rooms` : hasModule('tour_departures') ? `/merchant/${merchantSlug}/tours` : hasModule('rentals') ? `/merchant/${merchantSlug}/rentals` : hasModule('workshops') ? `/merchant/${merchantSlug}/workshops` : hasModule('appointments') ? `/merchant/${merchantSlug}/appointments` : hasModule('reservations') ? `/merchant/${merchantSlug}/reservations` : `/merchant/${merchantSlug}/services`, permissions: ['services.view'], modules: ['services', 'rooms', 'tour_departures', 'rentals', 'appointments', 'reservations', 'workshops'], modes: ['services_bookings'] },
+        { key: 'custom_orders', label: copy('Custom orders', 'Oda maalum'), description: copy('Customer requirements, quotes, and made-to-order work.', 'Mahitaji ya mteja, bei na kazi za kuagiza maalum.'), icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permissions: ['services.view'], modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
+        { key: 'availability', label: copy('Schedule', 'Ratiba'), description: copy('Rules, slots, capacity, buffers, and date-specific sessions.', 'Rules, nafasi, uwezo, buffers na vipindi vya tarehe maalum.'), icon: Clock3, href: `/merchant/${merchantSlug}/availability`, permissions: ['services.view', 'services.schedule'], modules: ['availability', 'bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
+        { key: 'bookings', label: copy('Booking calendar', 'Kalenda ya booking'), description: copy('Scheduled requests, sessions, reservations, and upcoming work.', 'Maombi yaliyopangwa, vipindi, reservations na kazi zijazo.'), icon: CalendarClock, href: `/merchant/${merchantSlug}/bookings`, permissions: ['services.view', 'services.schedule'], modules: ['bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
+        { key: 'digital_products', label: copy('Digital products', 'Bidhaa za kidijitali'), description: copy('Downloads, files, content access, and license keys.', 'Upakuaji, faili, ufikiaji wa maudhui na funguo za leseni.'), icon: Download, href: `/merchant/${merchantSlug}/downloads`, permissions: ['digital_products.view'], modules: ['digital_products'], modes: ['digital_products'] },
+        { key: 'courses', label: copy('Courses / classes', 'Kozi / madarasa'), description: copy('Learning services, lessons, cohorts, and materials.', 'Huduma za kujifunza, masomo, cohorts na vifaa.'), icon: BookOpenText, href: `/merchant/${merchantSlug}/courses`, permissions: ['bundles.view'], modules: ['courses', 'workshops'], modes: ['courses_learning'] },
+        { key: 'enrollments', label: copy('Enrollments', 'Usajili'), description: copy('Students, participants, applicants, and class statuses.', 'Wanafunzi, washiriki, waombaji na hali za darasa.'), icon: ClipboardList, href: `/merchant/${merchantSlug}/enrollments`, permissions: ['bundles.manage_course', 'orders.view'], modules: ['enrollments', 'courses', 'workshops'], modes: ['courses_learning'] },
+        { key: 'subscriptions', label: copy('Subscriptions', 'Usajili wa mara kwa mara'), description: copy('Membership plans, recurring access, and members.', 'Mipango ya uanachama, ufikiaji wa mara kwa mara na wanachama.'), icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permissions: ['subscriptions.view'], modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
+        { key: 'customers', label: copy('Customers / CRM', 'Wateja / CRM'), description: copy('Buyers, guests, students, members, and returning customers.', 'Wanunuzi, wageni, wanafunzi, wanachama na wateja wanaorudi.'), icon: Users, href: `/merchant/${merchantSlug}/customers`, permissions: ['orders.view', 'marketing.view', 'retail.customers'], modules: ['customers'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
+        { key: 'communications', label: copy('Communications', 'Mawasiliano'), description: copy('Follow-ups, reminders, updates, and contact logs.', 'Ufuatiliaji, vikumbusho, masasisho na kumbukumbu za mawasiliano.'), icon: MessageSquare, href: `/merchant/${merchantSlug}/communications`, permissions: ['marketing.view', 'orders.view', 'services.view'], modules: ['communications'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
+        { key: 'marketing', label: copy('Marketing', 'Masoko'), description: copy('Campaigns, coupons, referrals, SMS, social DMs, and WhatsApp.', 'Kampeni, kuponi, referrals, SMS, DM za kijamii na WhatsApp.'), icon: Megaphone, href: `/merchant/${merchantSlug}/marketing`, permissions: ['marketing.view'], modules: ['marketing'], modes: [] },
+        { key: 'reports', label: copy('Business overview', 'Muhtasari wa biashara'), description: copy('Revenue, customers, bookings, catalog, team, and operations.', 'Mapato, wateja, booking, katalogi, timu na shughuli.'), icon: BarChart3, href: `/merchant/${merchantSlug}/overview`, permissions: ['dashboard.view', 'orders.view', 'bookkeeping.view'], modules: ['reports'], modes: [] },
+        { key: 'bookkeeping', label: copy('Bookkeeping', 'Utunzaji wa vitabu'), description: copy('Revenue, expenses, statements, audit support, and tax readiness.', 'Mapato, matumizi, statements, msaada wa audit na utayari wa kodi.'), icon: Calculator, href: `/merchant/${merchantSlug}/retail/bookkeeping`, permissions: ['bookkeeping.view'], modules: ['bookkeeping'], modes: [], requiresModules: ['retail_ops'] },
+        { key: 'team', label: copy('Team', 'Timu'), description: copy('Staff roles, workplace access, PINs, and permissions.', 'Majukumu ya wafanyakazi, ufikiaji, PIN na ruhusa.'), icon: UserCog, href: `/merchant/${merchantSlug}/team`, permissions: ['team.view'], modules: ['team', 'retail_ops'], modes: [] },
+        { key: 'retail_ops', label: copy('Retail / POS', 'Rejareja / POS'), description: copy('POS, inventory, transfers, storekeeper tools, and counters.', 'POS, inventory, uhamisho, zana za storekeeper na kaunta.'), icon: Store, href: `/merchant/${merchantSlug}/retail/dashboard`, permissions: ['retail.dashboard', 'retail.pos', 'retail.inventory'], modules: ['retail_ops'], modes: [] },
     ]
         .filter(item => item.modules.some(hasModule) || item.modes.some(hasMode))
         .filter(item => (item.requiresModules || []).every(hasModule))
@@ -224,7 +224,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
 
     return (
         <AppLayout>
-            <Head title="Biashara Yangu | Takeer" />
+            <Head title={`${t('merchantUi.myBusiness')} | Takeer`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-7 pb-24">
                 {/* Header */}
                 <div className="flex items-center justify-between">
@@ -241,9 +241,9 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                             </div>
                         )}
                         <div>
-                            <h1 className="text-xl md:text-2xl font-black tracking-tight">Biashara Yangu 🛍️</h1>
+                            <h1 className="text-xl md:text-2xl font-black tracking-tight">{t('merchantUi.myBusiness')} 🛍️</h1>
                             <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
-                                Karibu, <span className="font-semibold text-foreground">{merchantProfile?.display_name || merchantProfile?.username || 'Muuzaji'}</span>
+                                {t('merchantUi.welcome')}, <span className="font-semibold text-foreground">{merchantProfile?.display_name || merchantProfile?.username || t('merchantUi.seller')}</span>
                             </p>
                         </div>
                     </div>
@@ -265,7 +265,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                             rel="noopener noreferrer"
                             className="flex items-center gap-1.5 text-xs font-semibold text-brand-600 bg-brand-50 shadow-sm border border-brand-200 hover:bg-brand-100 px-3 py-2 rounded-xl transition-colors shrink-0"
                         >
-                            <Store className="h-4 w-4" /> Angalia Biashara
+                            <Store className="h-4 w-4" /> {copy('View business', 'Angalia biashara')}
                         </a>
                     </div>
                 </div>
@@ -278,9 +278,9 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                 <AlertTriangle className="h-5 w-5 text-amber-600" />
                             </div>
                             <div>
-                                <h3 className="font-bold text-amber-900 dark:text-amber-500">Biashara Yako Halijathibitishwa!</h3>
+                                <h3 className="font-bold text-amber-900 dark:text-amber-500">{copy('Your business is not verified', 'Biashara yako haijathibitishwa')}</h3>
                                 <p className="text-sm text-amber-800 dark:text-amber-400/80 mt-1 max-w-2xl">
-                                    Thibitisha biashara yako (KYC) ili uanze kupokea malipo kupitia Takeer Instant Checkout. Kwa sasa, wanunuzi wataonyeshwa onyo na watalazimika kuwasiliana nawe nje ya mfumo.
+                                    {copy('Verify your business (KYC) to start receiving payments through Takeer Instant Checkout. For now, buyers will see a warning and must contact you outside the platform.', 'Thibitisha biashara yako (KYC) ili uanze kupokea malipo kupitia Takeer Instant Checkout. Kwa sasa, wanunuzi wataonyeshwa onyo na watalazimika kuwasiliana nawe nje ya mfumo.')}
                                 </p>
                             </div>
                         </div>
@@ -289,7 +289,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                 href={`/merchant/${merchantSlug}/verification`}
                                 className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-md px-4 py-2 inline-flex items-center"
                             >
-                                <FileCheck className="mr-2 h-4 w-4" /> Anza Uthibitisho (KYC)
+                                <FileCheck className="mr-2 h-4 w-4" /> {copy('Start verification (KYC)', 'Anza uthibitisho (KYC)')}
                             </Link>
                         )}
                     </div>
@@ -300,9 +300,9 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                 <CheckCircle2 className="h-5 w-5 text-green-600" />
                             </div>
                             <div>
-                                <h3 className="font-bold text-green-900 dark:text-green-500">Biashara Yako Imethibitishwa <ShieldCheck className="h-4 w-4 inline text-green-600" /></h3>
+                                <h3 className="font-bold text-green-900 dark:text-green-500">{copy('Your business is verified', 'Biashara yako imethibitishwa')} <ShieldCheck className="h-4 w-4 inline text-green-600" /></h3>
                                 <p className="text-sm text-green-800 dark:text-green-400 mt-1">
-                                    Unapokea malipo kwenye Escrow na wateja wako wanalindwa 100%.
+                                    {copy('Payments are processed by a licensed PSP and order protection follows provider rules.', 'Malipo yanachakatwa na PSP mwenye leseni na ulinzi wa oda unafuata masharti ya mtoa huduma.')}
                                 </p>
                             </div>
                         </div>
@@ -312,14 +312,14 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                 {isVerified && activeModules.length === 0 && recommendedModules.length > 0 && can('settings.update') && (
                     <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
-                            <h3 className="font-black text-brand-950">Chagua biashara hii inafanya nini</h3>
+                            <h3 className="font-black text-brand-950">{copy('Choose what this business does', 'Chagua biashara hii inafanya nini')}</h3>
                             <p className="text-sm text-brand-800 mt-1 max-w-2xl">
-                                Kuna zana zilizopendekezwa kulingana na shughuli ulizochagua. Chagua biashara hii inatumia nini: bidhaa, menu, vyumba, booking, kozi, oda, bookkeeping, na zaidi.
+                                {copy('These tools are recommended based on your selected activities. Choose what this business uses: products, menu, rooms, bookings, courses, orders, bookkeeping, and more.', 'Kuna zana zilizopendekezwa kulingana na shughuli ulizochagua. Chagua biashara hii inatumia nini: bidhaa, menyu, vyumba, booking, kozi, oda, utunzaji wa vitabu na zaidi.')}
                             </p>
                             <div className="mt-2 flex flex-wrap gap-1.5">
                                 {recommendedModules.slice(0, 8).map(module => (
                                     <span key={module} className="rounded-full bg-white border border-brand-100 px-2.5 py-1 text-[10px] font-black text-brand-700">
-                                        {businessToolLabel(module)}
+                                        {businessToolLabel(module, locale)}
                                     </span>
                                 ))}
                             </div>
@@ -328,48 +328,18 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                             className="shrink-0 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold"
                             onClick={() => router.visit(`/merchant/${merchantSlug}/settings`)}
                         >
-                            Weka zana
+                            {copy('Set up tools', 'Weka zana')}
                         </Button>
-                    </div>
-                )}
-
-                {/* Wallet */}
-                {can('wallet.view') && (
-                    <div className="grid grid-cols-2 gap-3">
-                        <Card
-                            className="bg-gradient-to-br from-brand-600 to-brand-700 border-0 text-white shadow-xl shadow-brand-600/20 cursor-pointer hover:shadow-brand-600/40 transition-shadow active:scale-[0.98]"
-                            onClick={() => router.visit(`/merchant/${merchantSlug}/wallet`)}
-                        >
-                            <CardContent className="p-5">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Wallet className="h-4 w-4 opacity-80" />
-                                    <p className="text-xs font-medium opacity-80 uppercase tracking-wider">Salio</p>
-                                </div>
-                                <p className="text-2xl font-black">{formatMoney(summary.wallet_balance)}</p>
-                            </CardContent>
-                        </Card>
-                        <Card
-                            className="border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-700/30 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-colors active:scale-[0.98]"
-                            onClick={() => router.visit(`/merchant/${merchantSlug}/wallet`)}
-                        >
-                            <CardContent className="p-5">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <ShieldCheck className="h-4 w-4 text-amber-600" />
-                                    <p className="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wider">Escrow</p>
-                                </div>
-                                <p className="text-2xl font-black text-amber-700 dark:text-amber-400">{formatMoney(summary.frozen_balance)}</p>
-                            </CardContent>
-                        </Card>
                     </div>
                 )}
 
                 {/* KPI chips */}
                 <div className="grid grid-cols-3 gap-2">
                     {[
-                        ...(can('products.view') ? [{ label: 'Bidhaa', value: summary.total_products, icon: Package, color: 'text-brand-600', link: `/merchant/${merchantSlug}/products` }] : []),
+                        ...(can('products.view') ? [{ label: copy('Products', 'Bidhaa'), value: summary.total_products, icon: Package, color: 'text-brand-600', link: `/merchant/${merchantSlug}/products` }] : []),
                         ...(can('orders.view') ? [
-                            { label: 'Oda Leo', value: summary.orders_today, icon: TrendingUp, color: 'text-green-600', link: `/merchant/${merchantSlug}/orders` },
-                            { label: 'Zinasubiri', value: summary.orders_pending, icon: Truck, color: 'text-amber-600', link: `/merchant/${merchantSlug}/orders` },
+                            { label: copy('Orders today', 'Oda leo'), value: summary.orders_today, icon: TrendingUp, color: 'text-green-600', link: `/merchant/${merchantSlug}/orders` },
+                            { label: copy('Pending', 'Zinasubiri'), value: summary.orders_pending, icon: Truck, color: 'text-amber-600', link: `/merchant/${merchantSlug}/orders` },
                         ] : []),
                     ].map(({ label, value, icon: Icon, color, link }) => (
                         <Card
@@ -388,7 +358,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
 
                 {/* Quick actions */}
                 <div>
-                    <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">Vitendo vya Haraka</h2>
+                    <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">{t('merchantUi.quickActions')}</h2>
                     <div className="grid grid-cols-2 gap-3">
                         {usesConfiguredSetup && primaryAction ? (
                             <Button
@@ -402,7 +372,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                 className="h-14 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold flex items-center gap-2 shadow-lg shadow-brand-600/20"
                                 onClick={() => router.visit(`/merchant/${merchantSlug}/upload`)}
                             >
-                                <UploadCloud className="h-5 w-5" /> Ongeza Bidhaa
+                                <UploadCloud className="h-5 w-5" /> {copy('Add product', 'Ongeza bidhaa')}
                             </Button>
                         )}
                         {usesConfiguredSetup && secondaryActions.map(action => (
@@ -421,7 +391,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                 className="h-14 rounded-2xl font-bold flex items-center gap-2"
                                 onClick={() => router.visit(`/merchant/${merchantSlug}/posts`)}
                             >
-                                <BookOpenText className="h-5 w-5" /> Posts
+                                <BookOpenText className="h-5 w-5" /> {copy('Posts', 'Machapisho')}
                             </Button>
                         )}
                         {can('orders.view') && (
@@ -430,7 +400,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                 className="h-14 rounded-2xl font-bold flex items-center gap-2 col-span-2"
                                 onClick={() => router.visit(`/merchant/${merchantSlug}/orders`)}
                             >
-                                <ShoppingBag className="h-5 w-5" /> Angalia Oda Zote <ChevronRight className="h-4 w-4 ml-auto" />
+                                <ShoppingBag className="h-5 w-5" /> {copy('View all orders', 'Angalia oda zote')} <ChevronRight className="h-4 w-4 ml-auto" />
                             </Button>
                         )}
                     </div>
@@ -441,9 +411,9 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                     <div>
                         <div className="mb-3 flex items-center justify-between gap-3 px-1">
                             <div>
-                                <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Workspace</h2>
+                        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{t('merchantUi.workspace')}</h2>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                    {workspaceItems.length} active {workspaceItems.length === 1 ? 'tool' : 'tools'} for this business.
+                                    {workspaceItems.length} {copy(workspaceItems.length === 1 ? 'active tool' : 'active tools', workspaceItems.length === 1 ? 'zana inayotumika' : 'zana zinazotumika')} {copy('for this business.', 'kwa biashara hii.')}
                                 </p>
                             </div>
                             {can('settings.view') && (
@@ -454,7 +424,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                     onClick={() => router.visit(`/merchant/${merchantSlug}/modules`)}
                                 >
                                     <LayoutGrid className="mr-2 h-4 w-4" />
-                                    Zana
+                                    {copy('Tools', 'Zana')}
                                 </Button>
                             )}
                         </div>
@@ -462,7 +432,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                         {workspaceItems.length === 0 ? (
                             <div className="rounded-3xl border border-dashed border-border bg-card/40 p-6 text-center">
                                 <LayoutGrid className="mx-auto h-8 w-8 text-muted-foreground" />
-                                <p className="mt-3 text-sm font-semibold text-muted-foreground">Hakuna zana zinazopatikana kwa ruhusa zako za sasa.</p>
+                                <p className="mt-3 text-sm font-semibold text-muted-foreground">{copy('No tools are available for your current permissions.', 'Hakuna zana zinazopatikana kwa ruhusa zako za sasa.')}</p>
                             </div>
                         ) : (
                             <div className="grid gap-3 md:grid-cols-2">
@@ -496,11 +466,11 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                 {/* Recent Orders */}
                 {can('orders.view') && (
                 <div>
-                    <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">Oda za Hivi Karibuni</h2>
+                    <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">{t('merchantUi.recentOrders')}</h2>
                     <div className="space-y-3">
                         {recentOrders.length === 0 ? (
                             <div className="py-8 text-center text-muted-foreground bg-card/40 rounded-3xl border border-border/50">
-                                <p className="text-sm font-semibold">Hakuna oda mpya.</p>
+                                <p className="text-sm font-semibold">{copy('No new orders.', 'Hakuna oda mpya.')}</p>
                             </div>
                         ) : (
                             recentOrders.map(order => {
@@ -532,14 +502,14 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                                                 {typeMeta(order.display_kind).label}
                                                             </span>
                                                         </div>
-                                                        <p className="font-black text-sm md:text-lg truncate group-hover:text-brand-700 transition-colors">{order.display_title || 'Order item'}</p>
+                                                        <p className="font-black text-sm md:text-lg truncate group-hover:text-brand-700 transition-colors">{order.display_title || copy('Order item', 'Kipengele cha oda')}</p>
                                                         <p className="text-[10px] text-muted-foreground mt-1 font-medium">
                                                             {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
                                                         </p>
                                                     </div>
                                                 </div>
                                                 <div className="text-right shrink-0">
-                                                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Price</p>
+                                                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">{copy('Price', 'Bei')}</p>
                                                     <p className="font-black text-brand-600 text-lg md:text-2xl">{formatMoney(order.amount || 0, order.currency_code || businessCurrencyCode)}</p>
                                                 </div>
                                             </div>

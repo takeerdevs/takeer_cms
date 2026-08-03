@@ -4,10 +4,12 @@ import { Head, Link } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
 import PostCard from '@/Components/PostCard';
 import { ArrowLeft, Loader2, Store } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 const fetcher = (url) => fetch(url).then(res => res.json());
 
 export default function MiniStoreFeed({ merchantSlug, initialData }) {
+    const { t } = useLocale();
     const sentinelRef = useRef(null);
     const getKey = (pageIndex, previousPageData) => {
         if (previousPageData && !previousPageData.posts.links.next) return null;
@@ -41,7 +43,7 @@ export default function MiniStoreFeed({ merchantSlug, initialData }) {
         return (
             <AppLayout hideTabBar>
                 <div className="h-full flex items-center justify-center p-6 text-center">
-                    <p className="text-destructive mt-10">Biashara haipatikani au mtandao unasumbua.</p>
+                    <p className="text-destructive mt-10">{t('publicCommerce.shopUnavailable')}</p>
                 </div>
             </AppLayout>
         );
@@ -49,7 +51,7 @@ export default function MiniStoreFeed({ merchantSlug, initialData }) {
 
     return (
         <AppLayout hideTabBar>
-            <Head title={`${merchant?.name || 'Biashara'} | Feed`} />
+            <Head title={`${merchant?.name || t('publicCommerce.business')} | ${t('publicCommerce.feed')}`} />
 
             <div className="max-w-lg mx-auto px-4 py-6">
                 <div className="flex items-center gap-3 mb-4">
@@ -57,7 +59,7 @@ export default function MiniStoreFeed({ merchantSlug, initialData }) {
                         <ArrowLeft className="h-4 w-4" />
                     </Link>
                     <div>
-                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Feed</p>
+                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('publicCommerce.feed')}</p>
                         <h1 className="text-lg font-black text-foreground flex items-center gap-2">
                             <Store className="h-4 w-4 text-brand-600" />
                             {merchant?.name || 'Biashara'}
@@ -67,7 +69,7 @@ export default function MiniStoreFeed({ merchantSlug, initialData }) {
 
                 {posts.length === 0 ? (
                     <div className="text-center text-muted-foreground py-16">
-                        Hakuna machapisho bado.
+                        {t('common.noPosts')}
                     </div>
                 ) : (
                     <div className="divide-y divide-border">
@@ -82,7 +84,7 @@ export default function MiniStoreFeed({ merchantSlug, initialData }) {
                         {isLoadingMore ? (
                             <Loader2 className="h-6 w-6 animate-spin text-brand-500" />
                         ) : (
-                            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Inapakia zaidi...</span>
+                            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('publicCommerce.loadingMore')}</span>
                         )}
                     </div>
                 )}

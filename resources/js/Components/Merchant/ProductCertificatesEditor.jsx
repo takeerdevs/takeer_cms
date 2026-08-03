@@ -3,6 +3,7 @@ import { CheckCircle2, FileText, Loader2, Plus, ShieldCheck } from 'lucide-react
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Textarea } from '@/Components/ui/Textarea';
+import { useLocale } from '@/lib/i18n';
 
 export default function ProductCertificatesEditor({
     productCertificates,
@@ -16,21 +17,22 @@ export default function ProductCertificatesEditor({
     saveProductCertificate,
     isSavingCertificate,
 }) {
+    const { copy } = useLocale();
     return (
         <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div>
                     <h3 className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center gap-2">
                         <ShieldCheck className="h-4 w-4" />
-                        Product certificates
+                        {copy('Product certificates', 'Vyeti vya bidhaa')}
                     </h3>
                     <p className="mt-1 text-xs text-blue-800">
-                        Attach certificates buyers should see for this item. Private certificates stay hidden.
+                        {copy('Attach certificates buyers should see for this item. Private certificates stay hidden.', 'Ambatanisha vyeti ambavyo wanunuzi waone kwa bidhaa hii. Vyeti binafsi vitafichwa.')}
                     </p>
                 </div>
                 {selectedProductCertificateIds.length > 0 && (
                     <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-700 border border-blue-100">
-                        {selectedProductCertificateIds.length} attached
+                        {selectedProductCertificateIds.length} {copy('attached', 'vimeambatanishwa')}
                     </span>
                 )}
             </div>
@@ -54,7 +56,11 @@ export default function ProductCertificatesEditor({
                                     <span className="min-w-0">
                                         <span className="block text-sm font-black truncate">{certificate.title}</span>
                                         <span className="mt-0.5 block text-[11px] font-semibold text-slate-500 truncate">
-                                            {[certificateTypeLabel(certificate.certificate_type), certificate.display_status, certificate.visibility === 'public_file' ? 'file visible' : certificate.visibility === 'public_summary' ? 'summary only' : 'private'].filter(Boolean).join(' / ')}
+                                            {[
+                                                certificateTypeLabel(certificate.certificate_type),
+                                                certificate.display_status ? copy(certificate.display_status, { Active: 'Hai', Expired: 'Imeisha', Pending: 'Inasubiri', Revoked: 'Imebatilishwa' }[certificate.display_status] || certificate.display_status) : null,
+                                                certificate.visibility === 'public_file' ? copy('file visible', 'faili linaonekana') : certificate.visibility === 'public_summary' ? copy('summary only', 'muhtasari tu') : copy('private', 'binafsi'),
+                                            ].filter(Boolean).join(' / ')}
                                         </span>
                                     </span>
                                 </span>
@@ -64,60 +70,60 @@ export default function ProductCertificatesEditor({
                 </div>
             ) : (
                 <div className="rounded-xl border border-dashed border-blue-200 bg-white/70 px-4 py-3 text-sm font-semibold text-blue-800">
-                    No product certificates yet. Add one below, then it will be attached to this product.
+                    {copy('No product certificates yet. Add one below, then it will be attached to this product.', 'Bado hakuna vyeti vya bidhaa. Ongeza kimoja hapa chini, kisha kitaambatanishwa na bidhaa hii.')}
                 </div>
             )}
 
             <div className="rounded-xl border border-blue-100 bg-white p-3 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className="space-y-1.5">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Certificate name</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Certificate name', 'Jina la cheti')}</span>
                         <Input
-                            placeholder="RoHS, CE, TBS, ISO 9001"
+                            placeholder={copy('RoHS, CE, TBS, ISO 9001', 'RoHS, CE, TBS, ISO 9001')}
                             value={certificateForm.title}
                             onChange={(e) => setCertificateForm((current) => ({ ...current, title: e.target.value }))}
                             className="h-11"
                         />
                     </label>
                     <label className="space-y-1.5">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Certificate type</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Certificate type', 'Aina ya cheti')}</span>
                         <select
                             value={certificateForm.certificate_type}
                             onChange={(e) => setCertificateForm((current) => ({ ...current, certificate_type: e.target.value }))}
                             className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold"
                         >
-                            <option value="">Select type</option>
+                            <option value="">{copy('Select type', 'Chagua aina')}</option>
                             {certificateOwnershipOptions.map((option) => (
-                                <option key={option.key} value={option.key}>{option.label}</option>
+                                <option key={option.key} value={option.key}>{copy(option.label, option.swahiliLabel || option.label)}</option>
                             ))}
                         </select>
                     </label>
                     <label className="space-y-1.5">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Certificate number</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Certificate number', 'Namba ya cheti')}</span>
                         <Input
-                            placeholder="AGC08073250301-C001"
+                            placeholder={copy('AGC08073250301-C001', 'AGC08073250301-C001')}
                             value={certificateForm.document_number}
                             onChange={(e) => setCertificateForm((current) => ({ ...current, document_number: e.target.value }))}
                             className="h-11"
                         />
                     </label>
                     <label className="space-y-1.5">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Certificate authority</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Certificate authority', 'Mamlaka ya cheti')}</span>
                         <select
                             value={certificateForm.authority}
                             onChange={(e) => setCertificateForm((current) => ({ ...current, authority: e.target.value }))}
                             className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold"
                         >
-                            <option value="">Select authority</option>
+                            <option value="">{copy('Select authority', 'Chagua mamlaka')}</option>
                             {certificateAuthorityOptions.map((authority) => (
                                 <option key={authority} value={authority}>{authority}</option>
                             ))}
                         </select>
                     </label>
                     <label className="space-y-1.5">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Issuer name</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Issuer name', 'Jina la mtoaji')}</span>
                         <Input
-                            placeholder="AGC, TBS, SGS Tanzania..."
+                            placeholder={copy('AGC, TBS, SGS Tanzania...', 'AGC, TBS, SGS Tanzania...')}
                             value={certificateForm.issuer}
                             onChange={(e) => setCertificateForm((current) => ({ ...current, issuer: e.target.value }))}
                             className="h-11"
@@ -125,9 +131,9 @@ export default function ProductCertificatesEditor({
                     </label>
                     {certificateForm.authority === 'Other' && (
                         <label className="space-y-1.5">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Other authority</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Other authority', 'Mamlaka nyingine')}</span>
                             <Input
-                                placeholder="Write authority name"
+                                placeholder={copy('Write authority name', 'Andika jina la mamlaka')}
                                 value={certificateForm.issuer}
                                 onChange={(e) => setCertificateForm((current) => ({ ...current, issuer: e.target.value }))}
                                 className="h-11"
@@ -135,7 +141,7 @@ export default function ProductCertificatesEditor({
                         </label>
                     )}
                     <label className="space-y-1.5">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Valid from</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Valid from', 'Inaanza kutumika')}</span>
                         <Input
                             type="date"
                             value={certificateForm.issued_at}
@@ -144,7 +150,7 @@ export default function ProductCertificatesEditor({
                         />
                     </label>
                     <label className="space-y-1.5">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Valid until</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Valid until', 'Inatumika hadi')}</span>
                         <Input
                             type="date"
                             value={certificateForm.expires_at}
@@ -154,16 +160,16 @@ export default function ProductCertificatesEditor({
                     </label>
                 </div>
                 <Textarea
-                    placeholder="Short public explanation, e.g. Complies with EU safety standard"
+                    placeholder={copy('Short public explanation, e.g. Complies with EU safety standard', 'Maelezo mafupi ya umma, mf. Inafuata kiwango cha usalama cha EU')}
                     value={certificateForm.description}
                     onChange={(e) => setCertificateForm((current) => ({ ...current, description: e.target.value }))}
                     className="min-h-[72px]"
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {[
-                        { key: 'public_summary', label: 'Summary only' },
-                        { key: 'public_file', label: 'Show file' },
-                        { key: 'private', label: 'Private' },
+                        { key: 'public_summary', label: copy('Summary only', 'Muhtasari tu') },
+                        { key: 'public_file', label: copy('Show file', 'Onyesha faili') },
+                        { key: 'private', label: copy('Private', 'Binafsi') },
                     ].map((option) => (
                         <button
                             key={option.key}
@@ -178,7 +184,7 @@ export default function ProductCertificatesEditor({
                 <div className="flex flex-col sm:flex-row gap-2">
                     <label className="h-11 flex-1 rounded-xl border border-dashed border-blue-200 bg-blue-50/70 px-3 text-sm font-bold text-blue-800 flex items-center gap-2 cursor-pointer">
                         <FileText className="h-4 w-4" />
-                        <span className="truncate">{certificateForm.document?.name || 'Upload certificate file'}</span>
+                        <span className="truncate">{certificateForm.document?.name || copy('Upload certificate file', 'Pakia faili la cheti')}</span>
                         <input
                             type="file"
                             accept=".jpg,.jpeg,.png,.webp,.pdf"
@@ -194,7 +200,7 @@ export default function ProductCertificatesEditor({
                         disabled={isSavingCertificate}
                     >
                         {isSavingCertificate ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
-                        Add
+                        {copy('Add', 'Ongeza')}
                     </Button>
                 </div>
             </div>

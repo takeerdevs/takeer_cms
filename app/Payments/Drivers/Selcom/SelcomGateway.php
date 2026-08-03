@@ -49,6 +49,9 @@ class SelcomGateway implements PaymentGatewayInterface, PaymentProviderAdapterIn
     public function createPayin(array $payload): PaymentResult
     {
         if ($this->simulate) {
+            if (app()->environment('production')) {
+                return PaymentResult::failure('Payment simulation is disabled in production.', 'simulation_disabled');
+            }
             return $this->simulatedResult('payin', $payload);
         }
 
@@ -87,7 +90,11 @@ class SelcomGateway implements PaymentGatewayInterface, PaymentProviderAdapterIn
                 $data,
             );
         } catch (\Throwable $e) {
-            Log::error('Selcom pay-in request failed.', ['error' => $e->getMessage(), 'payload' => $body]);
+            Log::error('Selcom pay-in request failed.', [
+                'error' => $e->getMessage(),
+                'takeer_reference' => $transId,
+                'payload_fields' => array_keys($body),
+            ]);
 
             return PaymentResult::failure('Selcom payment request failed.', 'selcom_network_error');
         }
@@ -102,7 +109,7 @@ class SelcomGateway implements PaymentGatewayInterface, PaymentProviderAdapterIn
                 'resultcode' => '111',
                 'result' => 'PENDING',
                 'balance' => null,
-                'message' => 'Simulation mode is enabled. Set treasury balances manually for liquidity testing.',
+                'message' => 'Simulation mode is enabled. Provider balance status is unavailable in simulation.',
             ]);
         }
 
@@ -175,6 +182,9 @@ class SelcomGateway implements PaymentGatewayInterface, PaymentProviderAdapterIn
     public function createPayout(array $payload): PaymentResult
     {
         if ($this->simulate) {
+            if (app()->environment('production')) {
+                return PaymentResult::failure('Payout simulation is disabled in production.', 'simulation_disabled');
+            }
             return $this->simulatedResult('payout', $payload);
         }
 
@@ -189,17 +199,83 @@ class SelcomGateway implements PaymentGatewayInterface, PaymentProviderAdapterIn
             : $this->createMobileMoneyPayout($payload);
     }
 
+    public function createRefund(array $payload): PaymentResult
+    {
+        return PaymentResult::failure(
+            'Selcom refund submission is not enabled until the PSP refund contract is configured.',
+            'refund_adapter_not_certified',
+        );
+    }
+
+    public function queryRefundStatus(string $providerReference): PaymentEvent
+    {
+        return new PaymentEvent(
+            provider: $this->key(),
+            direction: 'refund',
+            status: 'pending',
+            providerReference: $providerReference,
+            takeerReference: $providerReference,
+            failureReason: 'Refund status query is not configured for this PSP adapter.',
+        );
+    }
+
     public function verifyCallback(Request $request): bool
     {
-        return true;
+        $secret = (string) config('services.selcom.callback_secret');
+        if ($secret === '') {
+            return false;
+        }
+
+        $signature = trim((string) ($request->header('X-Selcom-Signature') ?: $request->header('Digest')));
+        if ($signature === '') {
+            return false;
+        }
+
+        $timestamp = trim((string) ($request->header('X-Selcom-Timestamp') ?: $request->header('Timestamp')));
+        if ($timestamp !== '' && is_numeric($timestamp) && abs(time() - (int) $timestamp) > 300) {
+            return false;
+        }
+
+        $raw = $request->getContent();
+        $candidates = [
+            hash_hmac('sha256', $raw, $secret),
+            base64_encode(hash_hmac('sha256', $raw, $secret, true)),
+        ];
+
+        $signedFields = array_filter(array_map('trim', explode(',', (string) $request->header('Signed-Fields'))));
+        if ($signedFields) {
+            $parts = $timestamp !== '' ? ["timestamp={$timestamp}"] : [];
+            $payload = $request->all();
+            foreach ($signedFields as $field) {
+                $value = data_get($payload, $field, '');
+                $parts[] = $field . '=' . (is_array($value) ? json_encode($value, JSON_UNESCAPED_SLASHES) : $value);
+            }
+            $signingString = implode('&', $parts);
+            $candidates[] = base64_encode(hash_hmac('sha256', $signingString, $secret, true));
+            $candidates[] = hash_hmac('sha256', $signingString, $secret);
+        }
+
+        $signature = preg_replace('/^sha256=/i', '', $signature);
+        foreach ($candidates as $candidate) {
+            if (hash_equals($candidate, $signature)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function verifyRawCallback(Request $request): bool
+    {
+        return $this->verifyCallback($request);
     }
 
     public function parseCallback(Request $request): PaymentEvent
     {
         $payload = $request->all();
-        $direction = $request->routeIs('payments.selcom.payout-callback') || isset($payload['messageId'])
+        $direction = $request->routeIs('payments.selcom.payout-callback')
             ? 'payout'
-            : 'payin';
+            : ($request->routeIs('payments.selcom.refund-callback') ? 'refund' : (isset($payload['messageId']) ? 'payout' : 'payin'));
 
         return new PaymentEvent(
             provider: $this->key(),
@@ -214,6 +290,11 @@ class SelcomGateway implements PaymentGatewayInterface, PaymentProviderAdapterIn
             rawPayload: $payload,
             failureReason: $payload['message'] ?? null,
         );
+    }
+
+    public function parseVerifiedCallback(Request $request): PaymentEvent
+    {
+        return $this->parseCallback($request);
     }
 
     public function queryStatus(string $providerReference): PaymentEvent

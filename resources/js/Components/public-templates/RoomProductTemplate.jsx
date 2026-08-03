@@ -23,6 +23,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Button } from '@/Components/ui/Button';
 import { cn } from '@/lib/utils';
 import ServiceRequestModal from './ServiceRequestModal';
+import { useLocale } from '@/lib/i18n';
 
 const amenityLabels = {
     wifi: 'Wi-Fi',
@@ -40,6 +41,7 @@ const amenityLabels = {
 };
 
 export default function RoomProductTemplate({ product }) {
+    const { t } = useLocale();
     const [nights, setNights] = useState(1);
     const [requestOpen, setRequestOpen] = useState(false);
     const details = product?.module_details || {};
@@ -81,7 +83,7 @@ export default function RoomProductTemplate({ product }) {
                                 type="button"
                                 onClick={() => window.history.back()}
                                 className="absolute left-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/35 backdrop-blur transition hover:bg-black/50"
-                                aria-label="Go back"
+                                aria-label={t('template.goBack')}
                             >
                                 <ArrowLeft className="h-5 w-5" />
                             </button>
@@ -89,24 +91,24 @@ export default function RoomProductTemplate({ product }) {
                                 <div className="mb-3 flex flex-wrap gap-2">
                                     <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-black uppercase tracking-wide backdrop-blur">
                                         <BedDouble className="h-3.5 w-3.5" />
-                                        {details.room_type || 'Room'}
+                                        {details.room_type || t('template.room')}
                                     </span>
                                     {available ? (
                                         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/90 px-3 py-1 text-xs font-black uppercase tracking-wide">
                                             <BadgeCheck className="h-3.5 w-3.5" />
-                                            Available
+                                            {t('template.available')}
                                         </span>
                                     ) : (
                                         <span className="rounded-full bg-amber-500/90 px-3 py-1 text-xs font-black uppercase tracking-wide">
-                                            Not available
+                                            {t('template.notAvailable')}
                                         </span>
                                     )}
                                 </div>
                                 <h1 className="max-w-3xl text-4xl font-black leading-none tracking-tight md:text-6xl">{product.title}</h1>
                                 <div className="mt-4 flex flex-wrap gap-4 text-sm font-bold text-white/90">
-                                    <span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4" />Up to {details.max_guests || 2} guests</span>
-                                    <span className="inline-flex items-center gap-1.5"><BedDouble className="h-4 w-4" />{details.bed_type || 'Bed'}</span>
-                                    {details.bathrooms !== null && details.bathrooms !== undefined && <span className="inline-flex items-center gap-1.5"><Bath className="h-4 w-4" />{details.bathrooms} bath</span>}
+                                    <span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4" />{t('template.guestsUpTo', { count: details.max_guests || 2 })}</span>
+                                    <span className="inline-flex items-center gap-1.5"><BedDouble className="h-4 w-4" />{details.bed_type || t('template.bed')}</span>
+                                    {details.bathrooms !== null && details.bathrooms !== undefined && <span className="inline-flex items-center gap-1.5"><Bath className="h-4 w-4" />{details.bathrooms} {t('template.bath')}</span>}
                                 </div>
                             </div>
                         </div>
@@ -123,26 +125,26 @@ export default function RoomProductTemplate({ product }) {
                 <main className="mx-auto grid max-w-5xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_380px] md:p-8">
                     <div className="space-y-5">
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                            <h2 className="text-lg font-black">About this stay</h2>
-                            <p className="mt-3 text-sm leading-7 text-slate-700">{product.description || product.attributes?.suggested_description || 'Comfortable stay managed by the merchant.'}</p>
+                            <h2 className="text-lg font-black">{t('template.aboutStay')}</h2>
+                            <p className="mt-3 text-sm leading-7 text-slate-700">{product.description || product.attributes?.suggested_description || t('template.stayFallback')}</p>
                             <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                                <Stat icon={Users} label="Guests" value={details.max_guests || 2} />
-                                <Stat icon={DoorOpen} label="Rooms" value={details.room_count || 1} />
-                                <Stat icon={Bath} label="Bathrooms" value={details.bathrooms ?? 'N/A'} />
+                                <Stat icon={Users} label={t('template.guests')} value={details.max_guests || 2} />
+                                <Stat icon={DoorOpen} label={t('template.rooms')} value={details.room_count || 1} />
+                                <Stat icon={Bath} label={t('template.bathrooms')} value={details.bathrooms ?? 'N/A'} />
                             </div>
                         </section>
 
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                            <h2 className="text-lg font-black">Check-in details</h2>
+                            <h2 className="text-lg font-black">{t('template.checkInDetails')}</h2>
                             <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                 <div className="rounded-xl bg-slate-50 p-4">
                                     <Clock3 className="h-5 w-5 text-slate-500" />
-                                    <p className="mt-2 text-xs font-bold uppercase text-slate-500">Check-in</p>
+                                    <p className="mt-2 text-xs font-bold uppercase text-slate-500">{t('template.checkIn')}</p>
                                     <p className="text-xl font-black">{details.checkin_time || '14:00'}</p>
                                 </div>
                                 <div className="rounded-xl bg-slate-50 p-4">
                                     <Clock3 className="h-5 w-5 text-slate-500" />
-                                    <p className="mt-2 text-xs font-bold uppercase text-slate-500">Check-out</p>
+                                    <p className="mt-2 text-xs font-bold uppercase text-slate-500">{t('template.checkOut')}</p>
                                     <p className="text-xl font-black">{details.checkout_time || '10:00'}</p>
                                 </div>
                             </div>
@@ -150,7 +152,7 @@ export default function RoomProductTemplate({ product }) {
 
                         {amenities.length > 0 && (
                             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                                <h2 className="text-lg font-black">Amenities</h2>
+                                <h2 className="text-lg font-black">{t('template.amenities')}</h2>
                                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                                     {amenities.map((amenity) => (
                                         <div key={amenity} className="flex items-center gap-3 rounded-xl bg-emerald-50 px-3 py-3 text-sm font-bold text-emerald-900">
@@ -164,14 +166,14 @@ export default function RoomProductTemplate({ product }) {
 
                         {(location.address || merchantSlug) && (
                             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                                <h2 className="text-lg font-black">Hosted by</h2>
+                                <h2 className="text-lg font-black">{t('template.hostedBy')}</h2>
                                 <Link href={merchantSlug ? `/m/${merchantSlug}` : '#'} className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 p-3 transition hover:bg-brand-50">
                                     <div className="flex items-center gap-3">
                                         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
                                             <Store className="h-5 w-5 text-slate-600" />
                                         </div>
                                         <div>
-                                            <p className="font-black">{merchant?.display_name || 'Host'}</p>
+                                            <p className="font-black">{merchant?.display_name || t('template.hostedBy')}</p>
                                             {location.address && <p className="text-sm text-slate-500">{location.address}</p>}
                                         </div>
                                     </div>
@@ -183,11 +185,11 @@ export default function RoomProductTemplate({ product }) {
 
                     <aside className="space-y-4 md:sticky md:top-5 md:self-start">
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-                            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Nightly rate</p>
+                            <p className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.nightlyRate')}</p>
                             <p className="mt-1 text-3xl font-black text-brand-700">TZS {Number(baseNightlyPrice || 0).toLocaleString()}</p>
                             {serviceOptions.length > 0 && (
                                 <div className="mt-5 space-y-2">
-                                    <p className="text-xs font-black uppercase tracking-wide text-slate-500">Room option</p>
+                                    <p className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.roomOption')}</p>
                                     {serviceOptions.map((option) => {
                                         const selected = String(selectedOption?.id || '') === String(option.id);
                                         return (
@@ -202,8 +204,8 @@ export default function RoomProductTemplate({ product }) {
                                             >
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div>
-                                                        <p className="font-black">{option.name || 'Room option'}</p>
-                                                        {option.max_guests && <p className="text-xs text-slate-500">Up to {option.max_guests} guests</p>}
+                                                        <p className="font-black">{option.name || t('template.roomOptionFallback')}</p>
+                                                        {option.max_guests && <p className="text-xs text-slate-500">{t('template.guestsUpTo', { count: option.max_guests })}</p>}
                                                     </div>
                                                     <p className="font-black text-brand-700">TZS {Number(option.price || 0).toLocaleString()}</p>
                                                 </div>
@@ -219,7 +221,7 @@ export default function RoomProductTemplate({ product }) {
                                 </button>
                                 <div className="text-center">
                                     <p className="text-lg font-black">{nights}</p>
-                                    <p className="text-[11px] font-bold uppercase text-slate-500">{nights === 1 ? 'night' : 'nights'}</p>
+                                    <p className="text-[11px] font-bold uppercase text-slate-500">{nights === 1 ? t('template.night') : t('template.nights')}</p>
                                 </div>
                                 <button type="button" onClick={() => setNights((value) => Math.min(60, value + 1))} className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm">
                                     <Plus className="h-4 w-4" />
@@ -228,14 +230,14 @@ export default function RoomProductTemplate({ product }) {
 
                             <div className="mt-4 rounded-xl bg-slate-950 p-4 text-white">
                                 <div className="flex items-center justify-between text-sm">
-                                    <span className="font-bold text-white/70">Estimated total</span>
+                                    <span className="font-bold text-white/70">{t('template.estimatedTotal')}</span>
                                     <span className="text-xl font-black">TZS {Number(total || 0).toLocaleString()}</span>
                                 </div>
                             </div>
 
                             <Button className="mt-4 h-12 w-full rounded-xl text-base font-black" disabled={!available} onClick={openBooking}>
                                 <Zap className="mr-2 h-5 w-5" />
-                                {available ? 'Request booking' : 'Not available'}
+                                {available ? t('template.requestBooking') : t('template.notAvailable')}
                             </Button>
                         </section>
 
@@ -243,8 +245,8 @@ export default function RoomProductTemplate({ product }) {
                             <div className="flex gap-3">
                                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />
                                 <div>
-                                    <p className="font-black">Booking protected</p>
-                                    <p className="mt-1 text-sm text-sky-900/75">Confirm dates, room availability, and arrival details with the host before payment or check-in.</p>
+                                    <p className="font-black">{t('template.bookingProtected')}</p>
+                                    <p className="mt-1 text-sm text-sky-900/75">{t('template.confirmStay')}</p>
                                 </div>
                             </div>
                         </section>
@@ -254,12 +256,12 @@ export default function RoomProductTemplate({ product }) {
                 <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:hidden">
                     <div className="mx-auto flex max-w-5xl items-center gap-3">
                         <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold uppercase text-slate-500">Estimated total</p>
+                            <p className="text-xs font-bold uppercase text-slate-500">{t('template.estimatedTotal')}</p>
                             <p className="truncate text-lg font-black text-brand-700">TZS {Number(total || 0).toLocaleString()}</p>
                         </div>
                         <Button className="h-12 rounded-xl font-black" disabled={!available} onClick={openBooking}>
                             <CalendarClock className="mr-2 h-4 w-4" />
-                            Book
+                            {t('template.book')}
                         </Button>
                     </div>
                 </div>
@@ -268,8 +270,8 @@ export default function RoomProductTemplate({ product }) {
                     open={requestOpen}
                     onOpenChange={setRequestOpen}
                     requestType="room_booking_request"
-                    title="Request stay"
-                    submitLabel="Send booking request"
+                    title={t('template.stay')}
+                    submitLabel={t('template.sendBooking')}
                     modulePayload={{
                         stay_nights: nights,
                         selected_service_option_id: selectedOption?.id || null,

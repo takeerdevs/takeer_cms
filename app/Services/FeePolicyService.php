@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\FeePolicy;
 use App\Models\Currency;
 use App\Models\ExchangeRateHistory;
-use App\Models\Merchant;
 use App\Models\Order;
 
 class FeePolicyService
@@ -27,18 +26,6 @@ class FeePolicyService
         );
 
         return $this->applyProviderCostFloorForOrder($order, $grossAmount, $fee);
-    }
-
-    public function calculateWithdrawal(Merchant $merchant, float $amount, ?string $paymentChannel = null): array
-    {
-        return $this->calculate(
-            'withdrawal',
-            $amount,
-            $merchant,
-            $merchant->country?->iso_alpha2,
-            $merchant->currency?->code,
-            $paymentChannel ?: 'mobile_money_payout'
-        );
     }
 
     public function calculate(
@@ -63,7 +50,7 @@ class FeePolicyService
             $sellableType,
             $category === 'sale' ? 5 : 0,
             $category === 'sale' ? 'percentage' : 'fixed',
-            $category === 'sale' ? 'Default 5% Takeer sale fee' : 'Default no withdrawal fee'
+            'Default 5% Takeer sale fee'
         );
     }
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ExternalLink, Flag, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { useLocale } from '@/lib/i18n';
 
 function hostFromUrl(url) {
     try {
@@ -17,6 +18,7 @@ export default function LinkPreviewCard({
     playable = false,
     linkMode = 'external',
 }) {
+    const { copy } = useLocale();
     const [isPlaying, setIsPlaying] = useState(false);
     const [reporting, setReporting] = useState(false);
     const [imageAspect, setImageAspect] = useState(null);
@@ -29,9 +31,9 @@ export default function LinkPreviewCard({
     const unavailable = Boolean(preview.link_unavailable || preview.tracked_link_status === 'disabled');
     const canEmbed = !unavailable && playable && Boolean(embed?.url && embed?.type === 'video');
     const compactMarketplacePreview = shouldUseCompactMarketplacePreview(preview, host);
-    const fallbackTitle = unavailable && siteLabel ? `Open on ${siteLabel}` : '';
+    const fallbackTitle = unavailable && siteLabel ? copy(`Open on ${siteLabel}`, `Fungua kwenye ${siteLabel}`) : '';
     const titleText = compactMarketplacePreview && isBlockedPreviewText(String(preview.title || '').toLowerCase())
-        ? `Open on ${siteLabel || 'external shop'}`
+        ? copy(`Open on ${siteLabel || 'external shop'}`, `Fungua kwenye ${siteLabel || 'duka la nje'}`)
         : (preview.title || fallbackTitle);
     const descriptionText = compactMarketplacePreview && isBlockedPreviewText(String(preview.description || '').toLowerCase())
         ? ''
@@ -77,9 +79,9 @@ export default function LinkPreviewCard({
                 reason_code: 'harmful_or_misleading_link',
                 notes: `Reported from link preview: ${preview.title || href}`,
             });
-            toast.success('Thanks. Takeer safety will review this link.');
+            toast.success(copy('Thanks. Takeer safety will review this link.', 'Asante. Usalama wa Takeer utapitia link hii.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not report this link.');
+            toast.error(error.response?.data?.message || copy('Could not report this link.', 'Imeshindwa kuripoti link hii.'));
         } finally {
             setReporting(false);
         }
@@ -106,7 +108,7 @@ export default function LinkPreviewCard({
                     <Flag className="absolute right-5 top-5 h-5 w-5 text-orange-700" />
                     <div className="mx-auto max-w-lg">
                         <p className="text-base font-medium leading-7 text-slate-500 sm:text-lg sm:leading-8">
-                            This link is unavailable while Takeer reviews a safety issue.
+                            {copy('This link is unavailable while Takeer reviews a safety issue.', 'Link hii haipatikani wakati Takeer inapitia suala la usalama.')}
                         </p>
                     </div>
                 </div>
@@ -114,7 +116,7 @@ export default function LinkPreviewCard({
                 <div className="aspect-video w-full overflow-hidden bg-black">
                     <iframe
                         src={playableUrl}
-                        title={preview.title || `${siteLabel || 'Video'} player`}
+                        title={preview.title || `${siteLabel || copy('Video', 'Video')} ${copy('player', 'kicheza video')}`}
                         className="h-full w-full"
                         frameBorder="0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -186,8 +188,8 @@ export default function LinkPreviewCard({
                             onClick={handleReport}
                             disabled={reporting}
                             className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
-                            aria-label="Report link"
-                            title="Report link"
+                            aria-label={copy('Report link', 'Ripoti link')}
+                            title={copy('Report link', 'Ripoti link')}
                         >
                             <Flag className="h-3.5 w-3.5" />
                         </button>

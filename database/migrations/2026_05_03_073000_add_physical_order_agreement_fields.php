@@ -16,7 +16,6 @@ return new class extends Migration
             $table->timestamp('cancelled_at')->nullable()->after('merchant_confirmed_at');
             $table->string('cancelled_by')->nullable()->after('cancelled_at');
             $table->text('cancellation_reason')->nullable()->after('cancelled_by');
-            $table->timestamp('paid_out_at')->nullable()->after('cancellation_reason')->index();
         });
     }
 
@@ -31,7 +30,6 @@ return new class extends Migration
                 'cancelled_at',
                 'cancelled_by',
                 'cancellation_reason',
-                'paid_out_at',
             ]);
         });
     }

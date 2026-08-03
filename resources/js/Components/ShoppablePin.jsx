@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, ExternalLink, Info, X, ChevronRight } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 export default function ShoppablePin({ tag, onProductTap, merchant }) {
+    const { copy } = useLocale();
     const [isOpen, setIsOpen] = useState(false);
 
     // tag.x and tag.y are floats representing percentages (e.g. 50 = 50% left)
@@ -64,7 +66,7 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
                         className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-colors"
                     >
                         <ShoppingBag className="h-3 w-3" />
-                        {p.has_access ? 'Fungua Sasa' : 'Nunua Sasa'}
+                        {p.has_access ? copy('Open now', 'Fungua sasa') : copy('Buy now', 'Nunua sasa')}
                     </button>
 
                     <div className="px-3 py-1.5 bg-accent/30 border-t border-black/5 flex items-center justify-between">
@@ -82,7 +84,7 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
                         <div className="h-8 w-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
                             <ExternalLink className="h-4 w-4" />
                         </div>
-                        <span className="text-xs font-black text-foreground truncate">{linkDomain || 'Fungua kiungo'}</span>
+                        <span className="text-xs font-black text-foreground truncate">{linkDomain || copy('Open link', 'Fungua kiungo')}</span>
                     </div>
                     <p className="text-[10px] text-muted-foreground line-clamp-1 leading-relaxed">
                         {tag.data}
@@ -94,7 +96,7 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
                         onClick={(e) => e.stopPropagation()}
                         className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 rounded-xl transition-colors mt-1"
                     >
-                        Fungua
+                        {copy('Open', 'Fungua')}
                     </a>
                 </div>
             );
@@ -125,7 +127,7 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
                 animate={{ scale: 1 }}
                 whileTap={{ scale: 0.9 }}
                 className={`relative flex items-center justify-center h-8 w-8 rounded-full shadow-[0_10px_28px_rgba(2,132,199,0.35),0_0_0_1px_rgba(15,23,42,0.18)] transition-all duration-300 ${isOpen ? 'bg-brand-700 text-white scale-110 z-40' : 'bg-brand-600 text-white hover:bg-brand-700'}`}
-                aria-label={`Hotspot ${tag.type}`}
+                aria-label={`${copy('Hotspot', 'Sehemu ya bidhaa')} ${tag.type}`}
             >
                 {/* Ripple Effect Background - only when closed */}
                 {!isOpen && <span className="absolute inline-flex h-full w-full rounded-full bg-white/50 opacity-75 animate-hotspot-ping" />}
@@ -161,7 +163,7 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
             {/* Simple label for preview if closed (optional/on hover) */}
             {!isOpen && (
                 <div className="absolute left-1/2 -translate-x-1/2 mt-3 px-2 py-1 bg-black/60 backdrop-blur-sm text-white text-[9px] font-bold uppercase tracking-tighter whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none rounded shadow-sm">
-                    {tag.type === 'product' ? (tag.product?.title || 'Bidhaa') : tag.type}
+                    {tag.type === 'product' ? (tag.product?.title || copy('Product', 'Bidhaa')) : tag.type}
                 </div>
             )}
         </div>

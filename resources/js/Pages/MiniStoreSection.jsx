@@ -4,10 +4,12 @@ import { Head, Link } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
 import { ArrowLeft, Store, BookOpenText, Boxes, Crown, Lock } from 'lucide-react';
 import { productPriceLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 const fetcher = (url) => fetch(url).then(res => res.json());
 
 export default function MiniStoreSection({ merchantSlug, sectionType, initialData }) {
+    const { t } = useLocale();
     const buildCheckoutItem = (key, item, merchantInfo) => {
         if (key === 'content') {
             return {
@@ -78,20 +80,20 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
         : data && data[data.length - 1]?.posts.links.next === null;
 
     const titleMap = {
-        products: 'Products',
-        downloads: 'Downloads',
-        services: 'Services',
-        content: 'Knowledge',
-        courses: 'Courses',
-        bundles: 'Bundles',
-        memberships: 'Memberships',
+        products: t('catalog.products'),
+        downloads: t('catalog.digital'),
+        services: t('catalog.services'),
+        content: t('orders.content'),
+        courses: t('publicCommerce.courseBundle'),
+        bundles: t('publicCommerce.bundleOffer'),
+        memberships: t('publicCommerce.membership'),
     };
 
     if (error) {
         return (
             <AppLayout>
                 <div className="h-full flex items-center justify-center p-6 text-center">
-                    <p className="text-destructive mt-10">Biashara haipatikani au mtandao unasumbua.</p>
+                    <p className="text-destructive mt-10">{t('publicCommerce.shopUnavailable')}</p>
                 </div>
             </AppLayout>
         );
@@ -101,7 +103,7 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
         return (
             <AppLayout>
                 <div className="h-full flex items-center justify-center pt-20">
-                    <span className="text-muted-foreground">Inapakia...</span>
+                    <span className="text-muted-foreground">{t('publicCommerce.loading')}</span>
                 </div>
             </AppLayout>
         );
@@ -109,7 +111,7 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
 
     return (
         <AppLayout>
-            <Head title={`${merchant?.name || 'Biashara'} | ${sectionType}`} />
+            <Head title={`${merchant?.name || t('publicCommerce.business')} | ${titleMap[sectionType] || sectionType}`} />
 
             <div className="max-w-3xl mx-auto px-5 py-8">
                 <div className="flex items-center gap-3 mb-8">
@@ -117,7 +119,7 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
                         <ArrowLeft className="h-5 w-5" />
                     </Link>
                     <div>
-                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Biashara</p>
+                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t('publicCommerce.business')}</p>
                         <h1 className="text-2xl font-black text-foreground flex items-center gap-2">
                             <Store className="h-5 w-5 text-brand-600" />
                             {merchant?.name || 'Biashara'}
@@ -128,7 +130,7 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
                 {['content', 'bundles', 'courses', 'memberships'].includes(sectionType) ? (
                     extraItems.length === 0 ? (
                         <div className="text-center text-muted-foreground py-16">
-                            Hakuna items kwa sasa.
+                            {t('catalog.empty')}
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -174,7 +176,7 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
                                                     className="h-8 px-3 rounded-lg bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 transition-colors inline-flex items-center gap-1.5"
                                                 >
                                                     <Lock className="h-3.5 w-3.5" />
-                                                    {sectionType === 'memberships' ? 'Subscribe' : 'Unlock'}
+                                                    {sectionType === 'memberships' ? t('publicCommerce.joinNow') : t('publicCommerce.unlockContent')}
                                                 </button>
                                             )}
                                         </div>
@@ -185,7 +187,7 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
                     )
                 ) : products.length === 0 ? (
                     <div className="text-center text-muted-foreground py-16">
-                        Hakuna bidhaa kwa sasa.
+                        {t('catalog.empty')}
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -207,7 +209,7 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold text-foreground truncate">{product.title}</p>
                                     <p className="text-xs text-muted-foreground mt-0.5">
-                                        {productLabel(product)}
+                                        {productLabel(product, t)}
                                     </p>
                                 </div>
                                 <div className="text-sm font-black text-brand-600">
@@ -220,7 +222,7 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
 
                 {isLoadingMore && (
                     <div className="py-8 flex justify-center items-center">
-                        <span className="text-muted-foreground text-sm">Inapakia...</span>
+                        <span className="text-muted-foreground text-sm">{t('publicCommerce.loading')}</span>
                     </div>
                 )}
 
@@ -231,7 +233,7 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
                             className="h-11 px-6 rounded-full border border-border text-sm font-bold hover:bg-accent transition-colors"
                             disabled={isValidating}
                         >
-                            {isValidating ? 'Inapakia...' : 'Ongeza Zaidi'}
+                            {isValidating ? t('publicCommerce.loading') : t('publicCommerce.loadingMore')}
                         </button>
                     </div>
                 )}
@@ -240,25 +242,25 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
     );
 }
 
-function productLabel(product) {
-    if (product?.type === 'service') return 'Service';
-    if (product?.type !== 'digital') return 'Product';
+function productLabel(product, translate = (english) => english) {
+    if (product?.type === 'service') return translate('Service', 'Huduma');
+    if (product?.type !== 'digital') return translate('Product', 'Bidhaa');
 
     const map = {
-        video_stream: 'Premium video',
-        audio_stream: 'Premium audio',
-        gallery_pack: 'Gallery pack',
-        live_event: 'Live event',
-        custom_delivery: 'Custom work',
-        external_link: 'External digital access',
+        video_stream: translate('Premium video', 'Video ya premium'),
+        audio_stream: translate('Premium audio', 'Audio ya premium'),
+        gallery_pack: translate('Gallery pack', 'Kifurushi cha picha'),
+        live_event: translate('Live event', 'Tukio la moja kwa moja'),
+        custom_delivery: translate('Custom work', 'Kazi maalum'),
+        external_link: translate('External digital access', 'Ufikiaji wa kidijitali wa nje'),
         file: product.digital_content_type === 'software'
-            ? 'Software'
+            ? translate('Software', 'Programu')
             : product.digital_content_type === 'document'
-                ? 'Document'
+                ? translate('Document', 'Hati')
                 : product.digital_content_type === 'ebook'
-                    ? 'E-book'
-                    : 'Digital download',
+                    ? translate('E-book', 'Kitabu pepe')
+                    : translate('Digital download', 'Upakuaji wa kidijitali'),
     };
 
-    return map[product.digital_delivery_type] || 'Digital download';
+    return map[product.digital_delivery_type] || translate('Digital download', 'Upakuaji wa kidijitali');
 }

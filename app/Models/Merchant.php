@@ -170,19 +170,9 @@ class Merchant extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function wallet(): HasOne
+    public function sellerPaymentProfiles(): HasMany
     {
-        return $this->hasOne(Wallet::class, 'merchant_id');
-    }
-
-    public function withdrawals(): HasMany
-    {
-        return $this->hasMany(WithdrawalRequest::class, 'merchant_id');
-    }
-
-    public function payoutCredentials(): HasMany
-    {
-        return $this->hasMany(MerchantPayoutCredential::class);
+        return $this->hasMany(MarketplaceSellerPaymentProfile::class);
     }
 
     /**

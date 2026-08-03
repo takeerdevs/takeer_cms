@@ -18,8 +18,8 @@ use Illuminate\Support\Carbon;
 
 class MerchantAnalyticsExportController extends Controller
 {
-    private const PAID_STATUSES = ['escrow_locked', 'resolved_merchant_paid'];
-    private const RELEASED_STATUS = 'resolved_merchant_paid';
+    private const PAID_STATUSES = ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'];
+    private const RELEASED_STATUS = 'paid_out';
 
     public function orders(Request $request, Merchant $merchant)
     {
@@ -131,7 +131,7 @@ class MerchantAnalyticsExportController extends Controller
         $orderAggregate = Order::query()
             ->selectRaw('product_id, COUNT(*) as orders_count, SUM(total_paid) as gross_revenue')
             ->selectRaw("SUM(CASE WHEN payment_status = ? THEN total_paid ELSE 0 END) as released_revenue", [self::RELEASED_STATUS])
-            ->selectRaw("SUM(CASE WHEN payment_status = ? THEN total_paid ELSE 0 END) as pending_revenue", ['escrow_locked'])
+            ->selectRaw("SUM(CASE WHEN payment_status IN (?, ?, ?) THEN total_paid ELSE 0 END) as pending_revenue", ['pending_fulfillment', 'release_eligible', 'payout_processing'])
             ->where('merchant_id', $merchant->id)
             ->whereNotNull('product_id')
             ->whereIn('payment_status', self::PAID_STATUSES)

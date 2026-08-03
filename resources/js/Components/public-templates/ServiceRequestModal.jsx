@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Textarea } from '@/Components/ui/Textarea';
+import { useLocale } from '@/lib/i18n';
 
 export default function ServiceRequestModal({
     product,
@@ -16,6 +17,7 @@ export default function ServiceRequestModal({
     submitLabel = 'Send request',
     messagePlaceholder = 'Add details, preferred options, questions, or special instructions...',
 }) {
+    const { t } = useLocale();
     const { auth } = usePage().props;
     const [submitting, setSubmitting] = useState(false);
     const [form, setForm] = useState({
@@ -36,12 +38,12 @@ export default function ServiceRequestModal({
         event.preventDefault();
 
         if (!form.customer_name.trim()) {
-            toast.error('Please enter your name.');
+            toast.error(t('template.enterName'));
             return;
         }
 
         if (!form.customer_phone.trim() && !form.customer_email.trim()) {
-            toast.error('Please enter a phone number or email.');
+            toast.error(t('template.phoneOrEmail'));
             return;
         }
 
@@ -72,13 +74,13 @@ export default function ServiceRequestModal({
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.message || 'Request could not be sent.');
+                throw new Error(data.message || t('template.requestCouldNotSend'));
             }
 
-            toast.success(data.message || 'Request sent.');
+            toast.success(data.message || t('product.requestSent'));
             onOpenChange(false);
         } catch (error) {
-            toast.error(error.message || 'Request could not be sent.');
+            toast.error(error.message || t('template.requestCouldNotSend'));
         } finally {
             setSubmitting(false);
         }
@@ -99,41 +101,41 @@ export default function ServiceRequestModal({
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                     <label className="space-y-1.5 sm:col-span-2">
-                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">Name</span>
+                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.name')}</span>
                         <Input value={form.customer_name} onChange={(event) => update('customer_name', event.target.value)} className="h-11" required />
                     </label>
                     <label className="space-y-1.5">
-                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">Phone</span>
+                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.phone')}</span>
                         <Input value={form.customer_phone} onChange={(event) => update('customer_phone', event.target.value)} className="h-11" />
                     </label>
                     <label className="space-y-1.5">
-                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">Email</span>
+                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.email')}</span>
                         <Input type="email" value={form.customer_email} onChange={(event) => update('customer_email', event.target.value)} className="h-11" />
                     </label>
                     <label className="space-y-1.5">
-                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">Preferred date</span>
+                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.preferredDate')}</span>
                         <Input type="date" value={form.preferred_date} onChange={(event) => update('preferred_date', event.target.value)} className="h-11" />
                     </label>
                     <label className="space-y-1.5">
-                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">Preferred time</span>
+                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.preferredTime')}</span>
                         <Input type="time" value={form.preferred_time} onChange={(event) => update('preferred_time', event.target.value)} className="h-11" />
                     </label>
                     <label className="space-y-1.5 sm:col-span-2">
-                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">Location or pickup note</span>
-                        <Input value={form.location_text} onChange={(event) => update('location_text', event.target.value)} className="h-11" placeholder="Area, venue, pickup point, or address" />
+                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.locationNote')}</span>
+                        <Input value={form.location_text} onChange={(event) => update('location_text', event.target.value)} className="h-11" placeholder={t('template.locationPlaceholder')} />
                     </label>
                     <label className="space-y-1.5 sm:col-span-2">
-                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">Details</span>
+                        <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t('template.details')}</span>
                         <Textarea value={form.message} onChange={(event) => update('message', event.target.value)} className="min-h-28" placeholder={messagePlaceholder} />
                     </label>
                 </div>
 
                 <div className="mt-5 flex gap-2">
                     <Button type="button" variant="outline" className="h-12 flex-1 rounded-xl font-black" onClick={() => onOpenChange(false)}>
-                        Cancel
+                        {t('template.cancel')}
                     </Button>
                     <Button type="submit" className="h-12 flex-1 rounded-xl font-black" disabled={submitting}>
-                        {submitting ? 'Sending...' : submitLabel}
+                        {submitting ? t('template.sending') : submitLabel}
                     </Button>
                 </div>
             </form>

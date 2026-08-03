@@ -32,7 +32,7 @@ use ZipArchive;
 class RetailBookkeepingController extends Controller
 {
     private const ENTRY_TYPES = ['income', 'expense', 'director_loan', 'tax_payment'];
-    private const PAYMENT_METHODS = ['cash', 'bank', 'mobile_money', 'card', 'takeer_wallet', 'director_loan', 'other'];
+    private const PAYMENT_METHODS = ['cash', 'bank', 'mobile_money', 'card', 'external_psp', 'director_loan', 'other'];
     private const REFERENCE_TYPES = ['efd_receipt', 'bank_transaction', 'mobile_money', 'invoice', 'tra_payment', 'contract', 'other'];
     private const PROOF_STATUSES = ['attached', 'reference_only', 'missing', 'needs_replacement'];
     private const REVIEW_STATUSES = ['pending', 'approved', 'rejected'];
@@ -2846,7 +2846,7 @@ class RetailBookkeepingController extends Controller
 
     private function cashMovement(int $merchantId, Request $request): array
     {
-        $cashMethods = ['cash', 'bank', 'mobile_money', 'card', 'takeer_wallet'];
+        $cashMethods = ['cash', 'bank', 'mobile_money', 'card', 'external_psp'];
         $base = $this->summaryQuery($merchantId, $request)
             ->whereIn('payment_method', $cashMethods);
 

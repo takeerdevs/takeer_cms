@@ -3,8 +3,6 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 import {
     LayoutDashboard,
-    Wallet,
-    HandCoins,
     TrendingUp,
     AlertTriangle,
     History,
@@ -42,8 +40,10 @@ import {
 import { Input } from '@/Components/ui/Input';
 import { toast } from 'sonner';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
+import { useLocale } from '@/lib/i18n';
 
 export default function Dashboard({ merchant }) {
+    const { copy } = useLocale();
     const { can, canAny } = useMerchantPermissions(merchant?.username);
     const canRetailPos = can('retail.pos');
     const canRetailTransfers = can('retail.transfers');
@@ -53,7 +53,6 @@ export default function Dashboard({ merchant }) {
     const canRetailApproveSale = can('retail.approve_sale');
     const canBookkeepingView = can('bookkeeping.view');
     const canTeamView = can('team.view');
-    const canWalletView = can('wallet.view');
     const canOrdersView = can('orders.view');
     const canTrustSafetyView = canAny(['retail.settings', 'settings.view']);
     const [data, setData] = useState(null);
@@ -89,7 +88,7 @@ export default function Dashboard({ merchant }) {
                 setPermissionError(err.response.data.message);
             } else {
                 console.error('Failed to load dashboard', err);
-                toast.error('Imeshindwa kupakia taarifa za dashboard.');
+                toast.error(copy('Failed to load dashboard data.', 'Imeshindwa kupakia taarifa za dashibodi.'));
             }
         } finally {
             setLoading(false);
@@ -110,12 +109,12 @@ export default function Dashboard({ merchant }) {
                 product_variant_id: selectedItem.product_variant_id,
                 add_quantity: parseInt(restockAmount)
             });
-            toast.success('Stock updated successfully!');
+            toast.success(copy('Stock updated successfully!', 'Stock imesasishwa kikamilifu!'));
             setIsRestockModalOpen(false);
             setRestockAmount('');
             fetchDashboardData();
         } catch (err) {
-            toast.error('Failed to update stock');
+            toast.error(copy('Failed to update stock', 'Imeshindikana kusasisha stock'));
         }
     };
 
@@ -130,11 +129,11 @@ export default function Dashboard({ merchant }) {
             await window.axios.post('/api/retail/inventory/import', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            toast.success('Bulk import completed!');
+            toast.success(copy('Bulk import completed!', 'Uingizaji wa jumla umekamilika!'));
             setIsImportModalOpen(false);
             fetchDashboardData();
         } catch (err) {
-            toast.error('Import failed. Please verify CSV format.');
+            toast.error(copy('Import failed. Please verify CSV format.', 'Uingizaji umeshindikana. Tafadhali hakiki muundo wa CSV.'));
         } finally {
             setImporting(false);
         }
@@ -157,19 +156,19 @@ export default function Dashboard({ merchant }) {
         try {
             if (reject) {
                 await window.axios.post(`/api/retail/pos/sale/${order.id}/reject`);
-                toast.warning('Oda imekataliwa na stock imerudishwa.');
+                toast.warning(copy('Order rejected and stock returned.', 'Oda imekataliwa na stock imerudishwa.'));
             } else {
                 await window.axios.post(`/api/retail/pos/sale/${order.id}/approve`, {
                     payment_mode: order.payment_mode,
                     counter_total: counterTotal,
                     manager_notes: managerNotes
                 });
-                toast.success('Oda imeidhinishwa kikamilifu!');
+                toast.success(copy('Order approved successfully!', 'Oda imeidhinishwa kikamilifu!'));
             }
             setIsReviewDrawerOpen(false);
             fetchDashboardData();
         } catch (err) {
-            toast.error(reject ? 'Imeshindwa kukataa oda.' : 'Imeshindwa kuidhinisha oda.');
+            toast.error(reject ? copy('Could not reject the order.', 'Imeshindwa kukataa oda.') : copy('Could not approve the order.', 'Imeshindwa kuidhinisha oda.'));
         } finally {
             setApproving(false);
             setRejecting(false);
@@ -195,7 +194,7 @@ export default function Dashboard({ merchant }) {
 
     return (
         <AppLayout>
-            <Head title="Retail Dashboard | Takeer" />
+            <Head title={`${copy('Retail Dashboard', 'Dashibodi ya Rejareja')} | Takeer`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-8 pb-24">
 
                 {permissionError ? (
@@ -203,7 +202,7 @@ export default function Dashboard({ merchant }) {
                         <div className="h-20 w-20 bg-amber-100 rounded-full flex items-center justify-center mb-6">
                             <AlertTriangle className="h-10 w-10 text-amber-600" />
                         </div>
-                        <h2 className="text-2xl font-black mb-2">Ufikiaji Umezuiwa</h2>
+                        <h2 className="text-2xl font-black mb-2">{copy('Access Restricted', 'Ufikiaji Umezuiwa')}</h2>
                         <p className="text-muted-foreground max-w-md mb-8">{permissionError}</p>
                         
                         <div className="flex flex-wrap justify-center gap-4">
@@ -212,7 +211,7 @@ export default function Dashboard({ merchant }) {
                                     className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl h-12 px-6"
                                     onClick={() => router.visit(`/merchant/${merchant.username}/retail/pos`)}
                                 >
-                                    <ShoppingCart className="mr-2 h-5 w-5" /> Fungua POS (Uza)
+                                    <ShoppingCart className="mr-2 h-5 w-5" /> {copy('Open POS (Sell)', 'Fungua POS (Uza)')}
                                 </Button>
                             )}
                             {canRetailTransfers && (
@@ -221,7 +220,7 @@ export default function Dashboard({ merchant }) {
                                     className="rounded-xl border-brand-200 h-12 px-6"
                                     onClick={() => router.visit(`/merchant/${merchant.username}/retail/transfers`)}
                                 >
-                                    <ArrowRightLeft className="mr-2 h-5 w-5 text-brand-600" /> Hamisha Stock
+                                    <ArrowRightLeft className="mr-2 h-5 w-5 text-brand-600" /> {copy('Transfer Stock', 'Hamisha Stock')}
                                 </Button>
                             )}
                         </div>
@@ -231,9 +230,9 @@ export default function Dashboard({ merchant }) {
                         {/* Header */}
                     <div>
                         <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
-                            Retail Operations <LayoutDashboard className="h-8 w-8 text-brand-600" />
+                            {copy('Retail Operations', 'Uendeshaji wa Rejareja')} <LayoutDashboard className="h-8 w-8 text-brand-600" />
                         </h1>
-                        <p className="text-muted-foreground">Monitor sales, inventory, and staff across all locations.</p>
+                        <p className="text-muted-foreground">{copy('Monitor sales, inventory, and staff across all locations.', 'Fuatilia mauzo, stock na wahudumu katika maeneo yote.')}</p>
                     </div>
 
                 {trustSafety && (
@@ -244,16 +243,16 @@ export default function Dashboard({ merchant }) {
                                     {trustSafety.status?.standing === 'good' ? <ShieldCheck className="h-5 w-5" /> : <ShieldAlert className="h-5 w-5" />}
                                 </div>
                                 <div>
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Trust & Safety</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Trust & Safety', 'Uaminifu na Usalama')}</p>
                                     <h2 className="text-lg font-black text-slate-950">
-                                        {trustSafety.status?.standing === 'good' ? 'Account in good standing' : 'Account needs attention'}
+                                        {trustSafety.status?.standing === 'good' ? copy('Account in good standing', 'Akaunti iko katika hali nzuri') : copy('Account needs attention', 'Akaunti inahitaji uangalizi')}
                                     </h2>
                                     <p className="text-sm font-bold text-slate-600 mt-1">
                                         {trustSafety.status?.pos_payment_links_disabled
-                                            ? 'POS payment links are disabled while Takeer reviews your account.'
+                                            ? copy('POS payment links are disabled while Takeer reviews your account.', 'Linki za malipo za POS zimezimwa wakati Takeer inakagua akaunti yako.')
                                             : trustSafety.status?.standing === 'good'
-                                                ? `${trustSafety.status?.strike_count || 0} past strike(s), no active POS restrictions.`
-                                                : `${trustSafety.status?.open_pos_reports || 0} open POS report(s), ${trustSafety.status?.pending_review_count || 0} pending review(s).`}
+                                                ? `${trustSafety.status?.strike_count || 0} ${copy('past strike(s), no active POS restrictions.', 'onyo zilizopita, hakuna vizuizi vya POS vinavyotumika.')}`
+                                                : `${trustSafety.status?.open_pos_reports || 0} ${copy('open POS report(s),', 'ripoti za POS zilizo wazi,')} ${trustSafety.status?.pending_review_count || 0} ${copy('pending review(s).', 'ukaguzi unaosubiri.')}`}
                                     </p>
                                 </div>
                             </div>
@@ -264,7 +263,7 @@ export default function Dashboard({ merchant }) {
                                     onClick={() => router.visit(`/merchant/${merchant.username}/retail/trust-safety`)}
                                 >
                                     <Gavel className="h-4 w-4 mr-2" />
-                                    View Status
+                                    {copy('View Status', 'Angalia Hali')}
                                 </Button>
                             )}
                         </CardContent>
@@ -275,7 +274,7 @@ export default function Dashboard({ merchant }) {
                     <div className="mb-8 space-y-4">
                         <div className="flex items-center gap-2 mb-2">
                             <ShieldAlert className="h-5 w-5 text-amber-600 animate-pulse" />
-                            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Mahitaji ya Idhini ({data.pending_approvals.length})</h3>
+                            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">{copy('Pending Approvals', 'Mahitaji ya Idhini')} ({data.pending_approvals.length})</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {data.pending_approvals.map(order => (
@@ -293,7 +292,7 @@ export default function Dashboard({ merchant }) {
                                                 <p className="text-xs font-black truncate text-slate-900">#POS-{order.public_id}</p>
                                                 <p className="text-[10px] text-slate-500 font-bold truncate">{order.product?.title || 'Multiple Items'}</p>
                                                 <div className="flex items-center gap-1 mt-1">
-                                                    <span className="text-[9px] font-black text-amber-600 uppercase">Discount:</span>
+                                                    <span className="text-[9px] font-black text-amber-600 uppercase">{copy('Discount:', 'Punguzo:')}</span>
                                                     <span className="text-[9px] font-black text-amber-700">{formatCurrency(order.discount_amount)}</span>
                                                 </div>
                                             </div>
@@ -301,11 +300,11 @@ export default function Dashboard({ merchant }) {
 
                                         <div className="bg-white/60 rounded-2xl p-3 mb-4 space-y-2 border border-amber-100/20">
                                             <div className="flex justify-between text-[10px] font-bold">
-                                                <span className="text-slate-400 uppercase tracking-tight">Staff:</span>
-                                                <span className="text-slate-900">{order.pos_staff?.user?.name || 'Unknown'}</span>
+                                                <span className="text-slate-400 uppercase tracking-tight">{copy('Staff:', 'Mhudumu:')}</span>
+                                                <span className="text-slate-900">{order.pos_staff?.user?.name || copy('Unknown', 'Haijulikani')}</span>
                                             </div>
                                             <div className="flex justify-between text-[10px] font-bold">
-                                                <span className="text-slate-400 uppercase tracking-tight">Total:</span>
+                                                <span className="text-slate-400 uppercase tracking-tight">{copy('Total:', 'Jumla:')}</span>
                                                 <span className="text-slate-900 font-black">{formatCurrency(order.grand_total)}</span>
                                             </div>
                                         </div>
@@ -314,71 +313,13 @@ export default function Dashboard({ merchant }) {
                                             className="w-full h-11 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-amber-600/20"
                                             onClick={() => handleReviewOrder(order)}
                                         >
-                                            Review & Respond
+                                            {copy('Review & Respond', 'Kagua na Jibu')}
                                         </Button>
                                     </CardContent>
                                 </Card>
                             ))}
                         </div>
                     </div>
-                )}
-
-                {/* Financial Cards (Ledger Distinction) */}
-                {canWalletView && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Card
-                        className="bg-brand-700 text-white border-brand-800 shadow-lg shadow-brand-700/20 cursor-pointer transition-transform active:scale-[0.99] hover:bg-brand-800"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => router.visit(`/merchant/${merchant.username}/wallet/ledger?type=escrow`)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                router.visit(`/merchant/${merchant.username}/wallet/ledger?type=escrow`);
-                            }
-                        }}
-                    >
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <Wallet className="h-8 w-8 text-brand-100" />
-                                <span className="text-[10px] font-bold bg-white text-brand-700 px-2 py-1 rounded-full uppercase tracking-widest">In Escrow</span>
-                            </div>
-                            <p className="text-xs font-bold text-brand-100 uppercase tracking-wider mb-1">Takeer Balance</p>
-                            <h2 className="text-3xl font-black">{formatCurrency(data?.metrics?.takeer_balance || 0)}</h2>
-                            <p className="text-[10px] mt-4 text-brand-100">Payouts are processed weekly.</p>
-                        </CardContent>
-                    </Card>
-
-                    <Card
-                        className="glass-card border-brand-100 shadow-lg shadow-brand-100/20 bg-white cursor-pointer transition-transform active:scale-[0.99] hover:border-brand-200"
-                        onClick={() => router.visit(`/merchant/${merchant.username}/wallet/ledger?type=non-escrow`)}
-                    >
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <HandCoins className="h-8 w-8 text-green-600" />
-                                <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full uppercase tracking-widest">Collected</span>
-                            </div>
-                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Today's In-Hand Revenue</p>
-                            <h2 className="text-3xl font-black text-gray-900">{formatCurrency(data?.metrics?.today_in_hand || 0)}</h2>
-                            <p className="text-[10px] mt-4 text-muted-foreground">Cash and Merchant Mobile Money total.</p>
-                        </CardContent>
-                    </Card>
-
-                    <Card
-                        className="glass-card border-amber-100 shadow-lg shadow-amber-100/20 bg-white cursor-pointer transition-transform active:scale-[0.99] hover:border-amber-200"
-                        onClick={() => router.visit(`/merchant/${merchant.username}/wallet/ledger?type=credit`)}
-                    >
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <TrendingUp className="h-8 w-8 text-amber-600" />
-                                <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full uppercase tracking-widest">Pending</span>
-                            </div>
-                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Outstanding Balances</p>
-                            <h2 className="text-3xl font-black text-gray-900">{formatCurrency(data?.metrics?.outstanding_credit || 0)}</h2>
-                            <p className="text-[10px] mt-4 text-muted-foreground">Click to collect unpaid POS balances.</p>
-                        </CardContent>
-                    </Card>
-                </div>
                 )}
 
                 {/* Quick Actions */}
@@ -388,11 +329,11 @@ export default function Dashboard({ merchant }) {
                             <div className="h-10 w-10 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center border border-brand-100">
                                 <LayoutDashboard className="h-5 w-5" />
                             </div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Quick Actions</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Quick Actions', 'Hatua za Haraka')}</p>
                         </div>
                         {data?.pending_approvals?.length > 0 && (
                             <span className="w-fit rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700 border border-amber-100">
-                                {data.pending_approvals.length} Approval{data.pending_approvals.length === 1 ? '' : 's'}
+                                {data.pending_approvals.length} {copy('Approval', 'Idhini')}{data.pending_approvals.length === 1 ? '' : 's'}
                             </span>
                         )}
                     </div>
@@ -406,7 +347,7 @@ export default function Dashboard({ merchant }) {
                                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-white/15">
                                     <ShoppingCart className="h-6 w-6 group-hover:scale-110 transition-transform" />
                                 </span>
-                                <span className="text-base font-black">New Sale</span>
+                                <span className="text-base font-black">{copy('New Sale', 'Uuzaji Mpya')}</span>
                             </Button>
                         )}
                         {canRetailTransfers && (
@@ -418,7 +359,7 @@ export default function Dashboard({ merchant }) {
                                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
                                     <ArrowRightLeft className="h-5 w-5" />
                                 </span>
-                                <span className="text-base font-black">Transfer</span>
+                                <span className="text-base font-black">{copy('Transfer', 'Hamisha')}</span>
                             </Button>
                         )}
                         {canRetailInventory && (
@@ -430,7 +371,7 @@ export default function Dashboard({ merchant }) {
                                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
                                     <Package className="h-5 w-5" />
                                 </span>
-                                <span className="text-base font-black">Inventory</span>
+                                <span className="text-base font-black">{copy('Inventory', 'Stock')}</span>
                             </Button>
                         )}
                         {canBookkeepingView && (
@@ -442,7 +383,7 @@ export default function Dashboard({ merchant }) {
                                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
                                     <BookOpenCheck className="h-5 w-5" />
                                 </span>
-                                <span className="text-base font-black">Bookkeeping</span>
+                                <span className="text-base font-black">{copy('Bookkeeping', 'Utunzaji wa Vitabu')}</span>
                             </Button>
                         )}
                         {canRetailInventory && (
@@ -454,7 +395,7 @@ export default function Dashboard({ merchant }) {
                                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
                                     <Upload className="h-5 w-5" />
                                 </span>
-                                <span className="text-base font-black">Bulk Import</span>
+                                <span className="text-base font-black">{copy('Bulk Import', 'Uingizaji wa Jumla')}</span>
                             </Button>
                         )}
                         {canTeamView && (
@@ -466,7 +407,7 @@ export default function Dashboard({ merchant }) {
                                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
                                     <Users className="h-5 w-5" />
                                 </span>
-                                <span className="text-base font-black">Staff</span>
+                                <span className="text-base font-black">{copy('Staff', 'Wahudumu')}</span>
                             </Button>
                         )}
                         {canRetailSettings && (
@@ -478,7 +419,7 @@ export default function Dashboard({ merchant }) {
                                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
                                     <Settings className="h-5 w-5" />
                                 </span>
-                                <span className="text-base font-black">Settings</span>
+                                <span className="text-base font-black">{copy('Settings', 'Mipangilio')}</span>
                             </Button>
                         )}
                         {canRetailCustomers && (
@@ -490,7 +431,7 @@ export default function Dashboard({ merchant }) {
                                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
                                     <Users className="h-5 w-5" />
                                 </span>
-                                <span className="text-base font-black">Customers</span>
+                                <span className="text-base font-black">{copy('Customers', 'Wateja')}</span>
                             </Button>
                         )}
                     </div>
@@ -541,7 +482,7 @@ export default function Dashboard({ merchant }) {
                                 </div>
                             ) : (
                                 <div className="text-center py-12">
-                                    <p className="text-sm text-muted-foreground">No critical stock levels detected. ✅</p>
+                                    <p className="text-sm text-muted-foreground">{copy('No critical stock levels detected. ✅', 'Hakuna viwango vya stock muhimu vilivyogunduliwa. ✅')}</p>
                                 </div>
                             )}
                         </CardContent>
@@ -600,7 +541,7 @@ export default function Dashboard({ merchant }) {
                                     </div>
                                 ))}
                                 {(!data?.recent_activity || data.recent_activity.length === 0) && (
-                                    <p className="text-sm text-center text-muted-foreground py-12">No activity logged yet.</p>
+                                    <p className="text-sm text-center text-muted-foreground py-12">{copy('No activity logged yet.', 'Hakuna shughuli iliyohifadhiwa bado.')}</p>
                                 )}
                             </div>
                         </CardContent>
@@ -627,7 +568,7 @@ export default function Dashboard({ merchant }) {
                                                 <div className="min-w-0">
                                                     <h2 className="text-xl font-black text-slate-900 truncate">Review #POS-{selectedOrder.public_id}</h2>
                                                     <p className="font-bold text-slate-400 text-xs truncate">
-                                                        By {selectedOrder.pos_staff?.user?.name || 'Unknown'}
+                                                        {copy('By', 'Na')} {selectedOrder.pos_staff?.user?.name || copy('Unknown', 'Haijulikani')}
                                                     </p>
                                                 </div>
                                             </div>
@@ -641,12 +582,12 @@ export default function Dashboard({ merchant }) {
                                         {(selectedOrder.customer_name || selectedOrder.customer_phone) && (
                                             <div className="p-4 rounded-3xl bg-white border border-slate-100 shadow-sm space-y-3">
                                                 <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-500 flex items-center gap-2">
-                                                    <User2 className="h-3 w-3" /> Taarifa za Mteja
+                                                    <User2 className="h-3 w-3" /> {copy('Customer details', 'Taarifa za mteja')}
                                                 </h4>
                                                 <div className="flex justify-between items-center gap-3">
                                                     <div className="min-w-0">
-                                                        <p className="text-sm font-black text-slate-900 truncate">{selectedOrder.customer_name || 'N/A'}</p>
-                                                        <p className="text-[11px] font-bold text-slate-400 truncate">{selectedOrder.customer_phone || 'Hajatoa namba'}</p>
+                                                        <p className="text-sm font-black text-slate-900 truncate">{selectedOrder.customer_name || copy('N/A', 'Haipo')}</p>
+                                                        <p className="text-[11px] font-bold text-slate-400 truncate">{selectedOrder.customer_phone || copy('No phone provided', 'Hajatoa namba')}</p>
                                                     </div>
                                                     <div className="h-10 w-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600 shrink-0">
                                                         <Phone className="h-4 w-4" />
@@ -661,19 +602,19 @@ export default function Dashboard({ merchant }) {
                                                     <CreditCard className="h-5 w-5" />
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Payment Mode</h4>
-                                                    <p className="text-xs font-black text-slate-900 uppercase truncate">{selectedOrder.payment_mode?.replace('_', ' ') || 'N/A'}</p>
+                                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Payment Mode', 'Njia ya Malipo')}</h4>
+                                                    <p className="text-xs font-black text-slate-900 uppercase truncate">{selectedOrder.payment_mode?.replace('_', ' ') || copy('N/A', 'Haipo')}</p>
                                                 </div>
                                             </div>
                                             {selectedOrder.payment_mode === 'store_credit' && (
                                                 <span className="px-3 py-1 rounded-full bg-red-100 text-red-600 text-[10px] font-black uppercase tracking-tight animate-pulse shrink-0">
-                                                    Pay Later
+                                                    {copy('Pay Later', 'Lipa baadaye')}
                                                 </span>
                                             )}
                                         </div>
 
                                         <div className="space-y-3">
-                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Order Items</h4>
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Order Items', 'Vipengee vya Oda')}</h4>
                                             <div className="grid grid-cols-1 gap-2">
                                                 {(selectedOrder.pos_items || []).map((item, idx) => {
                                                     const unitPrice = item.unit_price || item.price_at_sale || 0;
@@ -698,29 +639,29 @@ export default function Dashboard({ merchant }) {
 
                                         <div className="p-5 rounded-[2rem] bg-slate-900 text-white space-y-4 shadow-xl">
                                             <div className="flex justify-between items-center gap-3 text-sm">
-                                                <span className="font-bold text-slate-400">Bei ya Bidhaa (Actual):</span>
+                                                <span className="font-bold text-slate-400">{copy('Product price (actual):', 'Bei ya Bidhaa (halisi):')}</span>
                                                 <span className="font-black text-slate-200">{formatCurrency(actualProductTotal)}</span>
                                             </div>
                                             <div className="flex justify-between items-center gap-3 text-sm">
-                                                <span className="font-bold text-slate-400">Kiasi cha Mauzo (Entered):</span>
+                                                <span className="font-bold text-slate-400">{copy('Sales amount (entered):', 'Kiasi cha Mauzo (kilichoingizwa):')}</span>
                                                 <span className="font-black text-white">{formatCurrency(salesAmount)}</span>
                                             </div>
                                             <div className="h-px bg-slate-800" />
                                             <div className="flex justify-between items-center gap-3">
-                                                <span className="text-sm font-bold text-slate-400">Deni / Punguzo:</span>
+                                                <span className="text-sm font-bold text-slate-400">{copy('Balance / discount:', 'Deni / Punguzo:')}</span>
                                                 <span className={`text-lg font-black ${salesAmount >= actualProductTotal ? 'text-emerald-400' : 'text-red-400'}`}>
                                                     {formatCurrency(balanceOrDiscount)}
                                                 </span>
                                             </div>
                                             <div className="bg-white/10 p-3 rounded-2xl flex justify-between items-center gap-3">
-                                                <span className="text-xs font-bold text-white/60 uppercase">Kiasi Kilicholipwa (Advance):</span>
+                                                <span className="text-xs font-bold text-white/60 uppercase">{copy('Amount paid (advance):', 'Kiasi Kilicholipwa (advance):')}</span>
                                                 <span className="text-sm font-black text-emerald-400">{formatCurrency(paidNow)}</span>
                                             </div>
                                         </div>
 
                                         <div className="space-y-4">
                                             <div className="space-y-1.5">
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Counter-Offer (Agreed Total)</label>
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{copy('Counter-Offer (Agreed Total)', 'Ofa ya Kaunta (Jumla Iliyokubaliwa)')}</label>
                                                 <div className="relative">
                                                     <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-600" />
                                                     <Input
@@ -728,18 +669,18 @@ export default function Dashboard({ merchant }) {
                                                         value={counterTotal}
                                                         onChange={e => setCounterTotal(e.target.value)}
                                                         className="h-12 pl-11 rounded-2xl border-brand-100 bg-white font-black text-brand-900 focus:ring-brand-500"
-                                                        placeholder="Enter agreed total..."
+                                                        placeholder={copy('Enter agreed total...', 'Ingiza jumla iliyokubaliwa...')}
                                                     />
                                                 </div>
                                             </div>
 
                                             <div className="space-y-1.5">
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Manager Feedback / Secret Notes</label>
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{copy('Manager Feedback / Secret Notes', 'Maoni ya Meneja / Maelezo ya Siri')}</label>
                                                 <textarea
                                                     value={managerNotes}
                                                     onChange={e => setManagerNotes(e.target.value)}
                                                     className="w-full min-h-[100px] p-4 rounded-2xl border-slate-200 bg-white font-medium text-xs focus:ring-brand-500 resize-none shadow-sm"
-                                                    placeholder="Andika maelezo kwa mhudumu..."
+                                                    placeholder={copy('Write a note for the staff member...', 'Andika maelezo kwa mhudumu...')}
                                                 />
                                             </div>
                                         </div>
@@ -781,28 +722,28 @@ export default function Dashboard({ merchant }) {
                                 Restock Product
                             </DialogTitle>
                             <DialogDescription>
-                                Add inventory for <span className="font-bold text-foreground">{selectedItem?.product?.title}</span> at <span className="font-bold text-foreground">{selectedItem?.location?.name}</span>.
+                                {copy('Add inventory for', 'Ongeza stock ya')} <span className="font-bold text-foreground">{selectedItem?.product?.title}</span> {copy('at', 'kwenye')} <span className="font-bold text-foreground">{selectedItem?.location?.name}</span>.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="py-4">
-                            <label className="text-xs font-black uppercase text-muted-foreground mb-2 block">Quantity to Add</label>
+                            <label className="text-xs font-black uppercase text-muted-foreground mb-2 block">{copy('Quantity to Add', 'Kiasi cha Kuongeza')}</label>
                             <Input
                                 type="number"
-                                placeholder="e.g. 50"
+                                placeholder={copy('e.g. 50', 'mf. 50')}
                                 value={restockAmount}
                                 onChange={(e) => setRestockAmount(e.target.value)}
                                 className="h-12 text-lg font-bold"
                             />
                         </div>
                         <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsRestockModalOpen(false)}>Cancel</Button>
+                            <Button variant="outline" onClick={() => setIsRestockModalOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             {canRetailInventory && (
                                 <Button 
                                     className="bg-brand-600 hover:bg-brand-700 text-white" 
                                     onClick={handleRestock}
                                     disabled={!restockAmount || restockAmount <= 0}
                                 >
-                                    Update Inventory
+                                    {copy('Update Inventory', 'Sasisha Stock')}
                                 </Button>
                             )}
                         </DialogFooter>
@@ -815,10 +756,10 @@ export default function Dashboard({ merchant }) {
                         <DialogHeader>
                             <DialogTitle className="flex items-center gap-2">
                                 <Upload className="h-5 w-5 text-brand-600" />
-                                Bulk Inventory Import
+                                {copy('Bulk Inventory Import', 'Uingizaji wa Stock kwa Jumla')}
                             </DialogTitle>
                             <DialogDescription>
-                                Upload a CSV file to update stock levels across all your locations.
+                                {copy('Upload a CSV file to update stock levels across all your locations.', 'Pakia faili la CSV kusasisha viwango vya stock katika maeneo yako yote.')}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="py-6 space-y-4">
@@ -826,8 +767,8 @@ export default function Dashboard({ merchant }) {
                                 <div className="h-12 w-12 rounded-full bg-brand-100 flex items-center justify-center mb-4">
                                     <FileDown className="h-6 w-6 text-brand-600" />
                                 </div>
-                                <p className="text-sm font-bold text-brand-900">Choose CSV File</p>
-                                <p className="text-[10px] text-muted-foreground mt-1 mb-4">Format: sku, location_id, quantity, title, price, image_url</p>
+                                <p className="text-sm font-bold text-brand-900">{copy('Choose CSV File', 'Chagua Faili la CSV')}</p>
+                                <p className="text-[10px] text-muted-foreground mt-1 mb-4">{copy('Format:', 'Muundo:')} sku, location_id, quantity, title, price, image_url</p>
                                 <input 
                                     type="file" 
                                     accept=".csv" 
@@ -841,13 +782,13 @@ export default function Dashboard({ merchant }) {
                                 className="flex items-center justify-center gap-2 text-[10px] font-bold text-brand-600 hover:underline"
                                 download
                             >
-                                <FileDown className="h-3 w-3" /> Download CSV Template
+                                <FileDown className="h-3 w-3" /> {copy('Download CSV Template', 'Pakua Kiolezo cha CSV')}
                             </a>
                         </div>
                         {importing && (
                             <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center z-50">
                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600 mb-2"></div>
-                                <p className="text-xs font-black uppercase text-brand-900">Processing Import...</p>
+                                <p className="text-xs font-black uppercase text-brand-900">{copy('Processing Import...', 'Inashughulikia Uingizaji...')}</p>
                             </div>
                         )}
                     </DialogContent>

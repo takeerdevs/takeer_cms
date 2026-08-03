@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, RefreshCcw, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -14,6 +15,17 @@ const statuses = [
     { key: 'rejected', label: 'Rejected' },
     { key: 'all', label: 'All' },
 ];
+
+function statusLabel(key, copy) {
+    const labels = {
+        pending: ['Pending', 'Inasubiri'],
+        approved: ['Approved', 'Imeidhinishwa'],
+        rejected: ['Rejected', 'Imekataliwa'],
+        all: ['All', 'Zote'],
+    };
+    const [english, swahili] = labels[key] || [key, key];
+    return copy(english, swahili);
+}
 
 function formatMoney(amount, currency = 'TZS') {
     try {
@@ -38,8 +50,8 @@ function statusClass(status) {
     return map[status] || 'bg-slate-100 text-slate-600 border-slate-200';
 }
 
-function formatDate(value) {
-    if (!value) return 'Not set';
+function formatDate(value, copy = (english) => english) {
+    if (!value) return copy('Not set', 'Haijawekwa');
     return new Date(value).toLocaleString('sw-TZ', {
         dateStyle: 'medium',
         timeStyle: 'short',
@@ -47,6 +59,7 @@ function formatDate(value) {
 }
 
 export default function AdminRefunds() {
+    const { copy } = useLocale();
     const [refunds, setRefunds] = useState([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(null);
@@ -64,7 +77,7 @@ export default function AdminRefunds() {
         fetch(`/admin/api/refunds?${params.toString()}`, { headers: { Accept: 'application/json' } })
             .then(async (response) => {
                 const data = await response.json();
-                if (!response.ok) throw new Error(data.message || 'Failed to load refunds.');
+                if (!response.ok) throw new Error(data.message || copy('Failed to load refunds.', 'Imeshindikana kupakia marejesho.'));
                 return data;
             })
             .then((data) => {
@@ -85,13 +98,13 @@ export default function AdminRefunds() {
     const decide = async (refund, decision) => {
         const isReject = decision === 'reject';
         const promptMessage = isReject
-            ? 'Why are we rejecting this refund? This note will be kept for audit.'
-            : 'Optional approval note for audit:';
+            ? copy('Why are we rejecting this refund? This note will be kept for audit.', 'Kwa nini tunakataa marejesho haya? Maelezo haya yatahifadhiwa kwa ukaguzi.')
+            : copy('Optional approval note for audit:', 'Maelezo ya hiari ya idhini kwa ukaguzi:');
         const adminNotes = window.prompt(promptMessage, '');
 
         if (adminNotes === null) return;
         if (isReject && !adminNotes.trim()) {
-            toast.error('A rejection note is required.');
+            toast.error(copy('A rejection note is required.', 'Maelezo ya kukataa yanahitajika.'));
             return;
         }
 
@@ -107,7 +120,7 @@ export default function AdminRefunds() {
                 body: JSON.stringify({ admin_notes: adminNotes.trim() || null }),
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.message || 'Failed to update refund.');
+            if (!response.ok) throw new Error(data.message || copy('Failed to update refund.', 'Imeshindikana kusasisha marejesho.'));
             toast.success(data.message);
             fetchRefunds(activeStatus, pagination.current_page);
         } catch (error) {
@@ -118,18 +131,18 @@ export default function AdminRefunds() {
     };
 
     return (
-        <AdminLayout title="Refunds">
-            <Head title="Admin Refunds | Takeer" />
+        <AdminLayout title={copy('Refunds', 'Marejesho')}>
+            <Head title={`${copy('Admin Refunds', 'Marejesho ya Msimamizi')} | Takeer`} />
             <div className="space-y-6">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                         <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-                            <RefreshCcw className="h-6 w-6 text-sky-700" /> Refund Operations
+                            <RefreshCcw className="h-6 w-6 text-sky-700" /> {copy('Refund Operations', 'Uendeshaji wa Marejesho')}
                         </h1>
-                        <p className="mt-1 text-sm text-slate-600">Authorize buyer refunds and keep the order chat audit trail in sync.</p>
+                        <p className="mt-1 text-sm text-slate-600">{copy('Authorize buyer refunds and keep the order chat audit trail in sync.', 'Idhinisha marejesho ya wanunuzi na sawazisha kumbukumbu ya mazungumzo ya oda.')}</p>
                     </div>
                     <Button variant="outline" onClick={() => fetchRefunds(activeStatus)} disabled={loading}>
-                        Refresh
+                        {copy('Refresh', 'Onyesha upya')}
                     </Button>
                 </div>
 
@@ -148,19 +161,19 @@ export default function AdminRefunds() {
                                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                             }`}
                         >
-                            {status.label}
+                            {statusLabel(status.key, copy)}
                         </button>
                     ))}
                 </div>
 
                 {loading ? (
-                    <div className="py-16 text-center text-slate-500">Loading...</div>
+                    <div className="py-16 text-center text-slate-500">{copy('Loading...', 'Inapakia...')}</div>
                 ) : refunds.length === 0 ? (
                     <Card className="border-slate-200 bg-white">
                         <CardContent className="flex flex-col items-center justify-center py-16 text-slate-500">
                             <CheckCircle2 className="mb-3 h-10 w-10 text-emerald-600 opacity-70" />
-                            <p className="font-semibold">No {activeStatus === 'all' ? '' : activeStatus} refunds</p>
-                            <p className="mt-1 text-xs">Nothing to authorize for this status.</p>
+                            <p className="font-semibold">{copy('No', 'Hakuna')} {activeStatus === 'all' ? '' : statusLabel(activeStatus, copy).toLowerCase()} {copy('refunds', 'marejesho')}</p>
+                            <p className="mt-1 text-xs">{copy('Nothing to authorize for this status.', 'Hakuna cha kuidhinisha kwa hali hii.')}</p>
                         </CardContent>
                     </Card>
                 ) : (
@@ -179,21 +192,21 @@ export default function AdminRefunds() {
                                                 <div>
                                                     <div className="flex flex-wrap items-center gap-2">
                                                         <p className="text-lg font-black text-slate-900">
-                                                            {formatMoney(refund.amount, currency)} refund
+                                                        {formatMoney(refund.amount, currency)} {copy('refund', 'marejesho')}
                                                         </p>
                                                         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${statusClass(refund.status)}`}>
-                                                            {refund.status}
+                                                            {statusLabel(refund.status, copy)}
                                                         </span>
                                                     </div>
                                                     <p className="mt-1 text-sm text-slate-600">
-                                                        Buyer: <span className="font-bold text-slate-800">{refund.buyer?.name || 'Unknown buyer'}</span>
+                                                        {copy('Buyer:', 'Mnunuzi:')} <span className="font-bold text-slate-800">{refund.buyer?.name || copy('Unknown buyer', 'Mnunuzi hajulikani')}</span>
                                                         {refund.buyer?.phone_number ? ` (${refund.buyer.phone_number})` : ''}
                                                     </p>
                                                     <p className="text-sm text-slate-600">
-                                                        Merchant: <span className="font-bold text-slate-800">{refund.merchant?.display_name || refund.merchant?.username || 'Unknown merchant'}</span>
+                                                        {copy('Merchant:', 'Muuzaji:')} <span className="font-bold text-slate-800">{refund.merchant?.display_name || refund.merchant?.username || copy('Unknown merchant', 'Muuzaji hajulikani')}</span>
                                                     </p>
                                                     <p className="text-xs font-semibold text-slate-500">
-                                                        Refund #{refund.id} • {refund.source?.replaceAll('_', ' ') || 'manual'} • Created {formatDate(refund.created_at)}
+                                                        {copy('Refund', 'Marejesho')} #{refund.id} • {refund.source?.replaceAll('_', ' ') || copy('manual', 'kwa mkono')} • {copy('Created', 'Imeundwa')} {formatDate(refund.created_at, copy)}
                                                     </p>
                                                 </div>
                                             </div>
@@ -203,7 +216,7 @@ export default function AdminRefunds() {
                                                     <Link href={orderHref}>
                                                         <Button variant="outline" className="w-full sm:w-auto">
                                                             <ExternalLink className="mr-2 h-4 w-4" />
-                                                            Order Chat
+                                                            {copy('Order chat', 'Mazungumzo ya oda')}
                                                         </Button>
                                                     </Link>
                                                 )}
@@ -215,7 +228,7 @@ export default function AdminRefunds() {
                                                             disabled={submitting !== null}
                                                         >
                                                             <CheckCircle2 className="mr-2 h-4 w-4" />
-                                                            {submitting === `approve-${refund.id}` ? 'Approving...' : 'Approve'}
+                                                            {submitting === `approve-${refund.id}` ? copy('Approving...', 'Inaidhinisha...') : copy('Approve', 'Idhinisha')}
                                                         </Button>
                                                         <Button
                                                             variant="outline"
@@ -224,12 +237,12 @@ export default function AdminRefunds() {
                                                             disabled={submitting !== null}
                                                         >
                                                             <XCircle className="mr-2 h-4 w-4" />
-                                                            {submitting === `reject-${refund.id}` ? 'Rejecting...' : 'Reject'}
+                                                            {submitting === `reject-${refund.id}` ? copy('Rejecting...', 'Inakataa...') : copy('Reject', 'Kataa')}
                                                         </Button>
                                                     </>
                                                 ) : (
                                                     <Button variant="outline" disabled>
-                                                        Handled
+                                                        {copy('Handled', 'Imeshughulikiwa')}
                                                     </Button>
                                                 )}
                                             </div>
@@ -237,30 +250,30 @@ export default function AdminRefunds() {
 
                                         <div className="grid gap-3 md:grid-cols-3">
                                             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                                <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Order</p>
+                                                <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">{copy('Order', 'Oda')}</p>
                                                 <p className="mt-1 font-black text-slate-900">{refund.order?.public_id || `#${refund.order?.id || 'unknown'}`}</p>
-                                                <p className="text-xs text-slate-600">{refund.order?.payment_status?.replaceAll('_', ' ') || 'No payment status'}</p>
+                                                <p className="text-xs text-slate-600">{refund.order?.payment_status?.replaceAll('_', ' ') || copy('No payment status', 'Hakuna hali ya malipo')}</p>
                                             </div>
                                             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                                                <p className="text-[11px] font-black uppercase tracking-widest text-amber-700">Merchant Penalty</p>
+                                                <p className="text-[11px] font-black uppercase tracking-widest text-amber-700">{copy('Merchant penalty', 'Adhabu ya muuzaji')}</p>
                                                 <p className="mt-1 font-black text-amber-900">{formatMoney(refund.merchant_penalty_amount, currency)}</p>
-                                                <p className="text-xs text-amber-800">{Number(refund.merchant_penalty_percent || 0).toLocaleString()}% of paid amount</p>
+                                                <p className="text-xs text-amber-800">{Number(refund.merchant_penalty_percent || 0).toLocaleString()}% {copy('of paid amount', 'ya kiasi kilicholipwa')}</p>
                                             </div>
                                             <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
-                                                <p className="text-[11px] font-black uppercase tracking-widest text-sky-700">Pickup Window</p>
-                                                <p className="mt-1 text-xs font-bold text-sky-950">Deadline: {formatDate(refund.order?.pickup_deadline_at)}</p>
+                                                <p className="text-[11px] font-black uppercase tracking-widest text-sky-700">{copy('Pickup window', 'Dirisha la kuchukua')}</p>
+                                                <p className="mt-1 text-xs font-bold text-sky-950">{copy('Deadline:', 'Mwisho:')} {formatDate(refund.order?.pickup_deadline_at, copy)}</p>
                                             </div>
                                         </div>
 
                                         <div className="rounded-xl border border-slate-200 p-3">
-                                            <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Reason</p>
-                                            <p className="mt-1 text-sm font-semibold text-slate-800">{refund.reason || 'No reason recorded.'}</p>
+                                            <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">{copy('Reason', 'Sababu')}</p>
+                                            <p className="mt-1 text-sm font-semibold text-slate-800">{refund.reason || copy('No reason recorded.', 'Hakuna sababu iliyorekodiwa.')}</p>
                                             {refund.admin_notes && (
-                                                <p className="mt-2 text-sm text-slate-600">Admin note: {refund.admin_notes}</p>
+                                                <p className="mt-2 text-sm text-slate-600">{copy('Admin note:', 'Maelezo ya msimamizi:')} {refund.admin_notes}</p>
                                             )}
                                             {refund.approver && (
                                                 <p className="mt-2 text-xs text-slate-500">
-                                                    Handled by {refund.approver.name} at {formatDate(refund.approved_at || refund.rejected_at)}
+                                                    {copy('Handled by', 'Imeshughulikiwa na')} {refund.approver.name} {copy('at', 'tarehe')} {formatDate(refund.approved_at || refund.rejected_at, copy)}
                                                 </p>
                                             )}
                                         </div>
@@ -274,7 +287,7 @@ export default function AdminRefunds() {
                 {pagination.last_page > 1 && (
                     <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
                         <p className="text-sm font-semibold text-slate-600">
-                            Page {pagination.current_page} of {pagination.last_page} • {pagination.total} refunds
+                            {copy('Page', 'Ukurasa')} {pagination.current_page} {copy('of', 'wa')} {pagination.last_page} • {pagination.total} {copy('refunds', 'marejesho')}
                         </p>
                         <div className="flex gap-2">
                             <Button
@@ -282,14 +295,14 @@ export default function AdminRefunds() {
                                 disabled={pagination.current_page <= 1 || loading}
                                 onClick={() => fetchRefunds(activeStatus, pagination.current_page - 1)}
                             >
-                                <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+                                <ChevronLeft className="mr-1 h-4 w-4" /> {copy('Previous', 'Iliyotangulia')}
                             </Button>
                             <Button
                                 variant="outline"
                                 disabled={pagination.current_page >= pagination.last_page || loading}
                                 onClick={() => fetchRefunds(activeStatus, pagination.current_page + 1)}
                             >
-                                Next <ChevronRight className="ml-1 h-4 w-4" />
+                                {copy('Next', 'Inayofuata')} <ChevronRight className="ml-1 h-4 w-4" />
                             </Button>
                         </div>
                     </div>

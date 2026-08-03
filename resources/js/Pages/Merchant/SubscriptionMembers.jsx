@@ -8,6 +8,7 @@ import { ArrowLeft, Crown, Loader2, Search, Users } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useLocale } from '@/lib/i18n';
 
 export default function SubscriptionMembers({
     merchantUsername = '',
@@ -15,6 +16,7 @@ export default function SubscriptionMembers({
     subscriptionPlanId = null,
     subscriptionPlanName = '',
 }) {
+    const { copy } = useLocale();
     const [loading, setLoading] = useState(true);
     const [members, setMembers] = useState([]);
     const [stats, setStats] = useState(null);
@@ -57,7 +59,7 @@ export default function SubscriptionMembers({
             setMembers(res.data?.members || []);
             setStats(res.data?.stats || null);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to load subscribers.');
+            toast.error(error.response?.data?.message || copy('Failed to load subscribers.', 'Imeshindikana kupakia waliojisajili.'));
         } finally {
             setLoading(false);
         }
@@ -65,7 +67,7 @@ export default function SubscriptionMembers({
 
     return (
         <AppLayout>
-            <Head title="Subscription Members | Takeer" />
+            <Head title={`${copy('Subscription members', 'Wanachama wa usajili')} | Takeer`} />
             <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -75,16 +77,16 @@ export default function SubscriptionMembers({
                             onClick={() => router.visit(isPlanScoped ? `/merchant/${merchantUsername}/subscriptions` : '/profile')}
                         >
                             <ArrowLeft className="mr-2 h-4 w-4" />
-                            {isPlanScoped ? 'Back to subscriptions' : 'Back to profile'}
+                            {isPlanScoped ? copy('Back to subscriptions', 'Rudi kwenye usajili') : copy('Back to profile', 'Rudi kwenye wasifu')}
                         </Button>
-                        <h1 className="text-2xl font-black text-slate-950">{isPlanScoped ? 'Tier Members' : 'Subscription Members'}</h1>
+                        <h1 className="text-2xl font-black text-slate-950">{isPlanScoped ? copy('Tier members', 'Wanachama wa daraja') : copy('Subscription members', 'Wanachama wa usajili')}</h1>
                         <p className="mt-1 text-sm font-semibold text-slate-500">
                             {isPlanScoped ? subscriptionPlanName : (merchantName || merchantUsername)}
                         </p>
                     </div>
                     <Button className="rounded-xl bg-brand-600 text-white hover:bg-brand-700" onClick={() => router.visit(`/merchant/${merchantUsername}/subscriptions`)}>
                         <Crown className="mr-2 h-4 w-4" />
-                        Manage tiers
+                        {copy('Manage tiers', 'Simamia madaraja')}
                     </Button>
                 </div>
 
@@ -92,21 +94,21 @@ export default function SubscriptionMembers({
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-lg font-black">
                             <Users className="h-5 w-5 text-sky-600" />
-                            Subscribers
+                            {copy('Subscribers', 'Waliojisajili')}
                         </CardTitle>
                         <CardDescription>
                             {isPlanScoped
-                                ? 'Creators can view subscriber access for this membership tier.'
-                                : 'Creators can view subscriber access across all membership tiers.'}
+                                ? copy('Creators can view subscriber access for this membership tier.', 'Watayarishi wanaweza kuona ufikiaji wa waliojisajili kwenye daraja hili.')
+                                : copy('Creators can view subscriber access across all membership tiers.', 'Watayarishi wanaweza kuona ufikiaji wa waliojisajili kwenye madaraja yote.')}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                             {[
-                                { label: 'Total', value: stats?.total ?? members.length },
-                                { label: 'Active', value: stats?.active ?? 0 },
-                                { label: 'Paused', value: stats?.paused ?? 0 },
-                                { label: 'Expired / Cancelled', value: stats?.cancelled ?? 0 },
+                                { label: copy('Total', 'Jumla'), value: stats?.total ?? members.length },
+                                { label: copy('Active', 'Hai'), value: stats?.active ?? 0 },
+                                { label: copy('Paused', 'Imesitishwa'), value: stats?.paused ?? 0 },
+                                { label: copy('Expired / cancelled', 'Imeisha / imeghairiwa'), value: stats?.cancelled ?? 0 },
                             ].map((item) => (
                                 <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                                     <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{item.label}</p>
@@ -122,7 +124,7 @@ export default function SubscriptionMembers({
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
                                     className="pl-9"
-                                    placeholder={isPlanScoped ? 'Search name or contact' : 'Search name, contact, or plan'}
+                                    placeholder={isPlanScoped ? copy('Search name or contact', 'Tafuta jina au mawasiliano') : copy('Search name, contact, or plan', 'Tafuta jina, mawasiliano au mpango')}
                                 />
                             </div>
                             <select
@@ -130,24 +132,24 @@ export default function SubscriptionMembers({
                                 onChange={(event) => setStatus(event.target.value)}
                                 className="h-10 rounded-md border border-input bg-background px-3 text-sm font-semibold text-slate-700"
                             >
-                                <option value="all">All statuses</option>
-                                <option value="active">Active</option>
-                                <option value="paused">Paused</option>
-                                <option value="cancelled">Cancelled</option>
-                                <option value="expired">Expired</option>
+                                <option value="all">{copy('All statuses', 'Hali zote')}</option>
+                                <option value="active">{copy('Active', 'Hai')}</option>
+                                <option value="paused">{copy('Paused', 'Imesitishwa')}</option>
+                                <option value="cancelled">{copy('Cancelled', 'Imeghairiwa')}</option>
+                                <option value="expired">{copy('Expired', 'Imeisha')}</option>
                             </select>
                         </div>
 
                         {loading ? (
                             <div className="flex items-center justify-center gap-2 py-16 text-sm font-semibold text-slate-500">
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                                Loading subscribers...
+                                {copy('Loading subscribers...', 'Inapakia waliojisajili...')}
                             </div>
                         ) : filteredMembers.length === 0 ? (
                             <div className="rounded-2xl border border-dashed border-slate-200 py-16 text-center">
                                 <Users className="mx-auto h-9 w-9 text-slate-300" />
-                                <p className="mt-3 text-sm font-black text-slate-900">No subscribers found</p>
-                                <p className="mt-1 text-xs font-semibold text-slate-500">Members will appear here after customers subscribe.</p>
+                                <p className="mt-3 text-sm font-black text-slate-900">{copy('No subscribers found', 'Hakuna waliojisajili waliopatikana')}</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Members will appear here after customers subscribe.', 'Wanachama wataonekana hapa baada ya wateja kujisajili.')}</p>
                             </div>
                         ) : (
                             <div className="overflow-hidden rounded-2xl border border-slate-200">
@@ -157,10 +159,10 @@ export default function SubscriptionMembers({
                                         ? 'grid-cols-[minmax(0,1.4fr)_140px_150px]'
                                         : 'grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_140px_150px]'
                                 )}>
-                                    <span>Subscriber</span>
-                                    {!isPlanScoped && <span>Plan</span>}
-                                    <span>Status</span>
-                                    <span>Period ends</span>
+                                    <span>{copy('Subscriber', 'Aliyejisajili')}</span>
+                                    {!isPlanScoped && <span>{copy('Plan', 'Mpango')}</span>}
+                                    <span>{copy('Status', 'Hali')}</span>
+                                    <span>{copy('Period ends', 'Kipindi kinaisha')}</span>
                                 </div>
                                 <div className="divide-y divide-slate-100">
                                     {filteredMembers.map((member) => (
@@ -174,21 +176,21 @@ export default function SubscriptionMembers({
                                             )}
                                         >
                                             <div className="min-w-0">
-                                                <p className="truncate text-sm font-black text-slate-950">{member.user?.name || 'Member'}</p>
-                                                <p className="mt-1 truncate text-xs font-semibold text-slate-500">{member.user?.phone_number || member.user?.email || 'No contact'}</p>
+                                                <p className="truncate text-sm font-black text-slate-950">{member.user?.name || copy('Member', 'Mwanachama')}</p>
+                                                <p className="mt-1 truncate text-xs font-semibold text-slate-500">{member.user?.phone_number || member.user?.email || copy('No contact', 'Hakuna mawasiliano')}</p>
                                             </div>
                                             {!isPlanScoped && (
                                                 <div className="min-w-0">
-                                                    <p className="truncate text-sm font-bold text-slate-900">{member.plan?.name || 'Membership plan'}</p>
-                                                    <p className="mt-1 text-xs font-semibold text-slate-500">{formatMoney(member.plan?.price || 0)} · {planCadenceLabel(member.plan)}</p>
+                                                    <p className="truncate text-sm font-bold text-slate-900">{member.plan?.name || copy('Membership plan', 'Mpango wa uanachama')}</p>
+                                                    <p className="mt-1 text-xs font-semibold text-slate-500">{formatMoney(member.plan?.price || 0)} · {planCadenceLabel(member.plan, copy)}</p>
                                                 </div>
                                             )}
                                             <div>
                                                 <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider', statusClasses(member.status))}>
-                                                    {member.status || 'unknown'}
+                                                    {statusLabel(member.status, copy)}
                                                 </span>
                                             </div>
-                                            <p className="text-sm font-semibold text-slate-600">{formatDate(member.current_period_end)}</p>
+                                            <p className="text-sm font-semibold text-slate-600">{formatDate(member.current_period_end, copy)}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -209,8 +211,8 @@ function formatMoney(amount) {
     }).format(amount);
 }
 
-function formatDate(date) {
-    if (!date) return 'Not set';
+function formatDate(date, copy) {
+    if (!date) return copy('Not set', 'Haijawekwa');
     return new Date(date).toLocaleDateString('en-TZ', {
         month: 'short',
         day: 'numeric',
@@ -225,18 +227,29 @@ function statusClasses(status) {
     return 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
-function planCadenceLabel(plan) {
-    if (!plan) return 'Membership';
+function planCadenceLabel(plan, copy) {
+    if (!plan) return copy('Membership', 'Uanachama');
 
     const interval = plan.billing_interval || 'monthly';
     const count = Number(plan.interval_count || 1);
     const intervalLabels = {
-        hourly: ['Hour', 'Hours'],
-        daily: ['Day', 'Days'],
-        weekly: ['Week', 'Weeks'],
-        monthly: ['Month', 'Months'],
+        hourly: ['Hour', 'Saa', 'Masaa'],
+        daily: ['Day', 'Siku', 'Siku'],
+        weekly: ['Week', 'Wiki', 'Wiki'],
+        monthly: ['Month', 'Mwezi', 'Miezi'],
     };
-    const [single, plural] = intervalLabels[interval] || [interval, `${interval}s`];
+    const [single, singleSw, pluralSw] = intervalLabels[interval] || [interval, interval, `${interval}s`];
 
-    return count <= 1 ? single : `Every ${count} ${plural}`;
+    return count <= 1 ? copy(single, singleSw) : copy(`Every ${count} ${single}s`, `Kila ${count} ${pluralSw}`);
+}
+
+function statusLabel(status, copy) {
+    const labels = {
+        active: ['Active', 'Hai'],
+        paused: ['Paused', 'Imesitishwa'],
+        cancelled: ['Cancelled', 'Imeghairiwa'],
+        expired: ['Expired', 'Imeisha'],
+    };
+    const pair = labels[status];
+    return pair ? copy(pair[0], pair[1]) : (status || copy('Unknown', 'Haijulikani'));
 }

@@ -286,7 +286,7 @@ class MerchantSubscriptionPlanController extends Controller
         abort_unless((int) $userSubscription->subscription_plan_id === (int) $subscriptionPlan->id, 404);
         abort_unless((int) $userSubscription->merchant_id === (int) $merchant->id, 404);
 
-        abort(403, 'Subscription access changes are handled by Takeer support to protect paid subscribers and escrow records.');
+        abort(403, 'Subscription access changes are handled by Takeer support to protect paid subscribers and provider settlement records.');
     }
 
     public function communityPosts(Request $request): JsonResponse

@@ -19,14 +19,18 @@ return new class extends Migration {
             $table->decimal('unit_price', 12, 2)->nullable();
             $table->decimal('total_paid', 12, 2)->comment('Total in TZS including delivery fee');
             $table->enum('payment_status', [
-                'pending',                      // Awaiting M-Pesa USSD push
-                'paid_pending_confirmation',     // Payment received; awaiting merchant 30-min confirmation window
-                'awaiting_merchant_confirmation',// Merchant must confirm stock or refund
-                'escrow_locked',                // Merchant confirmed dispatch; escrow held
-                'disputed',                     // Buyer raised dispute with unboxing video
-                'resolved_merchant_paid',       // Admin/auto-released: merchant receives funds
-                'resolved_buyer_refunded',      // Admin/auto-released: buyer refunded
-                'failed',                       // Payment failed or expired
+                'pending',
+                'payment_confirmed',
+                'pending_fulfillment',
+                'release_eligible',
+                'release_requested',
+                'payout_processing',
+                'paid_out',
+                'disputed',
+                'refund_pending',
+                'refunded',
+                'compliance_hold',
+                'failed',
             ])->default('pending');
             $table->string('merchant_dispatch_video_url')->nullable();
             $table->string('transaction_ref')->nullable()->unique();

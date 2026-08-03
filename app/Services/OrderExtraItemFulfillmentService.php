@@ -50,7 +50,7 @@ class OrderExtraItemFulfillmentService
             $quantity = $isPhysical ? max(1, (int) ceil((float) ($item['quantity'] ?? 1))) : 1;
             $lineTotal = round($unitPrice * $quantity, 2);
             $isCustomDigital = $product->isDigital() && ($product->digital_delivery_type ?? null) === 'custom_delivery';
-            $status = $isPhysical ? 'awaiting_merchant_confirmation' : ($isCustomDigital ? 'escrow_locked' : 'resolved_merchant_paid');
+            $status = $isPhysical ? 'pending_fulfillment' : 'payment_confirmed';
             $idempotencyKey = "split-extra:{$parent->id}:{$index}:{$product->id}:".($variantId ?: 'base');
 
             $child = Order::query()->firstOrCreate(

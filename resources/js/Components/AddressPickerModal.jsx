@@ -4,6 +4,7 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import { MapPin, Search, Navigation, CheckCircle2, X } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 const MAP_CONTAINER_STYLE = {
     width: '100%',
@@ -27,6 +28,7 @@ export default function AddressPickerModal({
     initialExtraDetails,
     onSave
 }) {
+    const { t } = useLocale();
     const [lat, setLat] = useState(parseFloat(initialLat) || DEFAULT_CENTER.lat);
     const [lng, setLng] = useState(parseFloat(initialLng) || DEFAULT_CENTER.lng);
     const [address, setAddress] = useState(initialAddress || '');
@@ -173,10 +175,10 @@ export default function AddressPickerModal({
                             <div className="bg-emerald-600 p-1.5 rounded-lg text-white">
                                 <MapPin className="h-4 w-4" />
                             </div>
-                            <DrawerTitle className="text-xl font-black text-brand-900">Chagua Sehemu</DrawerTitle>
+                        <DrawerTitle className="text-xl font-black text-brand-900">{t('sharedUi.chooseLocation')}</DrawerTitle>
                         </div>
                         <DrawerDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest leading-none">
-                            Tafuta mtaa au jengo kisha rekebisha pini
+                            {t('sharedUi.findPlace')}
                         </DrawerDescription>
                     </DrawerHeader>
 
@@ -190,7 +192,7 @@ export default function AddressPickerModal({
                                         onPlaceChanged={onPlaceChanged}
                                     >
                                         <Input
-                                            placeholder="Tafuta mtaa, jengo au njiapanda..."
+                                            placeholder={t('sharedUi.findPlace')}
                                             className="bg-muted/30 rounded-xl h-11 border-emerald-100 focus:border-emerald-400 pl-10 font-bold w-full outline-none transition-all"
                                         />
                                     </Autocomplete>
@@ -223,7 +225,7 @@ export default function AddressPickerModal({
                                 </GoogleMap>
                             ) : (
                                 <div className="w-full h-[300px] bg-muted flex items-center justify-center text-xs text-muted-foreground italic font-medium">
-                                    Pakia ramani...
+                                    {t('sharedUi.loadingMap')}
                                 </div>
                             )}
                         </div>
@@ -233,19 +235,19 @@ export default function AddressPickerModal({
                                 <Navigation className="h-4 w-4" />
                             </div>
                             <div className="min-w-0">
-                                <p className="text-[10px] font-black leading-tight text-emerald-600 uppercase tracking-widest mb-1">Eneo Lililochaguliwa</p>
+                                <p className="text-[10px] font-black leading-tight text-emerald-600 uppercase tracking-widest mb-1">{t('sharedUi.selectedLocation')}</p>
                                 <p className="text-xs font-bold leading-relaxed text-emerald-900 dark:text-emerald-100">
-                                    {address || 'Tafuta sehemu au drag pini...'}
+                                    {address || t('sharedUi.searchOrDrag')}
                                 </p>
                             </div>
                         </div>
 
                         <div className="space-y-1.5 pt-1">
-                            <label className="text-[10px] font-black tracking-widest ml-1">Maelezo ya ziada (Mtaa/Nyumba/Maelekezo ya nani akabidhiwe)</label>
+                            <label className="text-[10px] font-black tracking-widest ml-1">{t('sharedUi.extraDetails')}</label>
                             <Input
                                 value={extraDetails}
                                 onChange={(e) => setExtraDetails(e.target.value)}
-                                placeholder="Mfano: Kimara, Mtaa wa Pili, Nyumba no. 43 au karibu na duka la..."
+                                placeholder={t('sharedUi.extraPlaceholder')}
                                 className="h-12 bg-white dark:bg-slate-900/50 border-emerald-100 dark:border-brand-900/40 rounded-xl px-4 font-bold text-sm focus:border-emerald-400 outline-none transition-all"
                             />
                         </div>
@@ -258,7 +260,7 @@ export default function AddressPickerModal({
                             onClick={() => onOpenChange(false)}
                             className="h-14 rounded-2xl font-black uppercase tracking-widest text-xs border-slate-200 hover:bg-slate-50"
                         >
-                            <X className="h-4 w-4 mr-2" /> Ghairi
+                            <X className="h-4 w-4 mr-2" /> {t('sharedUi.cancel')}
                         </Button>
                         <Button
                             type="button"
@@ -266,7 +268,7 @@ export default function AddressPickerModal({
                             disabled={!address}
                             className="h-14 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-widest text-xs shadow-xl shadow-brand-600/20 active:scale-95 transition-all"
                         >
-                            <CheckCircle2 className="h-4 w-4 mr-2" /> Hifadhi Mahali
+                            <CheckCircle2 className="h-4 w-4 mr-2" /> {t('sharedUi.saveLocation')}
                         </Button>
                     </DrawerFooter>
                 </div>

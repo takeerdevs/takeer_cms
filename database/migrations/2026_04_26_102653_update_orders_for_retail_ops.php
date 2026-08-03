@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::table('orders', function (Blueprint $table) {
             $table->enum('source', ['online', 'pos'])->default('online')->after('public_id');
-            $table->enum('payment_mode', ['online_escrow', 'cash', 'merchant_mm', 'store_credit'])->default('online_escrow')->after('payment_status');
+            $table->enum('payment_mode', ['online_psp', 'cash', 'merchant_mm', 'store_credit'])->default('online_psp')->after('payment_status');
             $table->foreignId('pos_staff_id')->nullable()->constrained('merchant_staffs')->onDelete('set null')->after('merchant_id');
         });
     }

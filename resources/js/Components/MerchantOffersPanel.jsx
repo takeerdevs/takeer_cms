@@ -9,6 +9,7 @@ import {
     Wrench,
 } from 'lucide-react';
 import { productPriceLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 const OFFER_FILTERS = [
     { key: 'all', label: 'All', countKey: 'shop_total' },
@@ -33,6 +34,7 @@ export default function MerchantOffersPanel({
     showFilters = true,
     shopHref = null,
 }) {
+    const { copy } = useLocale();
     const slug = merchantSlug;
     const allProductsHref = shopHref || `/u/${slug}/shop/all`;
 
@@ -74,7 +76,7 @@ export default function MerchantOffersPanel({
                                     : 'bg-neutral-100 text-foreground hover:bg-neutral-200'
                                 }`}
                             >
-                                {item.label}
+                                {copy(item.label, { All: 'Vyote', Products: 'Bidhaa', Digital: 'Kidijitali', Services: 'Huduma', Content: 'Maudhui', Bundles: 'Vifurushi', Memberships: 'Uanachama' }[item.label] || item.label)}
                                 {count !== null && count !== undefined && (
                                     <span className={isActive ? 'text-background/80' : 'text-muted-foreground'}>
                                         {formatOfferCount(count)}
@@ -88,12 +90,12 @@ export default function MerchantOffersPanel({
 
             {isEmpty ? (
                 <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-                    Hakuna ofa za kuonyesha kwa sasa.
+                    {copy('No offers to show right now.', 'Hakuna ofa za kuonyesha kwa sasa.')}
                 </div>
             ) : (
                 <div className={compact ? 'space-y-5 px-4' : 'space-y-6 px-4 sm:px-6'}>
                     <OfferSection
-                        title="Paid content"
+                        title={copy('Paid content', 'Maudhui ya kulipia')}
                         items={sliceItems(visible.contentItems, limit)}
                         compact={compact}
                         renderItem={(item) => (
@@ -101,7 +103,7 @@ export default function MerchantOffersPanel({
                                 key={`content-${item.id}`}
                                 href={route('content.show', item.slug || item.id)}
                                 title={item.title}
-                                subtitle={item.format === 'plain_text' ? 'Short post' : 'Premium content'}
+                                subtitle={item.format === 'plain_text' ? copy('Short post', 'Chapisho fupi') : copy('Premium content', 'Maudhui premium')}
                                 price={item.price}
                                 icon={BookOpenText}
                                 compact={compact}
@@ -110,7 +112,7 @@ export default function MerchantOffersPanel({
                     />
 
                     <OfferSection
-                        title="Bundles"
+                        title={copy('Bundles', 'Vifurushi')}
                         items={sliceItems(visible.bundles, limit)}
                         compact={compact}
                         renderItem={(item) => (
@@ -118,7 +120,7 @@ export default function MerchantOffersPanel({
                                 key={`bundle-${item.id}`}
                                 href={route('bundle.show', item.slug || item.id)}
                                 title={item.title}
-                                subtitle={item.is_course ? 'Course bundle' : 'Bundle'}
+                                subtitle={item.is_course ? copy('Course bundle', 'Kifurushi cha kozi') : copy('Bundle', 'Kifurushi')}
                                 price={item.price}
                                 icon={Layers}
                                 compact={compact}
@@ -127,7 +129,7 @@ export default function MerchantOffersPanel({
                     />
 
                     <OfferSection
-                        title="Memberships"
+                        title={copy('Memberships', 'Uanachama')}
                         items={sliceItems(visible.subscriptionPlans, limit)}
                         compact={compact}
                         renderItem={(item) => (
@@ -135,7 +137,7 @@ export default function MerchantOffersPanel({
                                 key={`plan-${item.id}`}
                                 href={route('subscription-plan.show', item.slug || item.id)}
                                 title={item.name}
-                                subtitle={formatBillingInterval(item.billing_interval, item.interval_count)}
+                                subtitle={formatBillingInterval(item.billing_interval, item.interval_count, copy)}
                                 price={item.price}
                                 icon={Crown}
                                 compact={compact}
@@ -144,7 +146,7 @@ export default function MerchantOffersPanel({
                     />
 
                     <OfferSection
-                        title="Products & services"
+                        title={copy('Products & services', 'Bidhaa na huduma')}
                         items={sliceItems(visible.products, limit)}
                         compact={compact}
                         renderItem={(item) => (
@@ -152,7 +154,7 @@ export default function MerchantOffersPanel({
                                 key={`product-${item.id}`}
                                 href={route('product.show', item.slug || item.id)}
                                 title={item.title}
-                                subtitle={productTypeLabel(item)}
+                                subtitle={productTypeLabel(item, copy)}
                                 price={item.checkout_price ?? item.price}
                                 priceLabel={productPriceLabel(item)}
                                 imageUrl={item.image_url}
@@ -170,7 +172,7 @@ export default function MerchantOffersPanel({
                         href={allProductsHref}
                         className="flex h-9 items-center justify-center rounded-lg bg-neutral-100 text-[13px] font-semibold text-foreground transition-colors hover:bg-neutral-200"
                     >
-                        Angalia ofa zote
+                        {copy('See all offers', 'Angalia ofa zote')}
                     </Link>
                 </div>
             )}
@@ -194,7 +196,8 @@ function OfferSection({ title, items, renderItem, compact }) {
 }
 
 function OfferCard({ href, title, subtitle, price, priceLabel, imageUrl, icon: Icon, compact }) {
-    const displayPrice = priceLabel || formatOfferPrice(price);
+    const { copy } = useLocale();
+    const displayPrice = priceLabel || formatOfferPrice(price, copy);
 
     return (
         <Link
@@ -234,25 +237,25 @@ function formatOfferCount(value) {
     return String(n);
 }
 
-function formatOfferPrice(price) {
-    if (price === null || price === undefined) return 'Free';
+function formatOfferPrice(price, copy = (english) => english) {
+    if (price === null || price === undefined) return copy('Free', 'Bure');
     const n = Number(price);
-    if (!Number.isFinite(n) || n <= 0) return 'Free';
+    if (!Number.isFinite(n) || n <= 0) return copy('Free', 'Bure');
     return `TZS ${n.toLocaleString()}`;
 }
 
-function formatBillingInterval(interval, count = 1) {
+function formatBillingInterval(interval, count = 1, copy = (english) => english) {
     const n = Number(count) || 1;
     const unit = { day: 'day', week: 'week', month: 'month', year: 'year' }[interval] || interval || 'period';
-    return n === 1 ? `Per ${unit}` : `Every ${n} ${unit}s`;
+    return n === 1 ? copy(`Per ${unit}`, `Kwa ${unit === 'day' ? 'siku' : unit === 'week' ? 'wiki' : unit === 'month' ? 'mwezi' : unit === 'year' ? 'mwaka' : 'kipindi'}`) : copy(`Every ${n} ${unit}s`, `Kila ${n} ${unit === 'day' ? 'siku' : unit === 'week' ? 'wiki' : unit === 'month' ? 'miezi' : unit === 'year' ? 'miaka' : 'vipindi'}`);
 }
 
-function productTypeLabel(product) {
-    if (product?.type === 'service') return 'Service';
-    if (product?.type !== 'digital') return 'Product';
-    if (product.digital_delivery_type === 'video_stream') return 'Premium video';
-    if (product.digital_delivery_type === 'audio_stream') return 'Premium audio';
-    return 'Digital';
+function productTypeLabel(product, copy = (english) => english) {
+    if (product?.type === 'service') return copy('Service', 'Huduma');
+    if (product?.type !== 'digital') return copy('Product', 'Bidhaa');
+    if (product.digital_delivery_type === 'video_stream') return copy('Premium video', 'Video premium');
+    if (product.digital_delivery_type === 'audio_stream') return copy('Premium audio', 'Audio premium');
+    return copy('Digital', 'Kidijitali');
 }
 
 function productTypeIcon(product) {

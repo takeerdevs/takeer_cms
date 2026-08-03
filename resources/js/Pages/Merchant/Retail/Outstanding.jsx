@@ -7,8 +7,10 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/Dialog';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 export default function Outstanding({ merchant }) {
+    const { copy } = useLocale();
     const [orders, setOrders] = useState([]);
     const [summary, setSummary] = useState({ count: 0, outstanding_credit: 0 });
     const [loading, setLoading] = useState(true);
@@ -30,7 +32,7 @@ export default function Outstanding({ merchant }) {
     }).format(Number(val || 0));
 
     const formatDateTime = (val) => {
-        if (!val) return 'Unknown date';
+        if (!val) return copy('Unknown date', 'Tarehe haijulikani');
 
         return new Intl.DateTimeFormat('en-GB', {
             day: '2-digit',
@@ -84,7 +86,7 @@ export default function Outstanding({ merchant }) {
             setOrders(res.data.data || []);
             setSummary(res.data.summary || { count: 0, outstanding_credit: 0 });
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed to load outstanding balances.');
+            toast.error(err.response?.data?.message || copy('Failed to load outstanding balances.', 'Imeshindikana kupakia salio linalodaiwa.'));
         } finally {
             setLoading(false);
         }
@@ -105,7 +107,7 @@ export default function Outstanding({ merchant }) {
         if (!selectedOrder || settling) return;
         const amount = Number(settleAmount || 0);
         if (!amount || amount <= 0) {
-            toast.error('Enter a valid payment amount.');
+            toast.error(copy('Enter a valid payment amount.', 'Ingiza kiasi halali cha malipo.'));
             return;
         }
 
@@ -115,11 +117,11 @@ export default function Outstanding({ merchant }) {
                 amount,
                 note: settleNote,
             });
-            toast.success('Payment recorded.');
+            toast.success(copy('Payment recorded.', 'Malipo yamehifadhiwa.'));
             setSelectedOrder(null);
             await fetchOutstanding();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed to settle this balance.');
+            toast.error(err.response?.data?.message || copy('Failed to settle this balance.', 'Imeshindikana kulipa salio hili.'));
         } finally {
             setSettling(false);
         }
@@ -145,7 +147,7 @@ export default function Outstanding({ merchant }) {
     const sendPaymentLink = async (order) => {
         if (!order || generatingLinkId) return;
         if (posPaymentLinksDisabled) {
-            toast.error('POS payment links are disabled for this merchant.');
+            toast.error(copy('POS payment links are disabled for this merchant.', 'Linki za malipo za POS zimezimwa kwa muuzaji huyu.'));
             return;
         }
 
@@ -158,12 +160,12 @@ export default function Outstanding({ merchant }) {
             setPaymentLink({ order, url });
             try {
                 await copyText(url);
-                toast.success('Payment link copied. Send it to the customer on WhatsApp or SMS.');
+                toast.success(copy('Payment link copied. Send it to the customer on WhatsApp or SMS.', 'Linki ya malipo imenakiliwa. Itume kwa mteja kupitia WhatsApp au SMS.'));
             } catch (copyErr) {
-                toast.success('Payment link created. Copy it from the box below.');
+                toast.success(copy('Payment link created. Copy it from the box below.', 'Linki ya malipo imeundwa. Inakili kutoka kwenye kisanduku hapa chini.'));
             }
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Could not create payment link.');
+            toast.error(err.response?.data?.message || copy('Could not create payment link.', 'Imeshindikana kuunda linki ya malipo.'));
         } finally {
             setGeneratingLinkId(null);
         }
@@ -171,7 +173,7 @@ export default function Outstanding({ merchant }) {
 
     return (
         <AppLayout>
-            <Head title={`Outstanding Balances | ${merchant.display_name}`} />
+            <Head title={`${copy('Outstanding Balances', 'Masalia Yanayodaiwa')} | ${merchant.display_name}`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-24">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="space-y-2">
@@ -180,20 +182,20 @@ export default function Outstanding({ merchant }) {
                             className="h-9 px-2 text-slate-500 hover:text-slate-900"
                             onClick={() => router.visit(`/merchant/${merchant.username}/retail/dashboard`)}
                         >
-                            <ArrowLeft className="h-4 w-4 mr-2" /> Retail Dashboard
+                            <ArrowLeft className="h-4 w-4 mr-2" /> {copy('Retail Dashboard', 'Dashibodi ya Rejareja')}
                         </Button>
                         <div>
                             <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
-                                Outstanding Balances <CreditCard className="h-7 w-7 text-amber-600" />
+                                {copy('Outstanding Balances', 'Masalia Yanayodaiwa')} <CreditCard className="h-7 w-7 text-amber-600" />
                             </h1>
-                            <p className="text-muted-foreground">Find credit customers and record payments when they come back.</p>
+                            <p className="text-muted-foreground">{copy('Find credit customers and record payments when they come back.', 'Pata wateja wa mkopo na hifadhi malipo watakaporudi.')}</p>
                         </div>
                     </div>
                     <Card className="bg-amber-50 border-amber-100 shadow-sm">
                         <CardContent className="p-5 min-w-[240px]">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Total Outstanding</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">{copy('Total Outstanding', 'Jumla Inayodaiwa')}</p>
                             <p className="text-3xl font-black text-amber-900">{formatCurrency(summary.outstanding_credit)}</p>
-                            <p className="text-xs font-bold text-amber-700 mt-1">{summary.count} open balances</p>
+                            <p className="text-xs font-bold text-amber-700 mt-1">{summary.count} {copy('open balances', 'masalia yaliyo wazi')}</p>
                         </CardContent>
                     </Card>
                 </div>
@@ -203,24 +205,24 @@ export default function Outstanding({ merchant }) {
                     <Input
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search customer, phone, or POS number"
+                        placeholder={copy('Search customer, phone, or POS number', 'Tafuta mteja, simu au namba ya POS')}
                         className="pl-10 h-12 rounded-xl bg-white"
                     />
                 </div>
 
                 {posPaymentLinksDisabled && (
                     <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
-                        POS payment links are disabled for this merchant. You can still record cash or manual payments, but customers cannot pay outstanding POS balances through links until Takeer re-enables them.
+                        {copy('POS payment links are disabled for this merchant. You can still record cash or manual payments, but customers cannot pay outstanding POS balances through links until Takeer re-enables them.', 'Linki za malipo za POS zimezimwa kwa muuzaji huyu. Bado unaweza kuhifadhi malipo ya fedha au ya mkono, lakini wateja hawawezi kulipa masalia ya POS kupitia linki hadi Takeer iwashe tena.')}
                     </div>
                 )}
 
                 {loading ? (
-                    <div className="py-16 text-center text-sm font-bold text-muted-foreground">Loading outstanding balances...</div>
+                    <div className="py-16 text-center text-sm font-bold text-muted-foreground">{copy('Loading outstanding balances...', 'Inapakia masalia yanayodaiwa...')}</div>
                 ) : orders.length === 0 ? (
                     <div className="py-16 rounded-2xl border border-dashed border-emerald-100 bg-emerald-50/40 text-center">
                         <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto mb-3" />
-                        <p className="font-black text-emerald-900">No outstanding balances found.</p>
-                        <p className="text-sm text-emerald-700">All store credit orders are settled.</p>
+                        <p className="font-black text-emerald-900">{copy('No outstanding balances found.', 'Hakuna masalia yanayodaiwa yaliyopatikana.')}</p>
+                        <p className="text-sm text-emerald-700">{copy('All store credit orders are settled.', 'Oda zote za mkopo wa duka zimelipwa.')}</p>
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -232,25 +234,25 @@ export default function Outstanding({ merchant }) {
                                             <div className="min-w-0">
                                                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-amber-700">
                                                     <User2 className="h-4 w-4" />
-                                                    Customer account
+                                                    {copy('Customer account', 'Akaunti ya mteja')}
                                                 </div>
                                                 <h2 className="text-2xl font-black text-slate-950 mt-2 truncate">{customer.name}</h2>
                                                 <div className="flex items-center gap-2 text-sm font-bold text-slate-500 mt-1">
                                                     <Phone className="h-4 w-4" />
-                                                    {customer.phone || 'No phone saved'}
+                                                    {customer.phone || copy('No phone saved', 'Hakuna simu iliyohifadhiwa')}
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-3 gap-2 md:min-w-[420px]">
                                                 <div className="rounded-xl bg-white p-3 border border-amber-100">
-                                                    <p className="text-[9px] font-black uppercase text-slate-400">Open</p>
-                                                    <p className="text-sm font-black text-slate-900">{customer.orders.length} balances</p>
+                                                    <p className="text-[9px] font-black uppercase text-slate-400">{copy('Open', 'Wazi')}</p>
+                                                    <p className="text-sm font-black text-slate-900">{customer.orders.length} {copy('balances', 'masalia')}</p>
                                                 </div>
                                                 <div className="rounded-xl bg-white p-3 border border-amber-100">
-                                                    <p className="text-[9px] font-black uppercase text-emerald-600">Paid</p>
+                                                    <p className="text-[9px] font-black uppercase text-emerald-600">{copy('Paid', 'Imelipwa')}</p>
                                                     <p className="text-sm font-black text-emerald-700">{formatCurrency(customer.totalPaid)}</p>
                                                 </div>
                                                 <div className="rounded-xl bg-white p-3 border border-amber-100">
-                                                    <p className="text-[9px] font-black uppercase text-amber-700">Owes</p>
+                                                    <p className="text-[9px] font-black uppercase text-amber-700">{copy('Owes', 'Anadaiwa')}</p>
                                                     <p className="text-sm font-black text-amber-800">{formatCurrency(customer.totalOutstanding)}</p>
                                                 </div>
                                             </div>
@@ -283,20 +285,20 @@ export default function Outstanding({ merchant }) {
 
                                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 lg:min-w-[520px]">
                                                         <div className="rounded-xl bg-slate-50 p-3">
-                                                            <p className="text-[9px] font-black uppercase text-slate-400">Total</p>
+                                                            <p className="text-[9px] font-black uppercase text-slate-400">{copy('Total', 'Jumla')}</p>
                                                             <p className="text-sm font-black">{formatCurrency(order.payable_total)}</p>
                                                         </div>
                                                         <div className="rounded-xl bg-emerald-50 p-3">
-                                                            <p className="text-[9px] font-black uppercase text-emerald-600">Paid</p>
+                                                            <p className="text-[9px] font-black uppercase text-emerald-600">{copy('Paid', 'Imelipwa')}</p>
                                                             <p className="text-sm font-black text-emerald-700">{formatCurrency(order.total_paid)}</p>
                                                         </div>
                                                         <div className="rounded-xl bg-amber-50 p-3">
-                                                            <p className="text-[9px] font-black uppercase text-amber-700">Balance</p>
+                                                            <p className="text-[9px] font-black uppercase text-amber-700">{copy('Balance', 'Salio')}</p>
                                                             <p className="text-sm font-black text-amber-800">{formatCurrency(order.outstanding_balance)}</p>
                                                         </div>
                                                         <div className="rounded-xl bg-slate-50 p-3">
-                                                            <p className="text-[9px] font-black uppercase text-slate-400">Staff</p>
-                                                            <p className="text-sm font-black truncate">{order.pos_staff?.name || 'N/A'}</p>
+                                                            <p className="text-[9px] font-black uppercase text-slate-400">{copy('Staff', 'Mhudumu')}</p>
+                                                            <p className="text-sm font-black truncate">{order.pos_staff?.name || copy('N/A', 'Haipo')}</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -305,16 +307,16 @@ export default function Outstanding({ merchant }) {
                                                     <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 space-y-2">
                                                         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
                                                             <ReceiptText className="h-3.5 w-3.5" />
-                                                            Payment history
+                                                            {copy('Payment history', 'Historia ya malipo')}
                                                         </div>
                                                         {(order.payment_history || []).map((payment) => (
                                                             <div key={payment.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs font-bold text-slate-600">
                                                                 <span>
-                                                                    {formatCurrency(payment.amount)} paid on {formatDateTime(payment.recorded_at)}
-                                                                    {payment.recorded_by ? ` by ${payment.recorded_by}` : ''}
+                                                                    {formatCurrency(payment.amount)} {copy('paid on', 'imelipwa tarehe')} {formatDateTime(payment.recorded_at)}
+                                                                    {payment.recorded_by ? ` ${copy('by', 'na')} ${payment.recorded_by}` : ''}
                                                                 </span>
                                                                 <span className="text-slate-500">
-                                                                    Remaining {formatCurrency(payment.remaining_balance)}
+                                                                    {copy('Remaining', 'Iliyobaki')} {formatCurrency(payment.remaining_balance)}
                                                                     {payment.note ? ` - ${payment.note}` : ''}
                                                                 </span>
                                                             </div>
@@ -327,7 +329,7 @@ export default function Outstanding({ merchant }) {
                                                         className="w-full h-11 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black"
                                                         onClick={() => openSettle(order)}
                                                     >
-                                                        <Banknote className="h-4 w-4 mr-2" /> Record Payment
+                                                        <Banknote className="h-4 w-4 mr-2" /> {copy('Record Payment', 'Hifadhi Malipo')}
                                                     </Button>
                                                     <Button
                                                         variant="outline"
@@ -337,15 +339,15 @@ export default function Outstanding({ merchant }) {
                                                     >
                                                         {posPaymentLinksDisabled ? (
                                                             <>
-                                                                <LinkIcon className="h-4 w-4 mr-2" /> Links Disabled
+                                                                <LinkIcon className="h-4 w-4 mr-2" /> {copy('Links Disabled', 'Linki Zimezimwa')}
                                                             </>
                                                         ) : generatingLinkId === order.id ? (
                                                             <>
-                                                                <LinkIcon className="h-4 w-4 mr-2" /> Creating...
+                                                                <LinkIcon className="h-4 w-4 mr-2" /> {copy('Creating...', 'Inaunda...')}
                                                             </>
                                                         ) : (
                                                             <>
-                                                                <Send className="h-4 w-4 mr-2" /> Send Payment Link
+                                                                <Send className="h-4 w-4 mr-2" /> {copy('Send Payment Link', 'Tuma Linki ya Malipo')}
                                                             </>
                                                         )}
                                                     </Button>
@@ -365,10 +367,10 @@ export default function Outstanding({ merchant }) {
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <User2 className="h-5 w-5 text-amber-600" />
-                            Clear Customer Balance
+                            {copy('Clear Customer Balance', 'Lipa Salio la Mteja')}
                         </DialogTitle>
                         <DialogDescription>
-                            Record a full or partial payment for #{selectedOrder?.public_id}.
+                            {copy('Record a full or partial payment for', 'Hifadhi malipo kamili au sehemu kwa')} #{selectedOrder?.public_id}.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
@@ -376,11 +378,11 @@ export default function Outstanding({ merchant }) {
                             <p className="font-black text-slate-900">{selectedOrder?.customer_name}</p>
                             <p className="text-xs font-bold text-slate-500">{selectedOrder?.customer_phone}</p>
                             <p className="text-sm font-black text-amber-700 mt-3">
-                                Remaining: {formatCurrency(selectedOrder?.outstanding_balance)}
+                                {copy('Remaining', 'Iliyobaki')}: {formatCurrency(selectedOrder?.outstanding_balance)}
                             </p>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Amount Paid</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Amount Paid', 'Kiasi Kilicholipwa')}</label>
                             <Input
                                 type="number"
                                 min="0"
@@ -391,11 +393,11 @@ export default function Outstanding({ merchant }) {
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Note</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Note', 'Maelezo')}</label>
                             <Input
                                 value={settleNote}
                                 onChange={(e) => setSettleNote(e.target.value)}
-                                placeholder="Cash, mobile money ref, or internal note"
+                                placeholder={copy('Cash, mobile money ref, or internal note', 'Fedha, kumbukumbu ya simu au maelezo ya ndani')}
                                 className="h-12 rounded-xl"
                             />
                         </div>
@@ -404,7 +406,7 @@ export default function Outstanding({ merchant }) {
                             onClick={settleOrder}
                             disabled={settling}
                         >
-                            {settling ? 'Recording...' : 'Save Payment'}
+                            {settling ? copy('Recording...', 'Inahifadhi...') : copy('Save Payment', 'Hifadhi Malipo')}
                         </Button>
                     </div>
                 </DialogContent>
@@ -415,22 +417,22 @@ export default function Outstanding({ merchant }) {
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Send className="h-5 w-5 text-amber-600" />
-                            Send Payment Link
+                            {copy('Send Payment Link', 'Tuma Linki ya Malipo')}
                         </DialogTitle>
                         <DialogDescription>
-                            Share this link with {paymentLink?.order?.customer_name || 'the customer'} so they can pay online.
+                            {copy('Share this link with', 'Shiriki linki hii na')} {paymentLink?.order?.customer_name || copy('the customer', 'mteja')} {copy('so they can pay online.', 'ili aweze kulipa mtandaoni.')}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
                         <div className="rounded-xl bg-amber-50 border border-amber-100 p-4">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">POS Balance</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">{copy('POS Balance', 'Salio la POS')}</p>
                             <p className="font-black text-slate-900 mt-1">#POS-{paymentLink?.order?.public_id}</p>
                             <p className="text-sm font-black text-amber-700 mt-2">
-                                Remaining: {formatCurrency(paymentLink?.order?.outstanding_balance)}
+                                {copy('Remaining', 'Iliyobaki')}: {formatCurrency(paymentLink?.order?.outstanding_balance)}
                             </p>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Payment URL</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Payment URL', 'URL ya Malipo')}</label>
                             <Input
                                 readOnly
                                 value={paymentLink?.url || ''}
@@ -443,13 +445,13 @@ export default function Outstanding({ merchant }) {
                             onClick={async () => {
                                 try {
                                     await copyText(paymentLink?.url || '');
-                                    toast.success('Payment link copied.');
+                                    toast.success(copy('Payment link copied.', 'Linki ya malipo imenakiliwa.'));
                                 } catch (err) {
-                                    toast.error('Select the link and copy it manually.');
+                                    toast.error(copy('Select the link and copy it manually.', 'Chagua linki na inakili kwa mkono.'));
                                 }
                             }}
                         >
-                            <LinkIcon className="h-4 w-4 mr-2" /> Copy Link
+                            <LinkIcon className="h-4 w-4 mr-2" /> {copy('Copy Link', 'Nakili Linki')}
                         </Button>
                     </div>
                 </DialogContent>

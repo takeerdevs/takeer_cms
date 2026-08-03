@@ -7,6 +7,7 @@ import { Input } from '@/Components/ui/Input';
 import { CheckCircle2, KeyRound, Loader2, RefreshCw, ShieldCheck, ShieldOff, Smartphone, Trash2, UserPlus, Users } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 
 const ROLE_LABELS = {
     MANAGER: 'Manager',
@@ -35,6 +36,7 @@ const emptyForm = () => ({
 });
 
 export default function Team({ merchant }) {
+    const { copy } = useLocale();
     const merchantUsername = merchant?.username;
     const [staff, setStaff] = useState([]);
     const [registry, setRegistry] = useState({});
@@ -58,7 +60,7 @@ export default function Team({ merchant }) {
             setPresets(response.data?.permission_presets || {});
             setRoles(response.data?.roles || Object.keys(ROLE_LABELS));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to load team.');
+            toast.error(error.response?.data?.message || copy('Failed to load team.', 'Imeshindikana kupakia timu.'));
         } finally {
             setLoading(false);
         }
@@ -90,17 +92,17 @@ export default function Team({ merchant }) {
 
             if (editing) {
                 await axios.patch(`/merchant/${merchantUsername}/team/${editing.id}/api`, payload);
-                toast.success('Team member updated.');
+                toast.success(copy('Team member updated.', 'Mwanachama wa timu amesasishwa.'));
             } else {
                 await axios.post(`/merchant/${merchantUsername}/team/api`, payload);
-                toast.success('Team member added.');
+                toast.success(copy('Team member added.', 'Mwanachama wa timu ameongezwa.'));
             }
 
             setEditing(null);
             setForm(emptyForm());
             await loadTeam();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to save team member.');
+            toast.error(error.response?.data?.message || copy('Failed to save team member.', 'Imeshindikana kuhifadhi mwanachama wa timu.'));
         } finally {
             setSaving(false);
         }
@@ -123,14 +125,14 @@ export default function Team({ merchant }) {
     };
 
     const resetPin = async (member) => {
-        const pin = window.prompt(`New 4-digit PIN for ${member.display_name || member.user?.name}`);
+        const pin = window.prompt(`${copy('New 4-digit PIN for', 'PIN mpya ya tarakimu 4 kwa')} ${member.display_name || member.user?.name}`);
         if (!pin) return;
         if (!/^\d{4}$/.test(pin)) {
-            toast.error('PIN must be exactly 4 digits.');
+            toast.error(copy('PIN must be exactly 4 digits.', 'PIN lazima iwe na tarakimu 4 kamili.'));
             return;
         }
         await axios.patch(`/merchant/${merchantUsername}/team/${member.id}/reset-pin/api`, { pin });
-        toast.success('PIN reset.');
+        toast.success(copy('PIN reset.', 'PIN imebadilishwa.'));
     };
 
     const toggleStatus = async (member) => {
@@ -139,9 +141,9 @@ export default function Team({ merchant }) {
     };
 
     const clearDevices = async (member) => {
-        if (!window.confirm('Clear trusted devices for this staff member?')) return;
+        if (!window.confirm(copy('Clear trusted devices for this staff member?', 'Ondoa vifaa vinavyoaminika vya mhudumu huyu?'))) return;
         await axios.post(`/merchant/${merchantUsername}/team/${member.id}/clear-devices/api`);
-        toast.success('Trusted devices cleared.');
+        toast.success(copy('Trusted devices cleared.', 'Vifaa vinavyoaminika vimeondolewa.'));
     };
 
     const togglePermission = (permission, enabled) => {
@@ -154,64 +156,64 @@ export default function Team({ merchant }) {
 
     return (
         <AppLayout>
-            <Head title="Team | Takeer" />
+            <Head title={`${copy('Team', 'Timu')} | Takeer`} />
             <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div>
-                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Operations</p>
-                        <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">Team & Access</h1>
-                        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Create staff profiles, assign tool permissions, control POS access, and reset terminal PINs.</p>
+                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{copy('Operations', 'Uendeshaji')}</p>
+                        <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">{copy('Team & access', 'Timu na ufikiaji')}</h1>
+                        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{copy('Create staff profiles, assign tool permissions, control POS access, and reset terminal PINs.', 'Unda wasifu wa wahudumu, gawa ruhusa za zana, dhibiti ufikiaji wa POS na badilisha PIN za vituo.')}</p>
                     </div>
                     <Button variant="outline" onClick={loadTeam} disabled={loading}>
                         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                        Refresh
+                        {copy('Refresh', 'Onyesha upya')}
                     </Button>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-4">
-                    <Metric label="Team members" value={staff.length} icon={Users} />
-                    <Metric label="Active" value={staff.filter((member) => member.is_active).length} icon={CheckCircle2} />
-                    <Metric label="Dashboard access" value={staff.filter((member) => member.dashboard_access_enabled).length} icon={ShieldCheck} />
-                    <Metric label="POS access" value={staff.filter((member) => member.pos_access_enabled).length} icon={Smartphone} />
+                    <Metric label={copy('Team members', 'Wanachama wa timu')} value={staff.length} icon={Users} />
+                    <Metric label={copy('Active', 'Hai')} value={staff.filter((member) => member.is_active).length} icon={CheckCircle2} />
+                    <Metric label={copy('Dashboard access', 'Ufikiaji wa dashibodi')} value={staff.filter((member) => member.dashboard_access_enabled).length} icon={ShieldCheck} />
+                    <Metric label={copy('POS access', 'Ufikiaji wa POS')} value={staff.filter((member) => member.pos_access_enabled).length} icon={Smartphone} />
                 </div>
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>{editing ? 'Edit team member' : 'Add team member'}</CardTitle>
+                        <CardTitle>{editing ? copy('Edit team member', 'Hariri mwanachama wa timu') : copy('Add team member', 'Ongeza mwanachama wa timu')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={submit} className="space-y-4">
                             <div className="grid gap-3 md:grid-cols-3">
-                                <Input required placeholder="Full name" value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
+                                <Input required placeholder={copy('Full name', 'Jina kamili')} value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
                                 <Input required placeholder="+255..." value={form.phone_number} onChange={(event) => setForm((prev) => ({ ...prev, phone_number: event.target.value }))} />
-                                <Input required={!editing} type="password" maxLength={4} placeholder={editing ? 'New PIN optional' : '4-digit PIN'} value={form.pin} onChange={(event) => setForm((prev) => ({ ...prev, pin: event.target.value }))} />
-                                <Input placeholder="Display name" value={form.display_name} onChange={(event) => setForm((prev) => ({ ...prev, display_name: event.target.value }))} />
-                                <Input placeholder="Job title" value={form.job_title} onChange={(event) => setForm((prev) => ({ ...prev, job_title: event.target.value }))} />
+                                <Input required={!editing} type="password" maxLength={4} placeholder={editing ? copy('New PIN optional', 'PIN mpya si lazima') : copy('4-digit PIN', 'PIN ya tarakimu 4')} value={form.pin} onChange={(event) => setForm((prev) => ({ ...prev, pin: event.target.value }))} />
+                                <Input placeholder={copy('Display name', 'Jina la kuonyesha')} value={form.display_name} onChange={(event) => setForm((prev) => ({ ...prev, display_name: event.target.value }))} />
+                                <Input placeholder={copy('Job title', 'Cheo cha kazi')} value={form.job_title} onChange={(event) => setForm((prev) => ({ ...prev, job_title: event.target.value }))} />
                                 <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={form.role} onChange={(event) => applyPreset(event.target.value)}>
-                                    {roles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role] || role.replaceAll('_', ' ')}</option>)}
+                                    {roles.map((role) => <option key={role} value={role}>{roleLabel(copy, role)}</option>)}
                                 </select>
                             </div>
 
                             <div className="grid gap-3 md:grid-cols-2">
                                 <label className="flex items-start gap-3 rounded-lg border border-border p-3">
                                     <input type="checkbox" className="mt-1" checked={form.dashboard_access_enabled} onChange={(event) => setForm((prev) => ({ ...prev, dashboard_access_enabled: event.target.checked }))} />
-                                    <span><span className="block text-sm font-bold">Dashboard ya biashara</span><span className="block text-xs text-muted-foreground">Ruhusu access kwenye zana za biashara zilizochaguliwa.</span></span>
+                                    <span><span className="block text-sm font-bold">{copy('Business dashboard', 'Dashibodi ya biashara')}</span><span className="block text-xs text-muted-foreground">{copy('Allow access to selected business tools.', 'Ruhusu ufikiaji wa zana za biashara zilizochaguliwa.')}</span></span>
                                 </label>
                                 <label className="flex items-start gap-3 rounded-lg border border-border p-3">
                                     <input type="checkbox" className="mt-1" checked={form.pos_access_enabled} onChange={(event) => setForm((prev) => ({ ...prev, pos_access_enabled: event.target.checked }))} />
-                                    <span><span className="block text-sm font-bold">POS terminal</span><span className="block text-xs text-muted-foreground">Ruhusu PIN login ya terminal na zana za retail.</span></span>
+                                    <span><span className="block text-sm font-bold">{copy('POS terminal', 'Kituo cha POS')}</span><span className="block text-xs text-muted-foreground">{copy('Allow terminal PIN login and retail tools.', 'Ruhusu kuingia kwa PIN ya kituo na zana za rejareja.')}</span></span>
                                 </label>
                             </div>
 
                             <div className="space-y-3 rounded-lg border border-border p-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div>
-                                        <p className="text-sm font-black">Permissions</p>
-                                        <p className="text-xs text-muted-foreground">Pick exactly what this person can do.</p>
+                                        <p className="text-sm font-black">{copy('Permissions', 'Ruhusa')}</p>
+                                        <p className="text-xs text-muted-foreground">{copy('Pick exactly what this person can do.', 'Chagua hasa anachoweza kufanya mtu huyu.')}</p>
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button type="button" variant="outline" size="sm" onClick={() => setForm((prev) => ({ ...prev, permissions }))}>All</Button>
-                                        <Button type="button" variant="outline" size="sm" onClick={() => setForm((prev) => ({ ...prev, permissions: [] }))}>Clear</Button>
+                                        <Button type="button" variant="outline" size="sm" onClick={() => setForm((prev) => ({ ...prev, permissions }))}>{copy('All', 'Zote')}</Button>
+                                        <Button type="button" variant="outline" size="sm" onClick={() => setForm((prev) => ({ ...prev, permissions: [] }))}>{copy('Clear', 'Futa')}</Button>
                                     </div>
                                 </div>
                                 {Object.entries(registry).map(([resource, group]) => (
@@ -234,10 +236,10 @@ export default function Team({ merchant }) {
                             </div>
 
                             <div className="flex flex-wrap justify-end gap-2">
-                                {editing && <Button type="button" variant="outline" onClick={() => { setEditing(null); setForm(emptyForm()); }}>Cancel</Button>}
+                                {editing && <Button type="button" variant="outline" onClick={() => { setEditing(null); setForm(emptyForm()); }}>{copy('Cancel', 'Ghairi')}</Button>}
                                 <Button disabled={saving}>
                                     {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                                    {editing ? 'Save changes' : 'Add team member'}
+                                    {editing ? copy('Save changes', 'Hifadhi mabadiliko') : copy('Add team member', 'Ongeza mwanachama wa timu')}
                                 </Button>
                             </div>
                         </form>
@@ -248,7 +250,7 @@ export default function Team({ merchant }) {
                     {loading ? (
                         <Card className="md:col-span-2 xl:col-span-3"><CardContent className="flex min-h-40 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-muted-foreground" /></CardContent></Card>
                     ) : staff.length === 0 ? (
-                        <Card className="md:col-span-2 xl:col-span-3"><CardContent className="p-8 text-center"><Users className="mx-auto h-10 w-10 text-muted-foreground" /><h3 className="mt-3 text-lg font-black">No team members yet</h3></CardContent></Card>
+                        <Card className="md:col-span-2 xl:col-span-3"><CardContent className="p-8 text-center"><Users className="mx-auto h-10 w-10 text-muted-foreground" /><h3 className="mt-3 text-lg font-black">{copy('No team members yet', 'Hakuna wanachama wa timu bado')}</h3></CardContent></Card>
                     ) : staff.map((member) => (
                         <StaffCard key={member.id} member={member} onEdit={editStaff} onToggle={toggleStatus} onResetPin={resetPin} onClearDevices={clearDevices} />
                     ))}
@@ -264,8 +266,27 @@ function Metric({ label, value, icon: Icon }) {
     );
 }
 
+function roleLabel(copy, role) {
+    const english = ROLE_LABELS[role] || role.replaceAll('_', ' ');
+    const swahili = {
+        Manager: 'Msimamizi',
+        Cashier: 'Keshia',
+        Storekeeper: 'Mhifadhi stoo',
+        Receptionist: 'Mhudumu wa mapokezi',
+        'Booking manager': 'Msimamizi wa miadi',
+        Instructor: 'Mwalimu',
+        Fulfillment: 'Utekelezaji wa oda',
+        Accountant: 'Mhasibu',
+        Marketer: 'Mtaalamu wa masoko',
+        'Content manager': 'Msimamizi wa maudhui',
+        Support: 'Msaada',
+    }[english] || english;
+    return copy(english, swahili);
+}
+
 function StaffCard({ member, onEdit, onToggle, onResetPin, onClearDevices }) {
-    const name = member.display_name || member.user?.name || 'Team member';
+    const { copy } = useLocale();
+    const name = member.display_name || member.user?.name || copy('Team member', 'Mwanachama wa timu');
     return (
         <Card className={!member.is_active ? 'opacity-70' : ''}>
             <CardContent className="space-y-4 p-4">
@@ -273,20 +294,20 @@ function StaffCard({ member, onEdit, onToggle, onResetPin, onClearDevices }) {
                     <div>
                         <h3 className="text-base font-black">{name}</h3>
                         {member.display_name && <p className="text-xs text-muted-foreground">{member.user?.name}</p>}
-                        <p className="mt-1 text-xs font-bold uppercase text-brand-700">{ROLE_LABELS[member.role] || member.role}</p>
+                        <p className="mt-1 text-xs font-bold uppercase text-brand-700">{roleLabel(copy, member.role)}</p>
                     </div>
-                    <span className={`rounded-full px-2 py-1 text-[11px] font-bold uppercase ${member.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.is_active ? 'Active' : 'Inactive'}</span>
+                    <span className={`rounded-full px-2 py-1 text-[11px] font-bold uppercase ${member.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.is_active ? copy('Active', 'Hai') : copy('Inactive', 'Si hai')}</span>
                 </div>
                 <div className="space-y-1 text-sm text-muted-foreground">
-                    <p>{member.job_title || 'No job title'}</p>
-                    <p>{member.user?.phone_number || 'No phone'}</p>
-                    <p>{(member.effective_permissions || []).length} effective permissions</p>
+                    <p>{member.job_title || copy('No job title', 'Hakuna cheo cha kazi')}</p>
+                    <p>{member.user?.phone_number || copy('No phone', 'Hakuna simu')}</p>
+                    <p>{(member.effective_permissions || []).length} {copy('effective permissions', 'ruhusa zinazotumika')}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => onEdit(member)}>Edit</Button>
-                    <Button variant="outline" size="sm" onClick={() => onToggle(member)}>{member.is_active ? <ShieldOff className="mr-2 h-4 w-4" /> : <ShieldCheck className="mr-2 h-4 w-4" />}{member.is_active ? 'Deactivate' : 'Activate'}</Button>
-                    <Button variant="outline" size="sm" onClick={() => onResetPin(member)}><KeyRound className="mr-2 h-4 w-4" />PIN</Button>
-                    <Button variant="outline" size="sm" onClick={() => onClearDevices(member)}><Trash2 className="mr-2 h-4 w-4" />Devices</Button>
+                    <Button variant="outline" size="sm" onClick={() => onEdit(member)}>{copy('Edit', 'Hariri')}</Button>
+                    <Button variant="outline" size="sm" onClick={() => onToggle(member)}>{member.is_active ? <ShieldOff className="mr-2 h-4 w-4" /> : <ShieldCheck className="mr-2 h-4 w-4" />}{member.is_active ? copy('Deactivate', 'Zima') : copy('Activate', 'Washa')}</Button>
+                    <Button variant="outline" size="sm" onClick={() => onResetPin(member)}><KeyRound className="mr-2 h-4 w-4" />{copy('PIN', 'PIN')}</Button>
+                    <Button variant="outline" size="sm" onClick={() => onClearDevices(member)}><Trash2 className="mr-2 h-4 w-4" />{copy('Devices', 'Vifaa')}</Button>
                 </div>
             </CardContent>
         </Card>

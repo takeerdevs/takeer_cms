@@ -6,6 +6,7 @@ import ShareModal from './ShareModal';
 import { resolvePlayableVideoUrl } from './VideoPlayer';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { useLocale } from '@/lib/i18n';
 
 // ── Text size based on character count ──────────────────────────────────────
 function getTextStyle(text = '') {
@@ -42,12 +43,13 @@ const mediaKind = (item) => {
 };
 
 function ProcessingVideoLayer() {
+    const { copy } = useLocale();
     return (
         <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center gap-3 px-6 text-center">
             <Loader2 className="h-9 w-9 text-white/70 animate-spin" />
             <div>
-                <p className="text-base font-semibold text-white">Processing video...</p>
-                <p className="mt-1 text-sm text-white/55">Playback will be ready shortly.</p>
+                <p className="text-base font-semibold text-white">{copy('Processing video...', 'Video inachakatwa...')}</p>
+                <p className="mt-1 text-sm text-white/55">{copy('Playback will be ready shortly.', 'Itakuwa tayari kuchezwa muda mfupi.')}</p>
             </div>
         </div>
     );
@@ -143,6 +145,7 @@ function TextPostLayer({ post }) {
 
 // ── Image carousel ────────────────────────────────────────────────────────────
 function ImageLayer({ post, currentIdx, setIdx }) {
+    const { copy } = useLocale();
     const images = post.media?.length
         ? post.media
         : post.images?.length
@@ -198,7 +201,7 @@ function ImageLayer({ post, currentIdx, setIdx }) {
                     <motion.img
                         key={currentIdx}
                         src={currentUrl}
-                        alt="Post"
+                        alt={copy('Post', 'Post')}
                         className="w-full h-full object-cover"
                         initial={{ opacity: 0.6, x: 40 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -228,6 +231,7 @@ function ImageLayer({ post, currentIdx, setIdx }) {
 
 // ── Main PostItem ─────────────────────────────────────────────────────────────
 export default function PostItem({ post, isActive, onProductTap, onComment }) {
+    const { copy } = useLocale();
     const videoRef = useRef(null);
     const [livePost, setLivePost] = useState(post);
     const [currentIdx, setCurrentIdx] = useState(0);
@@ -340,7 +344,7 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
         } catch (error) {
             setMyReaction(previousReaction);
             setLivePost((current) => ({ ...current, reaction_summary: previousSummary }));
-            toast.error(error.response?.data?.message || 'Imeshindwa kuweka reaction.');
+            toast.error(error.response?.data?.message || copy('Could not save reaction.', 'Imeshindwa kuweka reaction.'));
         } finally {
             setReactionSyncing(false);
         }
@@ -480,12 +484,12 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
                             <div className="flex items-center gap-2 mt-1">
                                 {livePost.product_tags[0].product.type === 'digital' && (
                                     <span className="bg-brand-500/80 backdrop-blur-md text-white text-[10px] font-black px-2 py-1 rounded-full flex items-center gap-1 w-max border border-white/20 uppercase shadow-lg">
-                                        <DownloadCloud className="h-3 w-3" /> Mtandaoni
+                                        <DownloadCloud className="h-3 w-3" /> {copy('Digital', 'Mtandaoni')}
                                     </span>
                                 )}
                                 {livePost.product_tags[0].product.type === 'service' && (
                                     <span className="bg-purple-500/80 backdrop-blur-md text-white text-[10px] font-black px-2 py-1 rounded-full flex items-center gap-1 w-max border border-white/20 uppercase shadow-lg">
-                                        <CalendarClock className="h-3 w-3" /> Huduma / Booking
+                                        <CalendarClock className="h-3 w-3" /> {copy('Service / Booking', 'Huduma / Booking')}
                                     </span>
                                 )}
                             </div>
@@ -494,7 +498,7 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
                         {!isText && (
                             <div className="flex items-center gap-2 w-max rounded-full bg-black/40 backdrop-blur-md px-3 py-1.5 mt-2 text-[11px] text-white/90 border border-white/10">
                                 <Music className="h-3 w-3 animate-spin [animation-duration:3s]" />
-                                <span className="truncate max-w-[140px]">Original Audio · {livePost.merchant?.name || 'Takeer'}</span>
+                                <span className="truncate max-w-[140px]">{copy('Original Audio', 'Audio ya asili')} · {livePost.merchant?.name || 'Takeer'}</span>
                             </div>
                         )}
                     </div>
@@ -517,20 +521,20 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
 
                         <ActionBtn
                             icon={MessageCircle}
-                            label={livePost.comment_count ? String(livePost.comment_count) : 'Maoni'}
+                            label={livePost.comment_count ? String(livePost.comment_count) : copy('Comments', 'Maoni')}
                             onClick={(e) => { e.stopPropagation(); onComment?.(livePost); }}
                         />
 
                         <ActionBtn
                             icon={Share2}
-                            label="Gawana"
+                            label={copy('Share', 'Gawana')}
                             onClick={(e) => { e.stopPropagation(); handleShare(); }}
                         />
 
                         {livePost.product_tags?.length > 0 && (
                             <ActionBtn
                                 icon={ShoppingBag}
-                                label={livePost.product_tags[0]?.product?.has_access ? "Fungua" : "Nunua"}
+                                label={livePost.product_tags[0]?.product?.has_access ? copy('Open', 'Fungua') : copy('Buy', 'Nunua')}
                                 onClick={(e) => { 
                                     e.stopPropagation(); 
                                     const p = livePost.product_tags[0]?.product;

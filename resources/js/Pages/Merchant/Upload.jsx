@@ -37,47 +37,188 @@ import ServiceIntakeFormEditor from '@/Components/Merchant/ServiceIntakeFormEdit
 import ServiceLocationAreasEditor from '@/Components/Merchant/ServiceLocationAreasEditor';
 import ServiceRelatedProductsEditor from '@/Components/Merchant/ServiceRelatedProductsEditor';
 import { KNOWN_UPLOAD_MODULE_KEYS, getUploadModuleConfig, publishModuleKey } from '@/lib/uploadModules';
+import { useLocale } from '@/lib/i18n';
 import { RepeatableTextList, ServiceModuleCreateFields } from '@/Components/Merchant/ServiceModuleCreateFields';
 
 const CATEGORIES = ['Nguo', 'Viatu', 'Simu na Vifaa', 'Chakula', 'Nyumba na Bustani', 'Michezo', 'Watoto', 'Afya & Uzuri', 'Nyingine'];
+const CATEGORY_TRANSLATIONS = {
+    'Nguo': ['Clothing', 'Nguo'],
+    'Viatu': ['Shoes', 'Viatu'],
+    'Simu na Vifaa': ['Phones and accessories', 'Simu na vifaa'],
+    'Chakula': ['Food', 'Chakula'],
+    'Nyumba na Bustani': ['Home and garden', 'Nyumba na bustani'],
+    'Michezo': ['Sports', 'Michezo'],
+    'Watoto': ['Children', 'Watoto'],
+    'Afya & Uzuri': ['Health and beauty', 'Afya na uzuri'],
+    'Nyingine': ['Other', 'Nyingine'],
+};
+const UPLOAD_OPTION_TRANSLATIONS = {
+    'Standard room': 'Chumba cha kawaida', 'Deluxe room': 'Chumba deluxe', Suite: 'Suite', 'Family room': 'Chumba cha familia', 'Twin room': 'Chumba cha vitanda viwili', 'Single room': 'Chumba cha mtu mmoja', Apartment: 'Apartment', Villa: 'Villa', House: 'Nyumba', 'Whole home': 'Nyumba nzima', Cottage: 'Cottage', 'Guest house': 'Guest house', 'Dorm bed': 'Kitanda cha dorm',
+    'Single bed': 'Kitanda kimoja', 'Double bed': 'Kitanda cha watu wawili', 'Queen bed': 'Kitanda queen', 'King bed': 'Kitanda king', 'Twin beds': 'Vitanda viwili', 'Bunk beds': 'Vitanda vya ghorofa', 'Multiple beds': 'Vitanda vingi',
+    Available: 'Inapatikana', Limited: 'Ina kikomo', Occupied: 'Imechukuliwa', Maintenance: 'Matengenezo', 'Instant booking': 'Booking ya papo hapo', 'Manual confirm': 'Uthibitisho wa manual', 'Request first': 'Ombi kwanza',
+    Table: 'Meza', Venue: 'Ukumbi', Visit: 'Ziara', 'Event space': 'Eneo la tukio', Activity: 'Shughuli', 'Indoor, terrace, VIP...': 'Ndani, terrace, VIP...',
+    'Tools / equipment': 'Zana / vifaa', Equipment: 'Vifaa', Vehicle: 'Gari', Space: 'Eneo', 'Event equipment': 'Vifaa vya tukio', 'Event gear': 'Gear ya tukio', 'Costume / props': 'Mavazi / props', Other: 'Nyingine',
+    'Per hour': 'Kwa saa', 'Per day': 'Kwa siku', 'Per night': 'Kwa usiku', 'Per week': 'Kwa wiki', 'Per month': 'Kwa mwezi', 'Per trip': 'Kwa safari', 'Per event': 'Kwa tukio',
+    'Live session': 'Session ya live', Bootcamp: 'Bootcamp', Seminar: 'Semina', Webinar: 'Webinar', Cohort: 'Cohort', 'Private group': 'Group binafsi',
+    'Scheduled departures': 'Ratiba zilizopangwa', 'Private trips': 'Safari binafsi', 'Custom dates': 'Tarehe maalum', 'Quote after request': 'Quote baada ya ombi', 'Deposit before work': 'Deposit kabla ya kazi', 'Full payment after quote': 'Malipo yote baada ya quote',
+    Breakfast: 'Kifungua kinywa', Lunch: 'Chakula cha mchana', Dinner: 'Chakula cha jioni', Drinks: 'Vinywaji', Desserts: 'Vitindamlo', Snacks: 'Vitafunwa', Combos: 'Combos', 'Add-ons': 'Add-ons', 'Main menu': 'Menu kuu', Food: 'Chakula', Drink: 'Kinywaji', Combo: 'Combo', 'Add-on': 'Add-on', Vegetarian: 'Vegetarian', Vegan: 'Vegan', Halal: 'Halal', Spicy: 'Chenye pilipili', 'Gluten free': 'Bila gluten', 'Contains nuts': 'Kina karanga', 'Dine-in': 'Kula hapa', Pickup: 'Pickup', Delivery: 'Delivery',
+    'No scheduling': 'Hakuna ratiba', 'Recurring appointments': 'Miadi inayojirudia', 'Fixed sessions/events': 'Sessions/tukio maalum', 'External booking': 'Booking ya nje', 'Showcase': 'Onyesha', 'Request quote': 'Omba bei', 'Book / request': 'Book / omba', 'Pay / reserve': 'Lipa / hifadhi',
+};
+const ADDITIONAL_UPLOAD_OPTION_TRANSLATIONS = {
+    'Hide price': 'Ficha bei',
+    'Fixed price': 'Bei ya kudumu',
+    'Starts from': 'Kuanzia',
+    'Per person': 'Kwa mtu',
+    'Per visit': 'Kwa ziara',
+    'Per session': 'Kwa session',
+    'Per project': 'Kwa project',
+    Package: 'Package',
+    'Quote only': 'Bei kwa quote',
+    Fixed: 'Kudumu',
+    Optional: 'Si lazima',
+    'Refundable deposit': 'Deposit inayoweza kurudishwa',
+    'Specific location': 'Eneo maalum',
+    'At client location': 'Eneo la mteja',
+    'Remote/online': 'Mtandaoni',
+    Hybrid: 'Mchanganyiko',
+    'No scheduling': 'Hakuna ratiba',
+    'Recurring appointments': 'Miadi inayojirudia',
+    'Fixed sessions/events': 'Sessions/tukio maalum',
+    'External booking': 'Booking ya nje',
+    'Health & Wellness': 'Afya na ustawi',
+    'Beauty & Personal Care': 'Urembo na huduma binafsi',
+    'Home & Repairs': 'Nyumbani na marekebisho',
+    'Education & Training': 'Elimu na mafunzo',
+    'Professional Services': 'Huduma za kitaalamu',
+    'Events & Hospitality': 'Matukio na ukarimu',
+    'Automotive & Garage': 'Magari na gereji',
+    'Accommodation & Stays': 'Malazi na sehemu za kukaa',
+    'Transport & Hire': 'Usafiri na ukodishaji',
+    'Moving & Logistics': 'Uhamishaji na logistics',
+    'Property & Survey': 'Mali na upimaji',
+    'Cleaning & Domestic': 'Usafi na huduma za nyumbani',
+    'Funeral & Emergency': 'Mazishi na dharura',
+    'Creative & Media': 'Ubunifu na media',
+    'Travel & Recreation': 'Safari na burudani',
+    'Doctor appointment': 'Miadi ya daktari',
+    Therapy: 'Tiba',
+    Fitness: 'Mazoezi',
+    Nutrition: 'Lishe',
+    'Home care': 'Huduma ya nyumbani',
+    Barber: 'Kinyozi',
+    Salon: 'Saluni',
+    Spa: 'Spa',
+    Makeup: 'Makeup',
+    Massage: 'Masaji',
+    Plumbing: 'Mabomba',
+    Electrical: 'Umeme',
+    Cleaning: 'Usafi',
+    'Appliance repair': 'Marekebisho ya vifaa',
+    Construction: 'Ujenzi',
+    Course: 'Kozi',
+    Tutoring: 'Mafunzo binafsi',
+    Workshop: 'Warsha',
+    'Professional training': 'Mafunzo ya kitaalamu',
+    'Driving school': 'Shule ya udereva',
+    Consulting: 'Ushauri',
+    'IT support': 'Msaada wa IT',
+    Legal: 'Kisheria',
+    Accounting: 'Uhasibu',
+    'Business services': 'Huduma za biashara',
+    Catering: 'Catering',
+    Venue: 'Ukumbi',
+    Photography: 'Upigaji picha',
+    Decor: 'Mapambo',
+    'MC/DJ': 'MC/DJ',
+    Hotel: 'Hoteli',
+    'Guest house': 'Guest house',
+    Lodge: 'Lodge',
+    'Short stay': 'Kukaa muda mfupi',
+    'Serviced apartment': 'Apartment yenye huduma',
+    'Boat hire': 'Ukodishaji wa boti',
+    'Car hire': 'Ukodishaji wa gari',
+    'Equipment hire': 'Ukodishaji wa vifaa',
+    Courier: 'Courier',
+    'Tour guide': 'Mwongoza safari',
+    'House moving': 'Uhamishaji wa nyumba',
+    'Office moving': 'Uhamishaji wa ofisi',
+    Packing: 'Ufungashaji',
+    'Truck hire': 'Ukodishaji wa lori',
+    Storage: 'Hifadhi',
+    'Land survey': 'Upimaji wa ardhi',
+    Valuation: 'Tathmini ya thamani',
+    Inspection: 'Ukaguzi',
+    'Real estate service': 'Huduma ya mali isiyohamishika',
+    'Home cleaning': 'Usafi wa nyumbani',
+    'Office cleaning': 'Usafi wa ofisi',
+    Laundry: 'Dobi',
+    'Pest control': 'Udhibiti wa wadudu',
+    'Domestic help': 'Msaada wa nyumbani',
+    'Morgue service': 'Huduma ya chumba cha maiti',
+    'Funeral service': 'Huduma ya mazishi',
+    Ambulance: 'Ambulance',
+    'Emergency repair': 'Marekebisho ya dharura',
+    Design: 'Design',
+    'Music studio': 'Studio ya muziki',
+    Printing: 'Uchapishaji',
+    Marketing: 'Marketing',
+    'Tour package': 'Package ya safari',
+    'Boat trip': 'Safari ya boti',
+    Safari: 'Safari',
+    'Sports booking': 'Booking ya michezo',
+    'Recreation venue': 'Eneo la burudani',
+};
+const localizeUploadOption = (copy, value) => copy(value, UPLOAD_OPTION_TRANSLATIONS[value] || ADDITIONAL_UPLOAD_OPTION_TRANSLATIONS[value] || value);
 const DELIVERY_PROMISE_PRESETS = [
-    { key: 'same_day', label: 'Leo leo', hint: 'Bidhaa hii inaweza kufika siku hiyo hiyo.', handling: [0, 0], transit: [0, 0], buyerLabel: 'Same day delivery' },
-    { key: 'next_day', label: 'Kesho', hint: 'Bidhaa ifike kesho.', handling: [0, 1], transit: [1, 1], buyerLabel: 'Delivery by tomorrow' },
-    { key: 'one_two', label: 'Siku 1-2', hint: 'Kwa bidhaa za kawaida ndani ya mji.', handling: [0, 1], transit: [1, 2], buyerLabel: 'Delivery in 1-2 days' },
-    { key: 'made_order', label: 'Kutengenezwa', hint: 'Kwa custom/made-to-order.', handling: [2, 5], transit: [1, 2], buyerLabel: 'Made to order: delivery in 3-7 days' },
-    { key: 'confirm', label: 'Tutathibitisha', hint: 'Kwa mzigo mkubwa au delivery inayobadilika.', handling: ['', ''], transit: ['', ''], buyerLabel: 'Delivery time will be confirmed in chat', confirm: true },
+    { key: 'same_day', label: 'Leo leo', englishLabel: 'Same day', englishHint: 'This item can arrive on the same day.', hint: 'Bidhaa hii inaweza kufika siku hiyo hiyo.', handling: [0, 0], transit: [0, 0], buyerLabel: 'Same day delivery' },
+    { key: 'next_day', label: 'Kesho', englishLabel: 'Tomorrow', englishHint: 'The item should arrive tomorrow.', hint: 'Bidhaa ifike kesho.', handling: [0, 1], transit: [1, 1], buyerLabel: 'Delivery by tomorrow' },
+    { key: 'one_two', label: 'Siku 1-2', englishLabel: '1–2 days', englishHint: 'For regular items within the city.', hint: 'Kwa bidhaa za kawaida ndani ya mji.', handling: [0, 1], transit: [1, 2], buyerLabel: 'Delivery in 1-2 days' },
+    { key: 'made_order', label: 'Kutengenezwa', englishLabel: 'Made to order', englishHint: 'For custom or made-to-order items.', hint: 'Kwa custom/made-to-order.', handling: [2, 5], transit: [1, 2], buyerLabel: 'Made to order: delivery in 3-7 days' },
+    { key: 'confirm', label: 'Tutathibitisha', englishLabel: 'Confirm later', englishHint: 'For large or variable delivery orders.', hint: 'Kwa mzigo mkubwa au delivery inayobadilika.', handling: ['', ''], transit: ['', ''], buyerLabel: 'Delivery time will be confirmed in chat', confirm: true },
 ];
 
 const PHYSICAL_FULFILLMENT_MODES = [
     {
         key: 'own_stock',
         label: 'Nina bidhaa mkononi',
+        englishLabel: 'I have stock on hand',
         hint: 'Ipo kwako sasa, hata kama uliinunua kwa mkulima/supplier.',
+        englishHint: 'You have it now, even if you bought it from a farmer or supplier.',
     },
     {
         key: 'supplier_sourced',
         label: 'Sina stock, nitaitafuta',
+        englishLabel: 'Source after the order',
         hint: 'Utai-confirm au kuipata kutoka supplier baada ya oda.',
+        englishHint: 'You will confirm or obtain it from a supplier after the order.',
     },
     {
         key: 'made_to_order',
         label: 'Natengeneza baada ya oda',
+        englishLabel: 'Make after the order',
         hint: 'Tailoring, food prep, crafts, printed items, n.k.',
+        englishHint: 'Tailoring, food preparation, crafts, printed items, and more.',
     },
     {
         key: 'farm_harvest',
         label: 'Mazao / mavuno',
+        englishLabel: 'Harvest / farm stock',
         hint: 'Kwa mkulima au stock ya mavuno yanayotarajiwa.',
+        englishHint: 'For farmers or stock from an expected harvest.',
     },
     {
         key: 'preorder',
         label: 'Preorder',
+        englishLabel: 'Preorder',
         hint: 'Wateja waagize kabla bidhaa haijapatikana.',
+        englishHint: 'Customers order before the item is available.',
     },
     {
         key: 'group_sale',
         label: 'Group sale',
+        englishLabel: 'Group sale',
         hint: 'Preorder yenye target quantity na deadline.',
+        englishHint: 'A preorder with a target quantity and closing deadline.',
     },
 ];
 
@@ -96,16 +237,26 @@ const CERTIFICATE_AUTHORITY_OPTIONS = [
 ];
 
 const CERTIFICATE_OWNERSHIP_OPTIONS = [
-    { key: 'supplier_owned', label: 'Supplier-owned' },
-    { key: 'manufacturer_issued', label: 'Manufacturer-issued' },
-    { key: 'product_specific', label: 'Product-specific' },
-    { key: 'business_license', label: 'Business license' },
-    { key: 'quality_standard', label: 'Quality standard' },
-    { key: 'other', label: 'Other' },
+    { key: 'supplier_owned', label: 'Supplier-owned', swahiliLabel: 'Cha supplier' },
+    { key: 'manufacturer_issued', label: 'Manufacturer-issued', swahiliLabel: 'Kilichotolewa na mtengenezaji' },
+    { key: 'product_specific', label: 'Product-specific', swahiliLabel: 'Maalum kwa bidhaa' },
+    { key: 'business_license', label: 'Business license', swahiliLabel: 'Leseni ya biashara' },
+    { key: 'quality_standard', label: 'Quality standard', swahiliLabel: 'Kiwango cha ubora' },
+    { key: 'other', label: 'Other', swahiliLabel: 'Nyingine' },
 ];
 
-const certificateTypeLabel = (value) => (
-    CERTIFICATE_OWNERSHIP_OPTIONS.find((option) => option.key === value)?.label || value
+const certificateTypeLabel = (value, translate = (english) => english) => {
+    const option = CERTIFICATE_OWNERSHIP_OPTIONS.find((item) => item.key === value);
+    return option ? translate(option.label, option.swahiliLabel || option.label) : value;
+};
+
+const localizeCategory = (copy, value) => {
+    const pair = CATEGORY_TRANSLATIONS[value];
+    return pair ? copy(pair[0], pair[1]) : value;
+};
+
+const localizeCertificateOwnership = (copy, option) => (
+    option ? copy(option.label, option.swahiliLabel || option.label) : ''
 );
 
 const SERVICE_MODULE_PICKER = [
@@ -113,70 +264,90 @@ const SERVICE_MODULE_PICKER = [
         key: 'menu',
         icon: Utensils,
         title: 'Chakula / Menu',
+        englishTitle: 'Food / menu',
         description: 'Weka chakula, vinywaji, combo, add-on, muda wa kuandaa, tags za chakula, na sehemu za menu.',
+        englishDescription: 'Add food, drinks, combos, add-ons, preparation time, food tags, and menu sections.',
         tone: 'orange',
     },
     {
         key: 'rooms',
         icon: BedDouble,
         title: 'Vyumba / Malazi',
+        englishTitle: 'Rooms / accommodation',
         description: 'Weka aina ya chumba, vitanda, idadi ya wageni, huduma zilizopo, muda wa kuingia/kutoka, na sheria za nyumba.',
+        englishDescription: 'Add room type, beds, guest capacity, amenities, check-in/check-out times, and house rules.',
         tone: 'purple',
     },
     {
         key: 'tour_departures',
         icon: Landmark,
         title: 'Safari / Ratiba ya tour',
+        englishTitle: 'Tours / trip itinerary',
         description: 'Weka eneo la safari, pickup, ukubwa wa kundi, ratiba ya siku, vitu vilivyojumuishwa, na mahitaji ya msafiri.',
+        englishDescription: 'Add the destination, pickup, group size, daily itinerary, inclusions, and traveller requirements.',
         tone: 'emerald',
     },
     {
         key: 'custom_orders',
         icon: ClipboardList,
         title: 'Oda ya kuagiza maalum',
+        englishTitle: 'Custom order',
         description: 'Kusanya mahitaji ya mteja, muda wa kuandaa, namna ya kutoa bei, na maelezo ya pickup au delivery.',
+        englishDescription: 'Collect customer requirements, lead time, pricing approach, and pickup or delivery details.',
         tone: 'slate',
     },
     {
         key: 'appointments',
         icon: CalendarClock,
         title: 'Miadi / Appointment',
+        englishTitle: 'Appointments',
         description: 'Kwa ushauri, huduma za kitaalamu, salon/afya, muda wa huduma, na maswali ya awali kwa mteja.',
+        englishDescription: 'For consultations, professional services, salon/health services, durations, and intake questions.',
         tone: 'blue',
     },
     {
         key: 'reservations',
         icon: Calendar,
         title: 'Reservation',
+        englishTitle: 'Reservations',
         description: 'Kwa meza, ukumbi, viti, idadi ya watu, maelezo ya booking, na muda wa kutembelea.',
+        englishDescription: 'For tables, venues, seats, party size, booking details, and visit times.',
         tone: 'amber',
     },
     {
         key: 'rentals',
         icon: Car,
         title: 'Kupangisha / Kukodisha',
+        englishTitle: 'Rentals',
         description: 'Kwa magari, vifaa, maeneo, idadi ya vitu, deposit, na masharti ya kukodisha.',
+        englishDescription: 'For vehicles, equipment, spaces, quantities, deposits, and rental terms.',
         tone: 'cyan',
     },
     {
         key: 'workshops',
         icon: GraduationCap,
         title: 'Darasa / Tukio la live',
+        englishTitle: 'Workshop / live event',
         description: 'Kwa workshop, cohort, bootcamp, matokeo ya kujifunza, ratiba, na idadi ya washiriki.',
+        englishDescription: 'For workshops, cohorts, bootcamps, learning outcomes, schedules, and participant capacity.',
         tone: 'violet',
     },
     {
         key: 'online_live_events',
         icon: CalendarClock,
         title: 'Online Live Event',
+        englishTitle: 'Online live event',
         description: 'Kwa webinar, live class, online workshop, link ya kuhudhuria, ratiba, na nafasi za washiriki.',
+        englishDescription: 'For webinars, live classes, online workshops, access links, schedules, and participant capacity.',
         tone: 'blue',
     },
     {
         key: 'forwarders',
         icon: Ship,
         title: 'Forwarder / Import logistics',
+        englishTitle: 'Forwarder / import logistics',
         description: 'Kwa kampuni za cargo/import: warehouses za origin, collection offices, routes, nyaraka, na maelekezo ya mteja.',
+        englishDescription: 'For cargo/import companies: origin warehouses, collection offices, routes, documents, and customer instructions.',
         tone: 'indigo',
     },
 ];
@@ -209,9 +380,9 @@ const GENERIC_SERVICE_OPTION_TEMPLATE = {
     },
 };
 
-const formatFileSizeMb = (value) => {
+const formatFileSizeMb = (value, translate = (english) => english) => {
     const size = Number(value);
-    if (!Number.isFinite(size) || size <= 0) return 'Size unknown';
+    if (!Number.isFinite(size) || size <= 0) return translate('Size unknown', 'Ukubwa haujulikani');
     return `${(size / 1024 / 1024).toFixed(2)} MB`;
 };
 
@@ -237,6 +408,7 @@ const isVideoMedia = (item) => item?.media_type === 'video'
     || /\.(mp4|mov|webm|ogg)(\?|$)/i.test(String(item?.url || item?.localUrl || ''));
 
 export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Dar_es_Salaam', timezoneOptions = [], merchantLocations = [] }) {
+    const { copy } = useLocale();
     const fileInputRef = useRef(null);
     const imageContainerRef = useRef(null);
     const digitalFileRef = useRef(null);
@@ -427,10 +599,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const [wholesaleDepositMode, setWholesaleDepositMode] = useState('quote_based');
     const [wholesaleDepositPercent, setWholesaleDepositPercent] = useState('');
     const [wholesaleBalanceDue, setWholesaleBalanceDue] = useState('before_delivery');
-    const [safePayMethods, setSafePayMethods] = useState({
+    const [providerPaymentMethods, setProviderPaymentMethods] = useState({
         mobile_money: true,
         bank_transfer: true,
-        wallet: true,
         card: false,
     });
     const [minOrderQuantity, setMinOrderQuantity] = useState('');
@@ -523,12 +694,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     const saveProductCertificate = async () => {
         if (!certificateForm.title.trim()) {
-            toast.error('Weka jina la certificate.');
+            toast.error(copy('Enter the certificate name.', 'Weka jina la certificate.'));
             return;
         }
 
         if (!certificateForm.document) {
-            toast.error('Pakia file ya certificate.');
+            toast.error(copy('Upload the certificate file.', 'Pakia file ya certificate.'));
             return;
         }
 
@@ -550,19 +721,19 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 setSelectedProductCertificateIds((current) => [...new Set([...current, Number(certificate.id)])]);
             }
             resetCertificateForm();
-            toast.success(res.data?.message || 'Certificate imeongezwa.');
+            toast.success(res.data?.message || copy('Certificate added.', 'Certificate imeongezwa.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kuhifadhi certificate.');
+            toast.error(error.response?.data?.message || copy('Could not save the certificate.', 'Imeshindwa kuhifadhi certificate.'));
         } finally {
             setIsSavingCertificate(false);
         }
     };
 
     const serviceModeOptions = [
-        { key: 'showcase_only', label: 'Showcase', hint: 'Onyesha tu, hakuna checkout', icon: Store },
-        { key: 'request_quote', label: 'Request Quote', hint: 'Mteja atume ombi kwanza', icon: PenLine },
-        { key: 'book_appointment', label: 'Book / Request', hint: 'Mteja atume booking au ombi la huduma', icon: Calendar },
-        { key: 'pay_now', label: 'Pay / Reserve', hint: 'Mteja alipe au aweke deposit', icon: ShoppingBag },
+        { key: 'showcase_only', label: 'Showcase', swahiliLabel: 'Onyesha', hint: 'Onyesha tu, hakuna checkout', englishHint: 'Show the service without checkout.', icon: Store },
+        { key: 'request_quote', label: 'Request quote', swahiliLabel: 'Omba bei', hint: 'Mteja atume ombi kwanza', englishHint: 'The customer sends a request first.', icon: PenLine },
+        { key: 'book_appointment', label: 'Book / request', swahiliLabel: 'Book / omba', hint: 'Mteja atume booking au ombi la huduma', englishHint: 'The customer sends a booking or service request.', icon: Calendar },
+        { key: 'pay_now', label: 'Pay / reserve', swahiliLabel: 'Lipa / hifadhi', hint: 'Mteja alipe au aweke deposit', englishHint: 'The customer pays or places a deposit.', icon: ShoppingBag },
     ];
     const servicePriceOptions = [
         { key: 'hidden', label: 'Hide price' },
@@ -596,6 +767,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         { key: 'optional', label: 'Optional' },
         { key: 'refundable_deposit', label: 'Refundable deposit' },
     ];
+    const serviceOptionSwahili = {
+        hidden: 'Ficha bei', fixed: 'Bei ya kudumu', starts_from: 'Kuanzia', hourly: 'Kwa saa', daily: 'Kwa siku', nightly: 'Kwa usiku', weekly: 'Kwa wiki', monthly: 'Kwa mwezi', yearly: 'Kwa mwaka', per_person: 'Kwa mtu', per_visit: 'Kwa ziara', per_session: 'Kwa session', per_project: 'Kwa project', package: 'Package', quote_only: 'Bei kwa quote', optional: 'Si lazima', refundable_deposit: 'Deposit inayoweza kurudishwa',
+    };
     const serviceLocationOptions = [
         { key: 'provider_location', label: 'Specific location' },
         { key: 'customer_location', label: 'At client location' },
@@ -635,9 +809,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         {
             key: 'file',
             label: 'Faili ya kawaida',
+            englishLabel: 'Regular file',
             icon: File,
             description: 'PDF, ZIP, Word, Excel, slides, au faili mchanganyiko.',
+            englishDescription: 'PDF, ZIP, Word, Excel, slides, or mixed files.',
             previewHint: 'Weka cover, picha ya mfano, au video fupi kwenye Media za Bidhaa.',
+            englishPreviewHint: 'Add a cover, sample image, or short video to Product Media.',
             uploadHint: 'PDF, ZIP, audio, video, docs, sheets, slides',
             accept: '.pdf,.epub,.zip,.rar,.7z,.mp4,.mp3,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt',
             deliveryMode: 'upload',
@@ -645,9 +822,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         {
             key: 'ebook',
             label: 'E-book / PDF',
+            englishLabel: 'E-book / PDF',
             icon: BookOpen,
             description: 'Kitabu, guide, report, workbook, au notes.',
+            englishDescription: 'Books, guides, reports, workbooks, or notes.',
             previewHint: 'Weka cover, sample page, au video fupi ya kuonyesha ndani ya kitabu.',
+            englishPreviewHint: 'Add a cover, sample page, or short video showing the book.',
             uploadHint: 'PDF, EPUB, DOCX, ZIP bonus files',
             accept: '.pdf,.epub,.doc,.docx,.zip',
             deliveryMode: 'upload',
@@ -655,9 +835,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         {
             key: 'video',
             label: 'Video',
+            englishLabel: 'Video',
             icon: PlayCircle,
             description: 'Lesson, tutorial, movie, au darasa lililorekodiwa.',
+            englishDescription: 'Lessons, tutorials, movies, or recorded classes.',
             previewHint: 'Weka thumbnail, trailer, au clip fupi ya kuvutia mteja.',
+            englishPreviewHint: 'Add a thumbnail, trailer, or short clip to attract customers.',
             uploadHint: 'MP4, MOV, WEBM',
             accept: 'video/mp4,video/quicktime,video/webm',
             deliveryMode: 'video_stream',
@@ -665,9 +848,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         {
             key: 'audio',
             label: 'Audio / Music',
+            englishLabel: 'Audio / music',
             icon: Music,
             description: 'Wimbo, beat, podcast, Audio Book, au somo la sauti.',
+            englishDescription: 'Songs, beats, podcasts, audiobooks, or audio lessons.',
             previewHint: 'Weka cover art, sample clip, au promo fupi kwenye Media za Bidhaa.',
+            englishPreviewHint: 'Add cover art, a sample clip, or a short promo to Product Media.',
             uploadHint: 'MP3, WAV, M4A, AAC, OGG, FLAC',
             accept: 'audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/flac',
             deliveryMode: 'audio_stream',
@@ -675,9 +861,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         {
             key: 'gallery',
             label: 'Photo Pack',
+            englishLabel: 'Photo pack',
             icon: Images,
             description: 'Picha, artwork, wallpaper, au gallery ya kulipia.',
+            englishDescription: 'Photos, artwork, wallpapers, or a paid gallery.',
             previewHint: 'Weka sample images au previews zenye watermark kwenye Media za Bidhaa.',
+            englishPreviewHint: 'Add sample images or watermarked previews to Product Media.',
             uploadHint: 'JPG, PNG, WEBP',
             accept: 'image/jpeg,image/png,image/webp',
             deliveryMode: 'gallery_pack',
@@ -685,9 +874,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         {
             key: 'template_asset',
             label: 'Template',
+            englishLabel: 'Template',
             icon: Layers,
             description: 'Template za Canva, Figma, Notion, Excel, au pitch deck.',
+            englishDescription: 'Canva, Figma, Notion, Excel, or pitch deck templates.',
             previewHint: 'Weka screenshot, mfano uliokamilika, au screen recording fupi.',
+            englishPreviewHint: 'Add a screenshot, completed example, or short screen recording.',
             uploadHint: 'ZIP, FIG, SKETCH, XD, PPTX, XLSX, DOCX, PDF',
             accept: '.zip,.rar,.7z,.fig,.sketch,.xd,.ppt,.pptx,.xls,.xlsx,.doc,.docx,.pdf,.txt',
             deliveryMode: 'upload',
@@ -695,9 +887,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         {
             key: 'creative_asset',
             label: 'Design Asset',
+            englishLabel: 'Design asset',
             icon: Palette,
             description: 'Design files, presets, fonts, brand kit, au asset za video/3D.',
+            englishDescription: 'Design files, presets, fonts, brand kits, or video/3D assets.',
             previewHint: 'Weka mockup, before/after, swatches, au mfano uliorenderiwa.',
+            englishPreviewHint: 'Add a mockup, before/after, swatches, or rendered example.',
             uploadHint: 'PSD, AI, EPS, SVG, presets, fonts, AEP, 3D files, ZIP',
             accept: '.zip,.rar,.7z,.psd,.ai,.eps,.svg,.ase,.abr,.pat,.atn,.xmp,.lrtemplate,.dng,.otf,.ttf,.woff,.woff2,.aep,.prproj,.fcpxml,.blend,.c4d,.obj,.fbx,.glb,.gltf',
             deliveryMode: 'upload',
@@ -705,9 +900,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         {
             key: 'software',
             label: 'Software / Code',
+            englishLabel: 'Software / code',
             icon: Code2,
             description: 'Source code, scripts, plugins, config, au app files.',
+            englishDescription: 'Source code, scripts, plugins, configuration, or app files.',
             previewHint: 'Weka screenshot, demo video, changelog, au setup result.',
+            englishPreviewHint: 'Add a screenshot, demo video, changelog, or setup result.',
             uploadHint: 'ZIP, 7Z, docs, config packs',
             accept: '.zip,.rar,.7z,.pdf,.txt,.doc,.docx',
             deliveryMode: 'upload',
@@ -715,9 +913,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         {
             key: 'document',
             label: 'Document Pack',
+            englishLabel: 'Document pack',
             icon: FileText,
             description: 'Contracts, spreadsheets, pitch decks, worksheets.',
+            englishDescription: 'Contracts, spreadsheets, pitch decks, or worksheets.',
             previewHint: 'Weka cover, sample page iliyofichwa kidogo, au chart screenshot.',
+            englishPreviewHint: 'Add a cover, partially hidden sample page, or chart screenshot.',
             uploadHint: 'PDF, DOCX, XLSX, PPTX, ZIP',
             accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip',
             deliveryMode: 'upload',
@@ -725,9 +926,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         {
             key: 'custom_commission',
             label: 'Custom Work',
+            englishLabel: 'Custom work',
             icon: PenLine,
             description: 'Logo, edit, beat, report, design, au kazi utakayomalizia kwa oda.',
+            englishDescription: 'Logos, edits, beats, reports, designs, or work completed after an order.',
             previewHint: 'Weka portfolio samples, kazi za nyuma, au video fupi ya process yako.',
+            englishPreviewHint: 'Add portfolio samples, previous work, or a short process video.',
             uploadHint: 'No file now. Upload the final delivery from the customer order later.',
             accept: '',
             deliveryMode: 'custom_delivery',
@@ -1001,7 +1205,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     const openHotspotEditor = (index) => {
         if (isVideoMedia(images[index])) {
-            toast.info('Hotspots zinapatikana kwenye picha kwa sasa. Video itaonekana kwenye feed na post details.');
+            toast.info(copy('Hotspots are currently available on images. Video will appear in the feed and post details.', 'Hotspots zinapatikana kwenye picha kwa sasa. Video itaonekana kwenye feed na post details.'));
             return;
         }
         setCurrentImageIndex(index);
@@ -1034,7 +1238,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             await axios.post(`/merchant/${merchantUsername}/products/${id}/media`, buildMediaPayload());
         } catch (error) {
             if (!silent) {
-                toast.error(error.response?.data?.message || 'Imeshindwa kuhifadhi media za draft.');
+                toast.error(error.response?.data?.message || copy('Could not save draft media.', 'Imeshindwa kuhifadhi media za draft.'));
             }
         }
     };
@@ -1222,11 +1426,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setWholesaleDepositMode(p.wholesale_payment_terms?.deposit_mode || 'quote_based');
             setWholesaleDepositPercent(p.wholesale_payment_terms?.deposit_percent ?? '');
             setWholesaleBalanceDue(p.wholesale_payment_terms?.balance_due || 'before_delivery');
-            setSafePayMethods({
-                mobile_money: (p.wholesale_payment_terms?.safepay_methods || []).includes('mobile_money') || !Array.isArray(p.wholesale_payment_terms?.safepay_methods),
-                bank_transfer: (p.wholesale_payment_terms?.safepay_methods || []).includes('bank_transfer') || !Array.isArray(p.wholesale_payment_terms?.safepay_methods),
-                wallet: (p.wholesale_payment_terms?.safepay_methods || []).includes('wallet') || !Array.isArray(p.wholesale_payment_terms?.safepay_methods),
-                card: (p.wholesale_payment_terms?.safepay_methods || []).includes('card'),
+            setProviderPaymentMethods({
+                mobile_money: (p.wholesale_payment_terms?.provider_payment_methods || []).includes('mobile_money') || !Array.isArray(p.wholesale_payment_terms?.provider_payment_methods),
+                bank_transfer: (p.wholesale_payment_terms?.provider_payment_methods || []).includes('bank_transfer') || !Array.isArray(p.wholesale_payment_terms?.provider_payment_methods),
+                card: (p.wholesale_payment_terms?.provider_payment_methods || []).includes('card'),
             });
             setQuantity(p.inventory_quantity ?? p.inventory_count);
             setFulfillmentMode(p.fulfillment_mode || 'own_stock');
@@ -1489,7 +1692,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             }
 
         } catch (err) {
-            toast.error('Imeshindwa kupakia taarifa za bidhaa.');
+            toast.error(copy('Could not load product information.', 'Imeshindwa kupakia taarifa za bidhaa.'));
             console.error(err);
         } finally {
             setIsLoadingEdit(false);
@@ -1652,8 +1855,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 <div className="flex items-start gap-2">
                     <Clock3 className="mt-0.5 h-4 w-4 text-emerald-700" />
                     <div>
-                        <p className="text-xs font-black uppercase tracking-wider text-emerald-900">Muda wa bidhaa hii kufika</p>
-                        <p className="text-xs text-emerald-800/80">Tumia hapa tu kama bidhaa hii ni tofauti na delivery template uliyochagua.</p>
+                        <p className="text-xs font-black uppercase tracking-wider text-emerald-900">{copy('Item delivery timing', 'Muda wa bidhaa hii kufika')}</p>
+                        <p className="text-xs text-emerald-800/80">{copy('Use this only when this item differs from the delivery template you selected.', 'Tumia hapa tu kama bidhaa hii ni tofauti na delivery template uliyochagua.')}</p>
                     </div>
                 </div>
                 <button
@@ -1661,7 +1864,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     onClick={() => setDeliveryPromiseOverrideEnabled(prev => !prev)}
                     className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${deliveryPromiseOverrideEnabled ? 'border-emerald-200 bg-white text-emerald-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}
                 >
-                    {deliveryPromiseOverrideEnabled ? 'Override on' : 'Use profile'}
+                            {deliveryPromiseOverrideEnabled ? copy('Override on', 'Override imewashwa') : copy('Use profile', 'Tumia profile')}
                 </button>
             </div>
             {deliveryPromiseOverrideEnabled && (
@@ -1669,18 +1872,18 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                         {DELIVERY_PROMISE_PRESETS.map((preset) => (
                             <button key={preset.key} type="button" onClick={() => applyDeliveryPromisePreset(preset)} className={`rounded-2xl border bg-white px-3 py-2 text-left transition hover:border-emerald-300 ${deliveryPromise.label === preset.buyerLabel ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-emerald-100'}`}>
-                                <span className="block text-xs font-black text-emerald-900">{preset.label}</span>
-                                <span className="mt-0.5 block text-[10px] font-semibold leading-4 text-emerald-700/75">{preset.hint}</span>
+                                <span className="block text-xs font-black text-emerald-900">{copy(preset.englishLabel, preset.label)}</span>
+                                <span className="mt-0.5 block text-[10px] font-semibold leading-4 text-emerald-700/75">{copy(preset.englishHint, preset.hint)}</span>
                             </button>
                         ))}
                     </div>
                     {showDeliveryPromiseDays ? (
                         <div className="space-y-2">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                <Input type="number" min="0" placeholder="Kuandaa kuanzia" value={deliveryPromise.handling_min_days} onChange={e => updateDeliveryPromise('handling_min_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
-                                <Input type="number" min="0" placeholder="Kuandaa mpaka" value={deliveryPromise.handling_max_days} onChange={e => updateDeliveryPromise('handling_max_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
-                                <Input type="number" min="0" placeholder="Safari kuanzia" value={deliveryPromise.transit_min_days} onChange={e => updateDeliveryPromise('transit_min_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
-                                <Input type="number" min="0" placeholder="Safari mpaka" value={deliveryPromise.transit_max_days} onChange={e => updateDeliveryPromise('transit_max_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                                <Input type="number" min="0" placeholder={copy('Preparation from', 'Kuandaa kuanzia')} value={deliveryPromise.handling_min_days} onChange={e => updateDeliveryPromise('handling_min_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                                <Input type="number" min="0" placeholder={copy('Preparation up to', 'Kuandaa mpaka')} value={deliveryPromise.handling_max_days} onChange={e => updateDeliveryPromise('handling_max_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                                <Input type="number" min="0" placeholder={copy('Transit from', 'Safari kuanzia')} value={deliveryPromise.transit_min_days} onChange={e => updateDeliveryPromise('transit_min_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                                <Input type="number" min="0" placeholder={copy('Transit up to', 'Safari mpaka')} value={deliveryPromise.transit_max_days} onChange={e => updateDeliveryPromise('transit_max_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
                             </div>
                             {showDeliveryPromiseCutoff && (
                                 <Input type="time" value={deliveryPromise.cutoff_time} onChange={e => updateDeliveryPromise('cutoff_time', e.target.value)} className="h-10 bg-white text-xs font-bold" />
@@ -1688,21 +1891,21 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         </div>
                     ) : (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">
-                            Siku na deadline zimefichwa kwa sababu muda utathibitishwa kwenye chat.
+                            {copy('Days and the deadline are hidden because timing will be confirmed in chat.', 'Siku na deadline zimefichwa kwa sababu muda utathibitishwa kwenye chat.')}
                         </div>
                     )}
                     <div className="grid grid-cols-1 gap-2">
-                        <Input placeholder="Maneno ya mteja, mf. Made to order: siku 3-5" value={deliveryPromise.label} onChange={e => updateDeliveryPromise('label', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                        <Input placeholder={copy('Customer-facing wording, e.g. Made to order: 3–5 days', 'Maneno ya mteja, mf. Made to order: siku 3-5')} value={deliveryPromise.label} onChange={e => updateDeliveryPromise('label', e.target.value)} className="h-10 bg-white text-xs font-bold" />
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <button type="button" onClick={() => updateDeliveryPromise('business_days_only', !deliveryPromise.business_days_only)} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${deliveryPromise.business_days_only ? 'border-emerald-200 bg-white text-emerald-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}>
-                            {deliveryPromise.business_days_only ? 'Siku za kazi' : 'Kila siku'}
+                            {deliveryPromise.business_days_only ? copy('Business days', 'Siku za kazi') : copy('Every day', 'Kila siku')}
                         </button>
                         <button type="button" onClick={() => setDeliveryPromise(prev => ({ ...prev, requires_confirmation: !prev.requires_confirmation, cutoff_time: prev.requires_confirmation ? prev.cutoff_time : '' }))} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${deliveryPromise.requires_confirmation ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}>
-                            {deliveryPromise.requires_confirmation ? 'Tuta-confirm kwa chat' : 'Mteja aone estimate'}
+                            {deliveryPromise.requires_confirmation ? copy('Confirm in chat', 'Tuta-confirm kwa chat') : copy('Show customer an estimate', 'Mteja aone estimate')}
                         </button>
                     </div>
-                    <Input placeholder="Ujumbe wa ziada, mf. Kwa mzigo mkubwa tutapanga cargo kwenye chat" value={deliveryPromise.note} onChange={e => updateDeliveryPromise('note', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                    <Input placeholder={copy('Additional message, e.g. large orders will be arranged as cargo in chat', 'Ujumbe wa ziada, mf. Kwa mzigo mkubwa tutapanga cargo kwenye chat')} value={deliveryPromise.note} onChange={e => updateDeliveryPromise('note', e.target.value)} className="h-10 bg-white text-xs font-bold" />
                 </div>
             )}
         </div>
@@ -1762,8 +1965,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 setWholesaleDepositPercent={setWholesaleDepositPercent}
                 wholesaleBalanceDue={wholesaleBalanceDue}
                 setWholesaleBalanceDue={setWholesaleBalanceDue}
-                safePayMethods={safePayMethods}
-                setSafePayMethods={setSafePayMethods}
+                providerPaymentMethods={providerPaymentMethods}
+                setProviderPaymentMethods={setProviderPaymentMethods}
                 pricingTiers={pricingTiers}
                 setPricingTiers={setPricingTiers}
                 leadTimeTiers={leadTimeTiers}
@@ -1819,8 +2022,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         return (
             <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                 <div>
-                    <p className="text-xs font-black uppercase tracking-wider text-slate-700">Inapatikana kwenye shop gani?</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">Acha ipatikane shops zote, au chagua matawi maalum.</p>
+                    <p className="text-xs font-black uppercase tracking-wider text-slate-700">{copy('Which shops should have this item?', 'Inapatikana kwenye shop gani?')}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Make it available in all shops, or choose specific branches.', 'Acha ipatikane shops zote, au chagua matawi maalum.')}</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                     <button
@@ -1828,14 +2031,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${mode === 'all' ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
                         onClick={() => setAvailabilityLocationIds([])}
                     >
-                        Shops zote zinazofanya kazi
+                        {copy('All active shops', 'Shops zote zinazofanya kazi')}
                     </button>
                     <button
                         type="button"
                         className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${mode === 'selected' ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
                         onClick={() => setAvailabilityLocationIds([String(servingLocations[0].id)])}
                     >
-                        Matawi uliyochagua tu
+                        {copy('Only selected branches', 'Matawi uliyochagua tu')}
                     </button>
                 </div>
                 {mode === 'selected' && (
@@ -1863,18 +2066,27 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const availabilityDateCopy = {
         farm_harvest: {
             label: 'Expected harvest / ready date',
+            swahiliLabel: 'Tarehe ya mavuno / maandalizi',
             helper: 'Date when the harvest or farm stock should be ready for pickup or delivery.',
+            swahiliHelper: 'Tarehe ambayo mavuno au stock ya shamba itakuwa tayari kwa pickup au delivery.',
             placeholder: 'Choose harvest ready date',
+            swahiliPlaceholder: 'Chagua tarehe ya mavuno kuwa tayari',
         },
         preorder: {
             label: 'Expected stock arrival date',
+            swahiliLabel: 'Tarehe ya kufika kwa stock inayotarajiwa',
             helper: 'Date when preorder stock is expected to arrive or become available to customers.',
+            swahiliHelper: 'Tarehe ambayo stock ya preorder inatarajiwa kufika au kupatikana kwa wateja.',
             placeholder: 'Choose expected arrival date',
+            swahiliPlaceholder: 'Chagua tarehe inayotarajiwa kufika',
         },
         group_sale: {
             label: 'Expected fulfillment date',
+            swahiliLabel: 'Tarehe ya kutimiza order inayotarajiwa',
             helper: 'Date when orders should be fulfilled after the group target is reached.',
+            swahiliHelper: 'Tarehe ambayo order zitatimizwa baada ya kufikiwa kwa target ya group.',
             placeholder: 'Choose fulfillment date',
+            swahiliPlaceholder: 'Chagua tarehe ya utimilishaji',
         },
     }[fulfillmentMode] || null;
     const categoryAllowedFulfillmentModes = selectedCatalogSchema?.allowed_fulfillment_modes || selectedRootCategory?.allowed_fulfillment_modes || [];
@@ -2090,7 +2302,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     };
     const addServiceOption = () => {
         if (!serviceOptionCategoryReady) {
-            toast.error(serviceOptionNeedsSubcategory ? 'Choose a service subcategory first.' : 'Choose a service category first.');
+            toast.error(serviceOptionNeedsSubcategory ? copy('Choose a service subcategory first.', 'Chagua subcategory ya huduma kwanza.') : copy('Choose a service category first.', 'Chagua category ya huduma kwanza.'));
             return;
         }
 
@@ -2222,7 +2434,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         const area = serviceAreaDraft.trim();
         if (!area) return;
         if (serviceAreaList.some((item) => item.toLowerCase() === area.toLowerCase())) {
-            toast.error('Area already added.');
+            toast.error(copy('Area already added.', 'Eneo tayari limeongezwa.'));
             return;
         }
         setServiceAreas((prev) => [...prev, area]);
@@ -2577,7 +2789,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             }
             */
         } catch (err) {
-            toast.error('Imeshindwa kupakia media.');
+            toast.error(copy('Could not upload media.', 'Imeshindwa kupakia media.'));
             setImages(prev => prev.filter((_, i) => i !== index));
         }
     };
@@ -2606,7 +2818,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setVariants((prev) => prev.map((variant, idx) => (
                 idx === variantIndex ? { ...variant, isUploadingSwatch: false } : variant
             )));
-            toast.error('Imeshindwa kupakia swatch image.');
+            toast.error(copy('Could not upload swatch image.', 'Imeshindwa kupakia swatch image.'));
             return false;
         }
     };
@@ -2615,7 +2827,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (!file) return false;
 
         if (!file.type?.startsWith('image/')) {
-            toast.error('Tafadhali pakia picha tu kwa product detail section.');
+            toast.error(copy('Upload images only for the product detail section.', 'Tafadhali pakia picha tu kwa product detail section.'));
             return false;
         }
 
@@ -2657,7 +2869,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     ? { ...section, is_uploading_image: false, upload_progress: 0, local_image_url: section.image_url || '' }
                     : section
             )));
-            toast.error('Imeshindwa kupakia picha ya product details.');
+            toast.error(copy('Could not upload the product detail image.', 'Imeshindwa kupakia picha ya product details.'));
             return false;
         } finally {
             URL.revokeObjectURL(localPreviewUrl);
@@ -2680,7 +2892,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     const submitSwatchModal = async () => {
         if (swatchVariantIndex === null || !swatchFile) {
-            toast.error('Tafadhali chagua picha ya swatch kwanza.');
+            toast.error(copy('Choose a swatch image first.', 'Tafadhali chagua picha ya swatch kwanza.'));
             return;
         }
         const ok = await uploadVariantSwatch(swatchVariantIndex, swatchFile);
@@ -2740,7 +2952,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     const generateVariantsFromFacets = () => {
         if (variantAxisAttributes.length === 0) {
-            toast.error('Hakuna variant options zilizowekwa kwenye admin kwa category hii.');
+            toast.error(copy('No variant options have been configured by admin for this category.', 'Hakuna variant options zilizowekwa kwenye admin kwa category hii.'));
             return;
         }
 
@@ -2752,7 +2964,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         }, []);
 
         if (cartesian.length === 0) {
-            toast.error('Hakuna combinations za variants zilizopatikana.');
+            toast.error(copy('No variant combinations were found.', 'Hakuna combinations za variants zilizopatikana.'));
             return;
         }
 
@@ -2812,18 +3024,18 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const physicalDetailsReady = isFocusedPhysicalModule || physicalFlowStep >= 3;
     const physicalPublishDisabledReason = (() => {
         if (step !== 'physical') return '';
-        if (isUploadingMedia) return 'Subiri media zimalize kupanda.';
-        if (isUploadingProductDetailSectionImage) return 'Subiri picha za in-depth product details zimalize kupanda.';
+        if (isUploadingMedia) return copy('Wait for media uploads to finish.', 'Subiri media zimalize kupanda.');
+        if (isUploadingProductDetailSectionImage) return copy('Wait for in-depth product detail images to finish uploading.', 'Subiri picha za in-depth product details zimalize kupanda.');
         if (isFocusedPhysicalModule) return '';
-        if (requiresLocationInventory && physicalLocations.length === 0) return 'Ongeza angalau duka au eneo la stock/pickup kwenye Mipangilio.';
-        if (requiresLocationInventory && !hasVariants && locationStockTotal <= 0) return `Weka stock kwenye angalau eneo moja (${stockUnitLabel}).`;
-        if (hasVariants && configuredPhysicalVariants.length === 0) return wholesaleOnly ? 'Jaza angalau variant moja.' : 'Jaza angalau variant moja yenye bei.';
-        if (requiresLocationInventory && hasVariants && configuredVariantStockTotal <= 0) return 'Weka stock ya angalau variant moja kwenye duka au eneo la stock/pickup.';
-        if (fulfillmentMode === 'supplier_sourced' && (!sourceDetails.supplier_name?.trim() || !sourceDetails.supplier_phone?.trim())) return 'Weka jina na simu ya supplier kwa Takeer.';
-        if (fulfillmentMode === 'supplier_sourced' && sourceDetails.confirmation_hours === '') return 'Weka muda wa kuthibitisha au kupata bidhaa kwa masaa.';
-        if (fulfillmentMode === 'made_to_order' && availabilityLeadTimeDays === '') return 'Weka muda wa kuandaa bidhaa.';
-        if (['farm_harvest', 'preorder', 'group_sale'].includes(fulfillmentMode) && !availableFrom) return 'Weka tarehe bidhaa inatarajiwa kupatikana.';
-        if (fulfillmentMode === 'group_sale' && (!groupSaleGoalQuantity || !groupSaleDeadline)) return 'Group sale inahitaji target quantity na deadline.';
+        if (requiresLocationInventory && physicalLocations.length === 0) return copy('Add at least one shop or stock/pickup location in Settings.', 'Ongeza angalau duka au eneo la stock/pickup kwenye Mipangilio.');
+        if (requiresLocationInventory && !hasVariants && locationStockTotal <= 0) return copy(`Add stock to at least one location (${stockUnitLabel}).`, `Weka stock kwenye angalau eneo moja (${stockUnitLabel}).`);
+        if (hasVariants && configuredPhysicalVariants.length === 0) return wholesaleOnly ? copy('Add at least one variant.', 'Jaza angalau variant moja.') : copy('Add at least one priced variant.', 'Jaza angalau variant moja yenye bei.');
+        if (requiresLocationInventory && hasVariants && configuredVariantStockTotal <= 0) return copy('Add stock for at least one variant in a shop or stock/pickup location.', 'Weka stock ya angalau variant moja kwenye duka au eneo la stock/pickup.');
+        if (fulfillmentMode === 'supplier_sourced' && (!sourceDetails.supplier_name?.trim() || !sourceDetails.supplier_phone?.trim())) return copy('Add the supplier name and phone for Takeer.', 'Weka jina na simu ya supplier kwa Takeer.');
+        if (fulfillmentMode === 'supplier_sourced' && sourceDetails.confirmation_hours === '') return copy('Add the hours needed to confirm or source the item.', 'Weka muda wa kuthibitisha au kupata bidhaa kwa masaa.');
+        if (fulfillmentMode === 'made_to_order' && availabilityLeadTimeDays === '') return copy('Add the preparation time for this item.', 'Weka muda wa kuandaa bidhaa.');
+        if (['farm_harvest', 'preorder', 'group_sale'].includes(fulfillmentMode) && !availableFrom) return copy('Add the expected availability date.', 'Weka tarehe bidhaa inatarajiwa kupatikana.');
+        if (fulfillmentMode === 'group_sale' && (!groupSaleGoalQuantity || !groupSaleDeadline)) return copy('Group sale needs a target quantity and deadline.', 'Group sale inahitaji target quantity na deadline.');
         return '';
     })();
 
@@ -2831,7 +3043,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         <div className="animate-in fade-in space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
             <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Starts at</label>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Starts at', 'Inaanza')}</label>
                     <Input
                         type="datetime-local"
                         value={liveEventStartsAt}
@@ -2840,7 +3052,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     />
                 </div>
                 <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Duration minutes</label>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Duration (minutes)', 'Muda (dakika)')}</label>
                     <Input
                         type="number"
                         min="1"
@@ -2850,7 +3062,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     />
                 </div>
                 <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Timezone</label>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Timezone', 'Timezone')}</label>
                     <select
                         value={liveEventTimezone}
                         onChange={(e) => setLiveEventTimezone(e.target.value)}
@@ -2862,13 +3074,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     </select>
                 </div>
                 <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Capacity (Attendee Limit)</label>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Capacity (attendee limit)', 'Uwezo (idadi ya washiriki)')}</label>
                     <Input
                         type="number"
                         min="1"
                         value={liveEventCapacity}
                         onChange={(e) => setLiveEventCapacity(e.target.value)}
-                        placeholder="Optional"
+                        placeholder={copy('Optional', 'Si lazima')}
                         className="h-11 bg-white"
                     />
                 </div>
@@ -2876,25 +3088,25 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             <Input
                 value={liveEventAccessUrl}
                 onChange={(e) => setLiveEventAccessUrl(e.target.value)}
-                placeholder="Private Zoom/Google Meet/stream link"
+                placeholder={copy('Private Zoom/Google Meet/stream link', 'Link binafsi ya Zoom/Google Meet/stream')}
                 className="h-11 bg-white"
             />
             <Input
                 value={liveEventVenue}
                 onChange={(e) => setLiveEventVenue(e.target.value)}
-                placeholder="Venue or physical location, optional"
+                placeholder={copy('Venue or physical location, optional', 'Ukumbi au eneo la tukio, si lazima')}
                 className="h-11 bg-white"
             />
             <Input
                 value={liveEventReplayUrl}
                 onChange={(e) => setLiveEventReplayUrl(e.target.value)}
-                placeholder="Replay link after the event, optional"
+                placeholder={copy('Replay link after the event, optional', 'Link ya replay baada ya tukio, si lazima')}
                 className="h-11 bg-white"
             />
             <Textarea
                 value={liveEventInstructions}
                 onChange={(e) => setLiveEventInstructions(e.target.value)}
-                placeholder="Buyer instructions: agenda, preparation, workbook link, arrival notes..."
+                placeholder={copy('Buyer instructions: agenda, preparation, workbook link, arrival notes...', 'Maelekezo kwa mnunuzi: agenda, maandalizi, link ya workbook, maelekezo ya kufika...')}
                 className="min-h-[96px] rounded-xl bg-white"
             />
         </div>
@@ -2902,7 +3114,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     const analyzeImageWithAI = async (imageUrl) => {
         setIsAnalyzing(true);
-        toast.loading('AI inaangalia picha yako...', { id: 'ai-analyze' });
+        toast.loading(copy('AI is reviewing your image...', 'AI inaangalia picha yako...'), { id: 'ai-analyze' });
 
         try {
             const res = await axios.post(`/merchant/${merchantUsername}/upload/draft`, {
@@ -2935,11 +3147,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             }
             setShowManualForm(true);
             setManualStepCompleted(false);
-            toast.success(res.data.message, { id: 'ai-analyze' });
+            toast.success(res.data.message || copy('Product analysis completed.', 'Uchambuzi wa bidhaa umekamilika.'), { id: 'ai-analyze' });
             setErrorDetail(null);
         } catch (error) {
             const data = error.response?.data || {};
-            const msg = data.error_detail || data.message || 'Imeshindwa kutambua bidhaa.';
+            const msg = data.error_detail || data.message || copy('Could not analyze the product.', 'Imeshindwa kutambua bidhaa.');
             setErrorDetail(msg);
             toast.error(msg, { id: 'ai-analyze' });
         } finally {
@@ -2970,7 +3182,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 size: res.data.size || file.size,
             }));
         } catch (err) {
-            toast.error('Imeshindwa kupakia faili lako la digitali.');
+            toast.error(copy('Could not upload your digital file.', 'Imeshindwa kupakia faili lako la digitali.'));
             setDigitalFile(prev => ({ ...prev, isUploading: false, error: true }));
         }
     };
@@ -2980,7 +3192,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (!file) return;
 
         if (!file.type?.startsWith('video/')) {
-            toast.error('Tafadhali chagua video file.');
+            toast.error(copy('Choose a video file.', 'Tafadhali chagua video file.'));
             return;
         }
 
@@ -3042,7 +3254,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 size: res.data.size || file.size,
             }));
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindwa kupakia premium video.');
+            toast.error(err.response?.data?.message || copy('Could not upload the premium video.', 'Imeshindwa kupakia premium video.'));
             setPaidVideoFile(prev => ({ ...prev, isUploading: false, error: true }));
         }
     };
@@ -3122,7 +3334,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 },
             }));
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindwa kupakia release file.');
+            toast.error(err.response?.data?.message || copy('Could not upload the release file.', 'Imeshindwa kupakia release file.'));
             setReleaseForm(prev => ({ ...prev, file: { ...prev.file, isUploading: false, error: true } }));
         } finally {
             setReleaseUploading(false);
@@ -3131,15 +3343,15 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     const saveSoftwareRelease = async () => {
         if (!productId) {
-            toast.error('Hifadhi bidhaa kwanza kabla ya kuongeza releases.');
+            toast.error(copy('Save the product before adding releases.', 'Hifadhi bidhaa kwanza kabla ya kuongeza releases.'));
             return;
         }
         if (!releaseForm.version.trim()) {
-            toast.error('Weka version ya release.');
+            toast.error(copy('Enter the release version.', 'Weka version ya release.'));
             return;
         }
         if (!releaseForm.file?.url) {
-            toast.error('Pakia release file kwanza.');
+            toast.error(copy('Upload the release file first.', 'Pakia release file kwanza.'));
             return;
         }
 
@@ -3155,11 +3367,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 status: 'published',
                 is_latest: true,
             });
-            toast.success('Release imeongezwa.');
+            toast.success(copy('Release added.', 'Release imeongezwa.'));
             setReleaseForm({ version: '', title: '', changelog: '', file: null });
             fetchSoftwareReleases(productId);
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindwa kuhifadhi release.');
+            toast.error(err.response?.data?.message || copy('Could not save the release.', 'Imeshindwa kuhifadhi release.'));
         } finally {
             setReleaseSaving(false);
         }
@@ -3169,19 +3381,19 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (!productId || !releaseId) return;
         try {
             await axios.delete(`/merchant/${merchantUsername}/products/${productId}/releases/${releaseId}`);
-            toast.success('Release imefutwa.');
+            toast.success(copy('Release deleted.', 'Release imefutwa.'));
             fetchSoftwareReleases(productId);
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindwa kufuta release.');
+            toast.error(err.response?.data?.message || copy('Could not delete the release.', 'Imeshindwa kufuta release.'));
         }
     };
 
     const copyLicenseKey = async (key) => {
         try {
             await navigator.clipboard.writeText(key);
-            toast.success('License key copied.');
+            toast.success(copy('License key copied.', 'License key imenakiliwa.'));
         } catch {
-            toast.error('Imeshindwa ku-copy license key.');
+            toast.error(copy('Could not copy the license key.', 'Imeshindwa ku-copy license key.'));
         }
     };
 
@@ -3190,7 +3402,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             await navigator.clipboard.writeText(value);
             toast.success(successMessage);
         } catch {
-            toast.error('Imeshindwa ku-copy.');
+            toast.error(copy('Could not copy.', 'Imeshindwa ku-copy.'));
         }
     };
 
@@ -3199,10 +3411,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         setLicenseKeyBusy(`${action}-${licenseId}`);
         try {
             await axios.post(`/merchant/${merchantUsername}/products/${productId}/license-keys/${licenseId}/${action}`);
-            toast.success(action === 'revoke' ? 'License key imezimwa.' : 'License key mpya imetengenezwa.');
+            toast.success(action === 'revoke' ? copy('License key revoked.', 'License key imezimwa.') : copy('New license key created.', 'License key mpya imetengenezwa.'));
             fetchSoftwareLicenseKeys(productId);
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindwa kusasisha license key.');
+            toast.error(err.response?.data?.message || copy('Could not update the license key.', 'Imeshindwa kusasisha license key.'));
         } finally {
             setLicenseKeyBusy(null);
         }
@@ -3213,7 +3425,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (!file) return;
 
         if (!file.type?.startsWith('audio/')) {
-            toast.error('Tafadhali chagua audio file.');
+            toast.error(copy('Choose an audio file.', 'Tafadhali chagua audio file.'));
             return;
         }
 
@@ -3236,7 +3448,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 size: res.data.size || file.size,
             }));
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindwa kupakia premium audio.');
+            toast.error(err.response?.data?.message || copy('Could not upload the premium audio.', 'Imeshindwa kupakia premium audio.'));
             setPaidAudioFile(prev => ({ ...prev, isUploading: false, error: true }));
         }
     };
@@ -3247,7 +3459,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
         const imageFiles = files.filter(file => file.type?.startsWith('image/'));
         if (imageFiles.length !== files.length) {
-            toast.error('Tafadhali chagua picha pekee kwa gallery pack.');
+            toast.error(copy('Choose images only for a gallery pack.', 'Tafadhali chagua picha pekee kwa gallery pack.'));
             return;
         }
 
@@ -3290,7 +3502,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         : item
                 )));
             } catch (err) {
-                toast.error(err.response?.data?.message || `Imeshindwa kupakia ${file.name}.`);
+                toast.error(err.response?.data?.message || copy(`Could not upload ${file.name}.`, `Imeshindwa kupakia ${file.name}.`));
                 setPaidGalleryItems(prev => prev.map(item => (
                     item.localId === placeholder.localId ? { ...item, isUploading: false, error: true } : item
                 )));
@@ -3310,84 +3522,84 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             && !(step === 'physical' && hasVariants)
             && !(step === 'service' && !serviceNeedsCatalogPrice)
         ) {
-            toast.error('Tafadhali weka bei ya bidhaa au assign access group.');
+            toast.error(copy('Enter a product price or assign an access group.', 'Tafadhali weka bei ya bidhaa au assign access group.'));
             return;
         }
         if (step === 'physical' && images.length === 0) {
-            toast.error('Tafadhali ongeza angalau picha au video moja ya bidhaa.');
+            toast.error(copy('Add at least one product image or video.', 'Tafadhali ongeza angalau picha au video moja ya bidhaa.'));
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && !selectedCategoryId) {
-            toast.error('Tafadhali chagua category ya bidhaa.');
+            toast.error(copy('Choose a product category.', 'Tafadhali chagua category ya bidhaa.'));
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && physicalFlowStep < 3) {
-            toast.error('Kamilisha hatua za juu kwanza.');
+            toast.error(copy('Complete the steps above first.', 'Kamilisha hatua za juu kwanza.'));
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && requiresLocationInventory && physicalLocations.length === 0) {
-            toast.error('Tafadhali ongeza angalau duka au eneo la stock/pickup kwenye Mipangilio.');
+            toast.error(copy('Add at least one shop or stock/pickup location in Settings.', 'Tafadhali ongeza angalau duka au eneo la stock/pickup kwenye Mipangilio.'));
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && requiresLocationInventory && !hasVariants && locationStockTotal <= 0) {
-            toast.error(`Tafadhali weka stock kwenye angalau duka au eneo la stock/pickup (${stockUnitLabel}).`);
+            toast.error(copy(`Add stock to at least one shop or stock/pickup location (${stockUnitLabel}).`, `Tafadhali weka stock kwenye angalau duka au eneo la stock/pickup (${stockUnitLabel}).`));
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && fulfillmentMode === 'supplier_sourced' && (!sourceDetails.supplier_name?.trim() || !sourceDetails.supplier_phone?.trim())) {
-            toast.error('Tafadhali weka jina na simu ya supplier. Taarifa hizi ni za Takeer tu.');
+            toast.error(copy('Enter the supplier name and phone. This information is private to Takeer.', 'Tafadhali weka jina na simu ya supplier. Taarifa hizi ni za Takeer tu.'));
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && fulfillmentMode === 'supplier_sourced' && sourceDetails.confirmation_hours === '') {
-            toast.error('Tafadhali weka masaa yanayohitajika kuthibitisha au kupata bidhaa.');
+            toast.error(copy('Enter the hours needed to confirm or source the item.', 'Tafadhali weka masaa yanayohitajika kuthibitisha au kupata bidhaa.'));
             return;
         }
         if (wholesaleEnabled) {
             if (!minOrderQuantity) {
-                toast.error('Wholesale inahitaji minimum order quantity.');
+                toast.error(copy('Wholesale requires a minimum order quantity.', 'Wholesale inahitaji minimum order quantity.'));
                 return;
             }
             if (cleanPricingTiers.length === 0) {
-                toast.error('Ongeza angalau pricing tier moja kwa wholesale.');
+                toast.error(copy('Add at least one pricing tier for wholesale.', 'Ongeza angalau pricing tier moja kwa wholesale.'));
                 return;
             }
-            if (!Object.values(safePayMethods).some(Boolean)) {
-                toast.error('Chagua angalau njia moja ya Takeer SafePay.');
+            if (!Object.values(providerPaymentMethods).some(Boolean)) {
+                toast.error(copy('Choose at least one licensed PSP payment method.', 'Chagua angalau njia moja ya licensed PSP.'));
                 return;
             }
         }
         if (step === 'physical' && !isFocusedPhysicalModule && fulfillmentMode === 'made_to_order' && availabilityLeadTimeDays === '') {
-            toast.error('Tafadhali weka siku ngapi zinahitajika kuandaa bidhaa.');
+            toast.error(copy('Enter how many days are needed to prepare the product.', 'Tafadhali weka siku ngapi zinahitajika kuandaa bidhaa.'));
             return;
         }
         if (step === 'digital' && digitalDeliveryMode === 'custom_delivery' && availabilityLeadTimeDays === '') {
-            toast.error('Tafadhali weka siku ngapi zinahitajika kumaliza custom work.');
+            toast.error(copy('Enter how many days are needed to complete the custom work.', 'Tafadhali weka siku ngapi zinahitajika kumaliza custom work.'));
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && ['farm_harvest', 'preorder', 'group_sale'].includes(fulfillmentMode) && !availableFrom) {
-            toast.error('Tafadhali weka tarehe ambayo bidhaa inatarajiwa kupatikana.');
+            toast.error(copy('Enter the expected availability date.', 'Tafadhali weka tarehe ambayo bidhaa inatarajiwa kupatikana.'));
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && fulfillmentMode === 'group_sale' && (!groupSaleGoalQuantity || !groupSaleDeadline)) {
-            toast.error('Group sale inahitaji target quantity na deadline.');
+            toast.error(copy('Group sale requires a target quantity and deadline.', 'Group sale inahitaji target quantity na deadline.'));
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && variantAxisAttributes.length > 0 && variantDecision === null) {
-            toast.error('Chagua kama bidhaa ina variants au la.');
+            toast.error(copy('Choose whether the product has variants.', 'Chagua kama bidhaa ina variants au la.'));
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && hasVariants) {
             const configuredVariants = configuredPhysicalVariants;
             if (configuredVariants.length === 0) {
-                toast.error(wholesaleOnly ? 'Jaza angalau variant moja.' : 'Jaza angalau variant moja yenye bei.');
+                toast.error(wholesaleOnly ? copy('Add at least one variant.', 'Jaza angalau variant moja.') : copy('Add at least one priced variant.', 'Jaza angalau variant moja yenye bei.'));
                 return;
             }
             const invalidVariantQuantity = configuredVariants.find((variant) => Number(variant.quantity) < 0 || Number.isNaN(Number(variant.quantity)));
             if (invalidVariantQuantity) {
-                toast.error('Quantity ya variant lazima iwe 0 au zaidi.');
+                toast.error(copy('Variant quantity must be 0 or more.', 'Quantity ya variant lazima iwe 0 au zaidi.'));
                 return;
             }
             if (requiresLocationInventory && configuredVariantStockTotal <= 0) {
-                toast.error('Tafadhali weka stock ya angalau variant moja kwenye duka au eneo la stock/pickup.');
+                toast.error(copy('Set stock for at least one variant in a shop or stock/pickup location.', 'Tafadhali weka stock ya angalau variant moja kwenye duka au eneo la stock/pickup.'));
                 return;
             }
         }
@@ -3409,79 +3621,79 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             return !(current.value_text || '').toString().trim();
         });
         if (step === 'physical' && !isFocusedPhysicalModule && missingRequiredAttribute) {
-            toast.error(`Tafadhali jaza ${missingRequiredAttribute.label}.`);
+            toast.error(copy(`Please complete ${missingRequiredAttribute.label}.`, `Tafadhali jaza ${missingRequiredAttribute.label}.`));
             return;
         }
         if (step === 'digital') {
             if (digitalDeliveryMode === 'upload' && !digitalFile) {
-                toast.error('Tafadhali pakia faili la bidhaa yako.');
+            toast.error(copy('Upload your product file.', 'Tafadhali pakia faili la bidhaa yako.'));
                 return;
             }
             if (digitalDeliveryMode === 'video_stream' && !paidVideoFile) {
-                toast.error('Tafadhali pakia full premium video.');
+            toast.error(copy('Upload the full premium video.', 'Tafadhali pakia full premium video.'));
                 return;
             }
             if (digitalDeliveryMode === 'audio_stream' && !paidAudioFile) {
-                toast.error('Tafadhali pakia premium audio.');
+            toast.error(copy('Upload the premium audio.', 'Tafadhali pakia premium audio.'));
                 return;
             }
             if (digitalDeliveryMode === 'gallery_pack' && paidGalleryItems.filter(item => item.url && !item.error).length === 0) {
-                toast.error('Tafadhali pakia picha za gallery pack.');
+            toast.error(copy('Upload the gallery pack images.', 'Tafadhali pakia picha za gallery pack.'));
                 return;
             }
             if (digitalDeliveryMode === 'live_event') {
                 if (!liveEventStartsAt) {
-                    toast.error('Tafadhali weka muda wa live event/webinar.');
+                    toast.error(copy('Enter the live event/webinar time.', 'Tafadhali weka muda wa live event/webinar.'));
                     return;
                 }
                 if (!liveEventAccessUrl && !liveEventVenue) {
-                    toast.error('Weka meeting link au venue ya tukio.');
+                    toast.error(copy('Enter the meeting link or event venue.', 'Weka meeting link au venue ya tukio.'));
                     return;
                 }
             }
             if (digitalDeliveryMode === 'link' && !url) {
-                toast.error('Tafadhali weka link ya kupakua.');
+                toast.error(copy('Enter the download link.', 'Tafadhali weka link ya kupakua.'));
                 return;
             }
         }
         if (step === 'service') {
             if (!serviceCategory) {
-                toast.error('Tafadhali chagua category ya huduma kwa usalama wa wateja.');
+                toast.error(copy('Choose a service category for customer safety.', 'Tafadhali chagua category ya huduma kwa usalama wa wateja.'));
                 return;
             }
             if (selectedServiceCategory?.subcategories?.length && !serviceSubcategory) {
-                toast.error('Tafadhali chagua subcategory ya huduma kwa usalama wa wateja.');
+                toast.error(copy('Choose a service subcategory for customer safety.', 'Tafadhali chagua subcategory ya huduma kwa usalama wa wateja.'));
                 return;
             }
             if (serviceNeedsCatalogPrice && !price) {
-                toast.error('Tafadhali weka bei ya huduma.');
+                toast.error(copy('Enter the service price.', 'Tafadhali weka bei ya huduma.'));
                 return;
             }
             if (servicePriceDisplay === 'hourly' && !serviceHourlyRate && !price) {
-                toast.error('Tafadhali weka bei kwa saa.');
+                toast.error(copy('Enter the hourly price.', 'Tafadhali weka bei kwa saa.'));
                 return;
             }
             if (serviceBookingMode === 'internal' && !serviceContactValue && serviceMode !== 'book_appointment') {
-                toast.error('Tafadhali weka namba ya simu au WhatsApp.');
+                toast.error(copy('Enter a phone number or WhatsApp contact.', 'Tafadhali weka namba ya simu au WhatsApp.'));
                 return;
             }
             if ((serviceSchedulingType === 'external' || serviceBookingMode === 'external') && !url) {
-                toast.error('Tafadhali weka link ya booking.');
+                toast.error(copy('Enter the booking link.', 'Tafadhali weka link ya booking.'));
                 return;
             }
             if (isOnlineLiveEventService) {
                 if (!liveEventStartsAt) {
-                    toast.error('Tafadhali weka muda wa live event/webinar.');
+                    toast.error(copy('Enter the live event/webinar time.', 'Tafadhali weka muda wa live event/webinar.'));
                     return;
                 }
                 if (!liveEventAccessUrl) {
-                    toast.error('Weka meeting link ya online live event.');
+                    toast.error(copy('Enter the meeting link for the online live event.', 'Weka meeting link ya online live event.'));
                     return;
                 }
             }
         }
         if (!description) {
-            toast.error('Tafadhali jaza maelezo ya bidhaa/huduma.');
+            toast.error(copy('Complete the product/service description.', 'Tafadhali jaza maelezo ya bidhaa/huduma.'));
             return;
         }
 
@@ -3489,32 +3701,32 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
         // Ensure everything has finished uploading
         if (isUploadingMedia) {
-            toast.error('Tafadhali subiri media zimalize kupanda.');
+            toast.error(copy('Wait for the media uploads to finish.', 'Tafadhali subiri media zimalize kupanda.'));
             return;
         }
         if (step === 'physical' && isUploadingProductDetailSectionImage) {
-            toast.error('Tafadhali subiri picha za in-depth product details zimalize kupanda.');
+            toast.error(copy('Wait for the in-depth product detail images to finish uploading.', 'Tafadhali subiri picha za in-depth product details zimalize kupanda.'));
             return;
         }
 
         if (step === 'digital' && digitalDeliveryMode === 'upload' && digitalFile?.isUploading) {
-            toast.error('Tafadhali subiri faili la digitali limalize kupanda.');
+            toast.error(copy('Wait for the digital file upload to finish.', 'Tafadhali subiri faili la digitali limalize kupanda.'));
             return;
         }
         if (step === 'digital' && digitalDeliveryMode === 'video_stream' && paidVideoFile?.isUploading) {
-            toast.error('Tafadhali subiri premium video imalize kupanda.');
+            toast.error(copy('Wait for the premium video upload to finish.', 'Tafadhali subiri premium video imalize kupanda.'));
             return;
         }
         if (step === 'digital' && digitalDeliveryMode === 'audio_stream' && paidAudioFile?.isUploading) {
-            toast.error('Tafadhali subiri premium audio imalize kupanda.');
+            toast.error(copy('Wait for the premium audio upload to finish.', 'Tafadhali subiri premium audio imalize kupanda.'));
             return;
         }
         if (step === 'digital' && digitalDeliveryMode === 'gallery_pack' && paidGalleryItems.some(item => item.isUploading)) {
-            toast.error('Tafadhali subiri picha za gallery zimalize kupanda.');
+            toast.error(copy('Wait for the gallery images to finish uploading.', 'Tafadhali subiri picha za gallery zimalize kupanda.'));
             return;
         }
         if (step === 'physical' && hasVariants && variants.some((variant) => variant.isUploadingSwatch)) {
-            toast.error('Tafadhali subiri swatch images zimalize kupanda.');
+            toast.error(copy('Wait for the swatch images to finish uploading.', 'Tafadhali subiri swatch images zimalize kupanda.'));
             return;
         }
 
@@ -3763,10 +3975,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 wholesale_deposit_mode: wholesaleEnabled ? wholesaleDepositMode : 'quote_based',
                 wholesale_deposit_percent: wholesaleEnabled && wholesaleDepositPercent !== '' ? Number(wholesaleDepositPercent) : null,
                 wholesale_balance_due: wholesaleEnabled ? wholesaleBalanceDue : 'before_delivery',
-                safepay_mobile_money_enabled: wholesaleEnabled ? Boolean(safePayMethods.mobile_money) : true,
-                safepay_bank_transfer_enabled: wholesaleEnabled ? Boolean(safePayMethods.bank_transfer) : true,
-                safepay_wallet_enabled: wholesaleEnabled ? Boolean(safePayMethods.wallet) : true,
-                safepay_card_enabled: wholesaleEnabled ? Boolean(safePayMethods.card) : false,
+                provider_mobile_money_enabled: wholesaleEnabled ? Boolean(providerPaymentMethods.mobile_money) : true,
+                provider_bank_transfer_enabled: wholesaleEnabled ? Boolean(providerPaymentMethods.bank_transfer) : true,
+                provider_card_enabled: wholesaleEnabled ? Boolean(providerPaymentMethods.card) : false,
                 pricing_tiers: wholesaleEnabled ? cleanPricingTiers : [],
                 lead_time_tiers: wholesaleEnabled ? cleanLeadTimeTiers : [],
                 packaging_details: wholesaleEnabled ? cleanPackagingDetails : [],
@@ -3837,7 +4048,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
             const data = res.data;
 
-            toast.success(data.message || 'Tayari! Bidhaa imewekwa sokoni kikamilifu.', { id: 'publish' });
+            toast.success(data.message || copy('Done! The product is now live.', 'Tayari! Bidhaa imewekwa sokoni kikamilifu.'), { id: 'publish' });
             setTimeout(() => {
                 resetForm();
                 if (merchantUsername || data.merchantUsername) {
@@ -3848,14 +4059,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             }, 1500);
 
         } catch (error) {
-            const msg = error.response?.data?.message || error.message || 'Imeshindwa kuweka bidhaa.';
+            const msg = error.response?.data?.message || error.message || copy('Could not publish the product.', 'Imeshindwa kuweka bidhaa.');
             toast.error(msg, { id: 'publish' });
         }
     };
 
     const submitManual = async () => {
         if (!manualTitle) {
-            toast.error('Tafadhali weka jina la bidhaa.');
+            toast.error(copy('Enter the product name.', 'Tafadhali weka jina la bidhaa.'));
             return;
         }
         if (isFocusedPhysicalModule) {
@@ -3866,10 +4077,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             return;
         }
         if (variantAxisAttributes.length > 0 && variantDecision === null) {
-            toast.error('Chagua kama bidhaa ina variants au la.');
+            toast.error(copy('Choose whether the product has variants.', 'Chagua kama bidhaa ina variants au la.'));
             return;
         }
-        toast.loading('Inaunda bidhaa...', { id: 'manual-draft' });
+        toast.loading(copy('Creating product...', 'Inaunda bidhaa...'), { id: 'manual-draft' });
         try {
             const res = await axios.post(`/merchant/${merchantUsername}/upload/manual`, {
                 title: manualTitle,
@@ -3882,13 +4093,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             if (data.product_id) {
                 setProductId(data.product_id);
             }
-            toast.success(data.message, { id: 'manual-draft' });
+            toast.success(data.message || copy('Draft product created.', 'Bidhaa ya rasimu imeundwa.'), { id: 'manual-draft' });
             setAiResult({ category: manualCategory, sub_category: '', colors: [], suggested_description_swahili: manualTitle });
             setShowManualForm(false);
             setManualStepCompleted(true);
             setPhysicalFlowStep(3);
         } catch (err) {
-            const msg = err.response?.data?.message || err.message || 'Imeshindwa kuunda bidhaa.';
+            const msg = err.response?.data?.message || err.message || copy('Could not create the product.', 'Imeshindwa kuunda bidhaa.');
             toast.error(msg, { id: 'manual-draft' });
         }
     };
@@ -3979,7 +4190,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         setWholesaleDepositMode('quote_based');
         setWholesaleDepositPercent('');
         setWholesaleBalanceDue('before_delivery');
-        setSafePayMethods({ mobile_money: true, bank_transfer: true, wallet: true, card: false });
+        setProviderPaymentMethods({ mobile_money: true, bank_transfer: true, card: false });
         setQuantity('');
         setLocationInventories({});
         setAvailabilityLocationIds([]);
@@ -4051,13 +4262,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             });
         } catch (err) {
             console.error('Failed to sync hotspots', err);
-            toast.error('Imeshindwa kusawazisha alama.');
+            toast.error(copy('Could not sync the hotspot.', 'Imeshindwa kusawazisha alama.'));
         }
     };
 
     const saveHotspot = () => {
         if (!hotspotData.trim()) {
-            toast.error('Tafadhali jaza taarifa za hotspot.');
+            toast.error(copy('Complete the hotspot details.', 'Tafadhali jaza taarifa za hotspot.'));
             return;
         }
         const newHotspot = {
@@ -4099,7 +4310,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             <AppLayout>
                 <div className="h-[80vh] flex flex-col items-center justify-center space-y-4">
                     <Loader2 className="h-10 w-10 animate-spin text-brand-600" />
-                    <p className="font-bold text-muted-foreground">Inapakia taarifa za bidhaa...</p>
+                    <p className="font-bold text-muted-foreground">{copy('Loading product details...', 'Inapakia taarifa za bidhaa...')}</p>
                 </div>
             </AppLayout>
         );
@@ -4108,7 +4319,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     if (step === 'service_modules') {
         return (
             <AppLayout>
-                <Head title="Chagua Aina ya Huduma | Takeer" />
+                <Head title={`${copy('Choose service type', 'Chagua aina ya huduma')} | Takeer`} />
                 <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6 pb-24">
                     <div className="flex items-center gap-4">
                         <button
@@ -4119,9 +4330,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             <ArrowLeft className="h-5 w-5" />
                         </button>
                         <div>
-                            <h1 className="text-2xl font-black tracking-tight">Chagua aina ya huduma</h1>
+                            <h1 className="text-2xl font-black tracking-tight">{copy('Choose service type', 'Chagua aina ya huduma')}</h1>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Chagua muundo unaofanana na huduma unayotaka kuweka.
+                                {copy('Choose the structure that best matches the service you want to list.', 'Chagua muundo unaofanana na huduma unayotaka kuweka.')}
                             </p>
                         </div>
                     </div>
@@ -4143,8 +4354,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             <Icon className="h-5 w-5" />
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <h2 className="text-base font-black text-slate-950">{module.title}</h2>
-                                            <p className="mt-2 text-sm font-medium leading-relaxed text-slate-500">{module.description}</p>
+                                            <h2 className="text-base font-black text-slate-950">{copy(module.englishTitle || module.title, module.title)}</h2>
+                                            <p className="mt-2 text-sm font-medium leading-relaxed text-slate-500">{copy(module.englishDescription || module.description, module.description)}</p>
                                         </div>
                                         <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-brand-600" />
                                     </div>
@@ -4156,9 +4367,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 sm:p-5">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <h2 className="text-base font-black text-slate-950">Tengeneza huduma ya kawaida</h2>
+                                        <h2 className="text-base font-black text-slate-950">{copy('Create a standard service', 'Tengeneza huduma ya kawaida')}</h2>
                                 <p className="mt-1 text-sm font-medium text-slate-500">
-                                    Tumia fomu ya kawaida kama hakuna aina hapo juu inayofanana na huduma yako.
+                                    {copy('Use the standard form if none of the service types above matches your service.', 'Tumia fomu ya kawaida kama hakuna aina hapo juu inayofanana na huduma yako.')}
                                 </p>
                             </div>
                             <Button
@@ -4167,7 +4378,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 className="h-11 rounded-xl bg-slate-900 px-4 text-white hover:bg-slate-800"
                             >
                                 <Plus className="mr-2 h-4 w-4" />
-                                Huduma ya kawaida
+                                {copy('Standard service', 'Huduma ya kawaida')}
                             </Button>
                         </div>
                     </div>
@@ -4181,7 +4392,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     if (step === 'select') {
         return (
             <AppLayout>
-                <Head title={uploadModule === 'menu' ? 'Ongeza Menu Item | Takeer' : 'Chagua Aina ya Bidhaa | Takeer'} />
+                <Head title={uploadModule === 'menu' ? `${copy('Add menu item', 'Ongeza menu item')} | Takeer` : `${copy('Choose product type', 'Chagua aina ya bidhaa')} | Takeer`} />
                 <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-8 pb-24">
                     <div className="flex flex-col items-center justify-center space-y-6">
                         {/* ── Merchant Identity ── */}
@@ -4206,9 +4417,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         {/* ── Title ── */}
                         <div className="text-center space-y-2">
                             <h1 className="text-3xl font-black tracking-tight flex items-center justify-center gap-2">
-                                {uploadModule === 'menu' ? 'Ongeza nini kwenye menu?' : 'Unataka uuze nini leo?'} <Sparkles className="h-6 w-6 text-brand-600" />
+                                {uploadModule === 'menu' ? copy('What are you adding to the menu?', 'Ongeza nini kwenye menu?') : copy('What do you want to sell today?', 'Unataka uuze nini leo?')} <Sparkles className="h-6 w-6 text-brand-600" />
                             </h1>
-                            <p className="text-muted-foreground">{uploadModule === 'menu' ? 'Tumia product flow kuongeza chakula, kinywaji, add-on, au combo.' : 'Chagua aina ya bidhaa.'}</p>
+                            <p className="text-muted-foreground">{uploadModule === 'menu' ? copy('Use the product flow to add food, drinks, add-ons, or combos.', 'Tumia product flow kuongeza chakula, kinywaji, add-on, au combo.') : copy('Choose a product type.', 'Chagua aina ya bidhaa.')}</p>
                         </div>
                     </div>
 
@@ -4221,8 +4432,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 <ShoppingBag className="h-8 w-8 text-brand-600" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold text-foreground">{uploadModule === 'menu' ? 'Menu Item' : 'Bidhaa ya Kushikika'}</h3>
-                                <p className="text-sm text-muted-foreground mt-1">{uploadModule === 'menu' ? 'Chakula, kinywaji, combo, add-on, au bidhaa ya mgahawa.' : 'Nguo, viatu, simu, n.k. (Inatumia AI na Hotspots)'}</p>
+                                <h3 className="text-xl font-bold text-foreground">{uploadModule === 'menu' ? copy('Menu item', 'Menu item') : copy('Physical product', 'Bidhaa ya kushikika')}</h3>
+                                <p className="text-sm text-muted-foreground mt-1">{uploadModule === 'menu' ? copy('Food, drinks, combos, add-ons, or restaurant products.', 'Chakula, kinywaji, combo, add-on, au bidhaa ya mgahawa.') : copy('Clothing, shoes, phones, and more. Uses AI and hotspots.', 'Nguo, viatu, simu, n.k. (Inatumia AI na Hotspots)')}</p>
                             </div>
                             <ChevronRight className="h-6 w-6 ml-auto text-muted-foreground opacity-50 text-brand-600" />
                         </button>
@@ -4235,8 +4446,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 <DownloadCloudIcon className="h-8 w-8 text-blue-600" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold text-foreground">Bidhaa ya Digitali (Downloads)</h3>
-                                <p className="text-sm text-muted-foreground mt-1">Vitabu, Video, Audio/Sauti, Picha, au Link ya kupakua.</p>
+                                <h3 className="text-xl font-bold text-foreground">{copy('Digital product (downloads)', 'Bidhaa ya digitali (downloads)')}</h3>
+                                <p className="text-sm text-muted-foreground mt-1">{copy('Books, video, audio, images, or a download link.', 'Vitabu, video, audio/sauti, picha, au link ya kupakua.')}</p>
                             </div>
                             <ChevronRight className="h-6 w-6 ml-auto text-muted-foreground opacity-50 group-hover:text-blue-600" />
                         </button>
@@ -4249,8 +4460,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 <Calendar className="h-8 w-8 text-purple-600" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold text-foreground">Huduma / Miadi</h3>
-                                <p className="text-sm text-muted-foreground mt-1">Saluni, ushauri, booking, au mafunzo ya ana kwa ana.</p>
+                                <h3 className="text-xl font-bold text-foreground">{copy('Service / appointment', 'Huduma / miadi')}</h3>
+                                <p className="text-sm text-muted-foreground mt-1">{copy('Salon, consulting, bookings, or in-person training.', 'Saluni, ushauri, booking, au mafunzo ya ana kwa ana.')}</p>
                             </div>
                             <ChevronRight className="h-6 w-6 ml-auto text-muted-foreground opacity-50 group-hover:text-purple-600" />
                         </button>
@@ -4264,7 +4475,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     return (
         <AppLayout>
-            <Head title={uploadModule === 'menu' ? 'Weka Menu Item | Takeer' : 'Weka Bidhaa Mpya | Takeer'} />
+            <Head title={uploadModule === 'menu' ? `${copy('Add menu item', 'Weka menu item')} | Takeer` : `${copy('Add new product', 'Weka bidhaa mpya')} | Takeer`} />
 
             <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6 pb-24">
                 <div className="flex items-center gap-4 mb-2">
@@ -4276,7 +4487,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     </button>
                     <div>
                         <h1 className="text-2xl font-black flex items-center gap-2">
-                            {step === 'physical' ? (uploadModule === 'menu' ? 'Menu Item Mpya' : 'Bidhaa Mpya') : step === 'digital' ? 'Bidhaa ya Digital' : 'Huduma Mpya'}
+                            {step === 'physical' ? (uploadModule === 'menu' ? copy('New menu item', 'Menu item mpya') : copy('New product', 'Bidhaa mpya')) : step === 'digital' ? copy('Digital product', 'Bidhaa ya digitali') : copy('New service', 'Huduma mpya')}
                         </h1>
                         <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold opacity-60">
                             {(step || '').toUpperCase()} FLOW
@@ -4289,7 +4500,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 {/* ── SHARED MEDIA SECTION: Sequential Gallery ── */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                        <label className="text-xs font-black text-muted-foreground uppercase tracking-[0.2em]">{uploadModule === 'menu' ? 'Media za Menu Item' : 'Media za Bidhaa'}</label>
+                        <label className="text-xs font-black text-muted-foreground uppercase tracking-[0.2em]">{uploadModule === 'menu' ? copy('Menu item media', 'Media za menu item') : copy('Product media', 'Media za bidhaa')}</label>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -4361,7 +4572,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 <Plus className="h-6 w-6" />
                             </div>
                             <div className="text-center px-2">
-                                <span className="text-[11px] font-black text-brand-900 block uppercase tracking-wider">Ongeza Media</span>
+                                <span className="text-[11px] font-black text-brand-900 block uppercase tracking-wider">{copy('Add media', 'Ongeza media')}</span>
                                 <span className="text-[9px] text-brand-600 font-bold opacity-60">Slot {images.length + 1}</span>
                             </div>
                             <input
@@ -4374,7 +4585,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             />
                         </div>
                     </div>
-                    <p className="text-[10px] text-muted-foreground italic font-medium px-1">Tip: Click an image to add interactive hotspots. Videos will appear as playable media on post details.</p>
+                    <p className="text-[10px] text-muted-foreground italic font-medium px-1">{copy('Tip: Click an image to add interactive hotspots. Videos appear as playable media on post details.', 'Tip: Bofya picha kuongeza hotspots. Video zitaonekana kama media zinazoweza kuchezwa kwenye maelezo ya post.')}</p>
                 </div>
 
                 {step === 'physical' && (
@@ -4385,7 +4596,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 onClick={() => setShowManualForm(true)}
                             >
                                 <PenLine className="h-4 w-4" />
-                                Au ingiza maelezo mwenyewe bila picha
+                                {copy('Or enter details manually without a photo', 'Au ingiza maelezo mwenyewe bila picha')}
                             </button>
                         </div>
 
@@ -4393,13 +4604,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             <Card className="animate-in fade-in slide-in-from-bottom-4">
                                 <div className="bg-amber-50 p-4 border-b flex items-center gap-2 text-amber-800">
                                     <PenLine className="h-5 w-5" />
-                                    <h3 className="font-bold">Ingiza Maelezo Mwenyewe</h3>
+                                    <h3 className="font-bold">{copy('Enter details manually', 'Ingiza maelezo mwenyewe')}</h3>
                                 </div>
                                 <CardContent className="p-5 space-y-4">
                                     <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{uploadModule === 'menu' ? 'Jina la Menu Item' : 'Jina la Bidhaa'}</label>
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{uploadModule === 'menu' ? copy('Menu item name', 'Jina la menu item') : copy('Product name', 'Jina la bidhaa')}</label>
                                         <Input
-                                            placeholder={uploadModule === 'menu' ? 'Mf. Pilau ya Kuku' : 'Mf. Viatu vya Ngozi Nyekundu'}
+                                            placeholder={uploadModule === 'menu' ? copy('E.g. chicken pilau', 'Mf. Pilau ya Kuku') : copy('E.g. red leather shoes', 'Mf. Viatu vya Ngozi Nyekundu')}
                                             value={manualTitle}
                                             onChange={e => setManualTitle(e.target.value)}
                                             className="h-12"
@@ -4407,13 +4618,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     </div>
                                     {showGenericPhysicalCatalog && (
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Kategoria</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Category', 'Kategoria')}</label>
                                             <select
                                                 className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
                                                 value={selectedCategoryId}
                                                 onChange={async (e) => onSelectRootCategory(e.target.value)}
                                             >
-                                                <option value="">Chagua kategoria</option>
+                                                <option value="">{copy('Choose a category', 'Chagua kategoria')}</option>
                                                 {(catalogCategories || []).map((category) => (
                                                     <option key={category.id} value={category.id}>{categoryDisplayName(category)}</option>
                                                 ))}
@@ -4422,13 +4633,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     )}
                                     {showGenericPhysicalCatalog && selectedSubCategories.length > 0 && (
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subcategory</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Subcategory', 'Subcategory')}</label>
                                             <select
                                                 className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
                                                 value={selectedSubCategoryId}
                                                 onChange={async (e) => onSelectSubCategory(e.target.value)}
                                             >
-                                                <option value="">Hakuna subcategory maalum</option>
+                                                <option value="">{copy('No specific subcategory', 'Hakuna subcategory maalum')}</option>
                                                 {selectedSubCategories.map((child) => (
                                                     <option key={child.id} value={child.id}>{categoryDisplayName(child)}</option>
                                                 ))}
@@ -4438,12 +4649,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     {showGenericPhysicalCatalog && variantAxisAttributes.length > 0 && (
                                         <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
                                             <div className="space-y-1">
-                                                <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Variants Setup</p>
+                                                <p className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Variant setup', 'Variant setup')}</p>
                                                 <p className="text-sm text-slate-700">
-                                                    Je, una bidhaa hii nyingine unayouza yenye utofauti wa {variantAxisAttributes.map((axis) => axis.label).join(' / ')}?
+                                                    {copy(`Do you sell this product with a different ${variantAxisAttributes.map((axis) => axis.label).join(' / ')}?`, `Je, una bidhaa hii nyingine unayouza yenye utofauti wa ${variantAxisAttributes.map((axis) => axis.label).join(' / ')}?`)}
                                                 </p>
                                                 <p className="text-xs leading-5 text-slate-500">
-                                                    Kama ni brand, aina, harufu, formula, au bidhaa tofauti, iweke kama bidhaa nyingine.
+                                                    {copy('If it is a different brand, type, scent, formula, or product, list it as another product.', 'Kama ni brand, aina, harufu, formula, au bidhaa tofauti, iweke kama bidhaa nyingine.')}
                                                 </p>
                                             </div>
                                             <div className="grid sm:grid-cols-2 gap-2">
@@ -4457,7 +4668,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         setVariants([]);
                                                     }}
                                                 >
-                                                    Hapana, ni bidhaa moja
+                                                    {copy('No, it is one product', 'Hapana, ni bidhaa moja')}
                                                 </Button>
                                                 <Button
                                                     type="button"
@@ -4469,19 +4680,19 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         if (variants.length === 0) generateVariantsFromFacets();
                                                     }}
                                                 >
-                                                    Ndio, bidhaa ile ile ina variants
+                                                    {copy('Yes, the same product has variants', 'Ndio, bidhaa ile ile ina variants')}
                                                 </Button>
                                             </div>
                                         </div>
                                     )}
                                     <div className="flex gap-3">
-                                        <Button variant="outline" className="flex-1" onClick={() => setShowManualForm(false)}>Rudi</Button>
+                                        <Button variant="outline" className="flex-1" onClick={() => setShowManualForm(false)}>{copy('Back', 'Rudi')}</Button>
                                         <Button
                                             className="flex-1 bg-brand-600 hover:bg-brand-700 text-white"
                                             onClick={submitManual}
                                             disabled={variantAxisAttributes.length > 0 && variantDecision === null}
                                         >
-                                            Endelea
+                                            {copy('Continue', 'Endelea')}
                                         </Button>
                                     </div>
                                 </CardContent>
@@ -4493,49 +4704,49 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 <Card className="border-slate-200 shadow-sm overflow-hidden rounded-[2rem]">
                                     <div className="bg-slate-50 p-4 border-b flex items-center gap-2 text-slate-800">
                                         <CheckCircle2 className="h-5 w-5" />
-                                        <h3 className="font-bold uppercase tracking-widest text-xs">{isMenuUpload ? 'Menu setup' : 'Facets & Specifications'}</h3>
+                                        <h3 className="font-bold uppercase tracking-widest text-xs">{isMenuUpload ? copy('Menu setup', 'Menu setup') : copy('Facets & specifications', 'Facets na specifications')}</h3>
                                     </div>
                                     <CardContent className="p-5 space-y-4">
                                         {showGenericPhysicalCatalog && (
                                             <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-4 space-y-3">
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div>
-                                                        <p className="text-xs font-black uppercase tracking-wider text-brand-900">Product setup</p>
-                                                        <p className="text-xs text-brand-700">Badilisha jina, category, au subcategory bila kurudi mwanzo.</p>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-brand-900">{copy('Product setup', 'Product setup')}</p>
+                                                        <p className="text-xs text-brand-700">{copy('Change the name, category, or subcategory without going back to the beginning.', 'Badilisha jina, category, au subcategory bila kurudi mwanzo.')}</p>
                                                     </div>
                                                 </div>
                                                 <div className="grid gap-3 sm:grid-cols-2">
                                                     <div className="space-y-1.5 sm:col-span-2">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Jina la Bidhaa</label>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Product name', 'Jina la bidhaa')}</label>
                                                         <Input
-                                                            placeholder="Mf. Sukari kilo 50"
+                                                            placeholder={copy('E.g. 50 kg of sugar', 'Mf. Sukari kilo 50')}
                                                             value={manualTitle}
                                                             onChange={e => setManualTitle(e.target.value)}
                                                             className="h-12"
                                                         />
                                                     </div>
                                                     <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Kategoria</label>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Category', 'Kategoria')}</label>
                                                         <select
                                                             className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
                                                             value={selectedCategoryId}
                                                             onChange={async (e) => onSelectRootCategory(e.target.value, { stayOnDetails: true })}
                                                         >
-                                                            <option value="">Chagua kategoria</option>
+                                                            <option value="">{copy('Choose a category', 'Chagua kategoria')}</option>
                                                             {(catalogCategories || []).map((category) => (
                                                                 <option key={category.id} value={category.id}>{categoryDisplayName(category)}</option>
                                                             ))}
                                                         </select>
                                                     </div>
                                                     <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subcategory</label>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Subcategory', 'Subcategory')}</label>
                                                         <select
                                                             className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
                                                             value={selectedSubCategoryId}
                                                             onChange={async (e) => onSelectSubCategory(e.target.value, { stayOnDetails: true })}
                                                             disabled={selectedSubCategories.length === 0}
                                                         >
-                                                            <option value="">Hakuna subcategory maalum</option>
+                                                            <option value="">{copy('No specific subcategory', 'Hakuna subcategory maalum')}</option>
                                                             {selectedSubCategories.map((child) => (
                                                                 <option key={child.id} value={child.id}>{categoryDisplayName(child)}</option>
                                                             ))}
@@ -4548,12 +4759,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         {showGenericPhysicalCatalog && variantAxisAttributes.length > 0 && (
                                             <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
                                                 <div className="space-y-1">
-                                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Variants Setup</p>
+                                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-600">{copy('Variant setup', 'Variant setup')}</p>
                                                     <p className="text-sm text-slate-700">
-                                                        Je, una bidhaa hii nyingine unayouza yenye utofauti wa {variantAxisAttributes.map((axis) => axis.label).join(' / ')}?
+                                                        {copy(`Do you sell this product with a different ${variantAxisAttributes.map((axis) => axis.label).join(' / ')}?`, `Je, una bidhaa hii nyingine unayouza yenye utofauti wa ${variantAxisAttributes.map((axis) => axis.label).join(' / ')}?`)}
                                                     </p>
                                                     <p className="text-xs leading-5 text-slate-500">
-                                                        Kama ni brand, aina, harufu, formula, au bidhaa tofauti, iweke kama bidhaa nyingine.
+                                                        {copy('If it is a different brand, type, scent, formula, or product, list it as another product.', 'Kama ni brand, aina, harufu, formula, au bidhaa tofauti, iweke kama bidhaa nyingine.')}
                                                     </p>
                                                 </div>
                                                 <div className="grid sm:grid-cols-2 gap-2">
@@ -4567,7 +4778,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             setVariants([]);
                                                         }}
                                                     >
-                                                        Hapana, ni bidhaa moja
+                                                        {copy('No, it is one product', 'Hapana, ni bidhaa moja')}
                                                     </Button>
                                                     <Button
                                                         type="button"
@@ -4579,7 +4790,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             if (variants.length === 0) generateVariantsFromFacets();
                                                         }}
                                                     >
-                                                        Ndio, bidhaa ile ile ina variants
+                                                        {copy('Yes, the same product has variants', 'Ndio, bidhaa ile ile ina variants')}
                                                     </Button>
                                                 </div>
                                             </div>
@@ -4588,7 +4799,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         {showGenericPhysicalCatalog && selectedSchemaBrands.length > 0 && (
                                             <div className="grid sm:grid-cols-2 gap-3">
                                                 <div className="space-y-1.5">
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Brand</label>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Brand', 'Brand')}</label>
                                                     <select
                                                         className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
                                                         value={selectedBrandId}
@@ -4597,7 +4808,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             setSelectedModelId('');
                                                         }}
                                                     >
-                                                        <option value="">Chagua brand</option>
+                                                        <option value="">{copy('Choose a brand', 'Chagua brand')}</option>
                                                         {selectedSchemaBrands.map((brand) => (
                                                             <option key={brand.id} value={brand.id}>{brand.name}</option>
                                                         ))}
@@ -4605,13 +4816,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 </div>
                                                 {selectedSchemaModels.length > 0 && (
                                                     <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Model</label>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Model', 'Model')}</label>
                                                         <select
                                                             className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
                                                             value={selectedModelId}
                                                             onChange={(e) => setSelectedModelId(e.target.value)}
                                                         >
-                                                            <option value="">Chagua model</option>
+                                                            <option value="">{copy('Choose a model', 'Chagua model')}</option>
                                                             {selectedSchemaModels.map((model) => (
                                                                 <option key={model.id} value={model.id}>{model.name}</option>
                                                             ))}
@@ -4639,7 +4850,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                         [attr.id]: { ...current, value_text: e.target.value },
                                                                     }))}
                                                                 >
-                                                                    <option value="">Select option</option>
+                                                                    <option value="">{copy('Select an option', 'Select option')}</option>
                                                                     {(attr.options || []).map((option) => (
                                                                         <option key={option} value={option}>{option}</option>
                                                                     ))}
@@ -4683,7 +4894,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             [attr.id]: { ...current, value_boolean: e.target.checked },
                                                                         }))}
                                                                     />
-                                                                    Yes
+                                                                    {copy('Yes', 'Ndiyo')}
                                                                 </label>
                                                             ) : attr.input_type === 'number' && attr.ui_hint === 'number_with_unit' ? (
                                                                 <div className="grid grid-cols-3 gap-2">
@@ -4705,7 +4916,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             [attr.id]: { ...current, value_unit: e.target.value },
                                                                         }))}
                                                                     >
-                                                                        {(attr.unit_options || []).length === 0 && <option value="">Unit</option>}
+                                                                        {(attr.unit_options || []).length === 0 && <option value="">{copy('Unit', 'Kipimo')}</option>}
                                                                         {(attr.unit_options || []).map((unit) => (
                                                                             <option key={unit} value={unit}>{unit}</option>
                                                                         ))}
@@ -4754,7 +4965,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         {showGenericPhysicalCatalog && hasVariants && variantAxisAttributes.length > 0 && (
                                             <div className="space-y-3">
                                                 <p className="text-xs text-slate-500">
-                                                    Weka taarifa ya {manualTitle} {variantAxisAttributes.map((axis) => axis.label).join(', ')} unazouza tu hapa chini.
+                                                    {copy(`Enter the ${manualTitle} ${variantAxisAttributes.map((axis) => axis.label).join(', ')} you sell below.`, `Weka taarifa ya ${manualTitle} ${variantAxisAttributes.map((axis) => axis.label).join(', ')} unazouza tu hapa chini.`)}
                                                 </p>
                                                 <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2.5">
                                                     <p className="text-[11px] font-black uppercase tracking-wider text-slate-600">
@@ -4789,7 +5000,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                                             TZS {Number(entry.price || 0).toLocaleString()} · Stock {Number(entry.stock || 0)}
                                                                                         </p>
                                                                                     ) : (
-                                                                                        <p className="text-[10px] text-slate-500">Pending data</p>
+                                                                                        <p className="text-[10px] text-slate-500">{copy('Pending data', 'Data inasubiri')}</p>
                                                                                     )}
                                                                                 </div>
                                                                             </div>
@@ -4816,9 +5027,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                         {step === 'physical' && physicalDetailsReady && (
                                             <div className="space-y-1.5">
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Maelezo ya Bidhaa *</label>
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Product description *', 'Maelezo ya bidhaa *')}</label>
                                                 <Textarea
-                                                    placeholder="Elezea bidhaa yako kwa kifupi: ubora, matumizi, faida, na maelezo muhimu kwa mnunuzi."
+                                                    placeholder={copy('Briefly describe the quality, use, benefits, and important buyer details.', 'Elezea bidhaa yako kwa kifupi: ubora, matumizi, faida, na maelezo muhimu kwa mnunuzi.')}
                                                     value={description}
                                                     onChange={(e) => setDescription(e.target.value)}
                                                     className="min-h-[110px] rounded-2xl bg-white border-border"
@@ -4830,38 +5041,38 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         {step === 'physical' && physicalDetailsReady && uploadModule === 'menu' && (
                                             <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-4 space-y-4">
                                                 <div>
-                                                    <p className="text-xs font-black uppercase tracking-wider text-orange-800">Maelezo ya menu</p>
-                                                    <p className="text-xs text-orange-700 mt-1">Maelezo haya yanaamua chakula au kinywaji kitaonekanaje kwenye menu kwa wateja.</p>
+                                                    <p className="text-xs font-black uppercase tracking-wider text-orange-800">{copy('Menu details', 'Maelezo ya menu')}</p>
+                                                    <p className="text-xs text-orange-700 mt-1">{copy('These details determine how the food or drink appears on the customer menu.', 'Maelezo haya yanaamua chakula au kinywaji kitaonekanaje kwenye menu kwa wateja.')}</p>
                                                 </div>
 
                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                                     <label className="space-y-1.5">
-                                                        <span className="text-[11px] font-semibold text-slate-700">Section</span>
+                                                        <span className="text-[11px] font-semibold text-slate-700">{copy('Section', 'Sehemu')}</span>
                                                         <select
                                                             className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
                                                             value={menuDetails.section}
                                                             onChange={(e) => updateMenuDetail('section', e.target.value)}
                                                         >
-                                                            {menuSections.map(section => <option key={section} value={section}>{section}</option>)}
+                                                            {menuSections.map(section => <option key={section} value={section}>{localizeUploadOption(copy, section)}</option>)}
                                                         </select>
                                                     </label>
                                                     <label className="space-y-1.5">
-                                                        <span className="text-[11px] font-semibold text-slate-700">Item type</span>
+                                                        <span className="text-[11px] font-semibold text-slate-700">{copy('Item type', 'Aina ya item')}</span>
                                                         <select
                                                             className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
                                                             value={menuDetails.item_type}
                                                             onChange={(e) => updateMenuDetail('item_type', e.target.value)}
                                                         >
-                                                            {menuItemTypes.map(type => <option key={type.key} value={type.key}>{type.label}</option>)}
+                                                            {menuItemTypes.map(type => <option key={type.key} value={type.key}>{localizeUploadOption(copy, type.label)}</option>)}
                                                         </select>
                                                     </label>
                                                     <label className="space-y-1.5">
-                                                        <span className="text-[11px] font-semibold text-slate-700">Prep time</span>
+                                                        <span className="text-[11px] font-semibold text-slate-700">{copy('Prep time', 'Muda wa kuandaa')}</span>
                                                         <Input
                                                             type="number"
                                                             min="0"
                                                             className="h-11 bg-white"
-                                                            placeholder="Minutes"
+                                                            placeholder={copy('Minutes', 'Dakika')}
                                                             value={menuDetails.prep_time_minutes}
                                                             onChange={(e) => updateMenuDetail('prep_time_minutes', e.target.value)}
                                                         />
@@ -4869,7 +5080,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 </div>
 
                                                 <div className="space-y-2">
-                                                    <p className="text-[11px] font-semibold text-slate-700">Available for</p>
+                                                    <p className="text-[11px] font-semibold text-slate-700">{copy('Available for', 'Inapatikana kwa')}</p>
                                                     <div className="flex flex-wrap gap-2">
                                                         {menuAvailabilityOptions.map(option => (
                                                             <button
@@ -4878,14 +5089,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                 onClick={() => toggleMenuArrayValue('availability', option.key)}
                                                                 className={`rounded-full border px-3 py-1.5 text-xs font-black ${menuDetails.availability.includes(option.key) ? 'border-orange-500 bg-white text-orange-700' : 'border-slate-200 bg-white/60 text-slate-500'}`}
                                                             >
-                                                                {option.label}
+                                                                {localizeUploadOption(copy, option.label)}
                                                             </button>
                                                         ))}
                                                     </div>
                                                 </div>
 
                                                 <div className="space-y-2">
-                                                    <p className="text-[11px] font-semibold text-slate-700">Tags</p>
+                                                    <p className="text-[11px] font-semibold text-slate-700">{copy('Tags', 'Tags')}</p>
                                                     <div className="flex flex-wrap gap-2">
                                                         {dietaryTagOptions.map(option => (
                                                             <button
@@ -4894,7 +5105,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                 onClick={() => toggleMenuArrayValue('dietary_tags', option.key)}
                                                                 className={`rounded-full border px-3 py-1.5 text-xs font-black ${menuDetails.dietary_tags.includes(option.key) ? 'border-emerald-500 bg-white text-emerald-700' : 'border-slate-200 bg-white/60 text-slate-500'}`}
                                                             >
-                                                                {option.label}
+                                                                {localizeUploadOption(copy, option.label)}
                                                             </button>
                                                         ))}
                                                     </div>
@@ -4902,21 +5113,21 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                                 <div className="space-y-2">
                                                     <div className="flex items-center justify-between">
-                                                        <p className="text-[11px] font-semibold text-slate-700">Add-ons</p>
+                                                        <p className="text-[11px] font-semibold text-slate-700">{copy('Add-ons', 'Add-ons')}</p>
                                                         <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs font-bold bg-white" onClick={addMenuAddOn}>
                                                             <Plus className="h-3.5 w-3.5 mr-1" /> Add
                                                         </Button>
                                                     </div>
                                                     {(menuDetails.add_ons || []).length === 0 ? (
                                                         <p className="rounded-xl border border-dashed border-orange-200 bg-white/70 px-3 py-2 text-xs font-semibold text-orange-800">
-                                                            Add-ons are optional, for example extra cheese, chips, sauce, or toppings.
+                                                            {copy('Add-ons are optional, for example extra cheese, chips, sauce, or toppings.', 'Add-ons ni optional, kwa mfano cheese ya ziada, chips, sauce, au toppings.')}
                                                         </p>
                                                     ) : (
                                                         <div className="space-y-2">
                                                             {menuDetails.add_ons.map((row, index) => (
                                                                 <div key={index} className="grid grid-cols-[1fr_120px_36px] gap-2">
-                                                                    <Input className="h-10 bg-white" placeholder="Add-on name" value={row.name || ''} onChange={(e) => updateMenuAddOn(index, 'name', e.target.value)} />
-                                                                    <Input className="h-10 bg-white" type="number" min="0" placeholder="Price" value={row.price || ''} onChange={(e) => updateMenuAddOn(index, 'price', e.target.value)} />
+                                                                    <Input className="h-10 bg-white" placeholder={copy('Add-on name', 'Jina la add-on')} value={row.name || ''} onChange={(e) => updateMenuAddOn(index, 'name', e.target.value)} />
+                                                                    <Input className="h-10 bg-white" type="number" min="0" placeholder={copy('Price', 'Bei')} value={row.price || ''} onChange={(e) => updateMenuAddOn(index, 'price', e.target.value)} />
                                                                     <Button type="button" variant="ghost" size="icon" className="h-10 w-10 rounded-lg" onClick={() => removeMenuAddOn(index)}>
                                                                         <X className="h-4 w-4" />
                                                                     </Button>
@@ -4956,10 +5167,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                                                 {variant.swatch_image_url && (
                                                                     <div className="flex items-center gap-2">
-                                                                        <img src={variant.swatch_image_url} alt="swatch" className="h-8 w-8 rounded border border-slate-200 object-cover" />
+                                                                        <img src={variant.swatch_image_url} alt={copy('Swatch', 'Kibandiko')} className="h-8 w-8 rounded border border-slate-200 object-cover" />
                                                                         <Input
                                                                             className="h-10"
-                                                                            placeholder="Swatch URL"
+                                                                            placeholder={copy('Swatch URL', 'URL ya kibandiko')}
                                                                             value={variant.swatch_image_url}
                                                                             onChange={(e) => setVariants((prev) => prev.map((row, idx) => idx === index ? { ...row, swatch_image_url: e.target.value } : row))}
                                                                         />
@@ -4978,7 +5189,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     <Card className="border-orange-100 shadow-sm overflow-hidden rounded-[2rem]">
                                         <div className="bg-orange-50 p-4 border-b flex items-center gap-2 text-orange-800">
                                             <ShoppingBag className="h-5 w-5" />
-                                            <h3 className="font-bold uppercase tracking-widest text-xs">Menu Pricing</h3>
+                                            <h3 className="font-bold uppercase tracking-widest text-xs">{copy('Menu pricing', 'Bei ya menu')}</h3>
                                         </div>
                                         <CardContent className="p-5 space-y-4">
                                             {renderWholesaleEditor()}
@@ -4986,17 +5197,17 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             {retailPriceEnabled ? (
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                     <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-orange-700 uppercase tracking-wider">Bei ya Reja Reja (TZS)</label>
-                                                        <Input type="number" placeholder="Mf. 12000" className="h-12 text-lg font-black bg-white border-orange-200" value={price} onChange={e => setPrice(e.target.value)} />
+                                                        <label className="text-xs font-bold text-orange-700 uppercase tracking-wider">{copy('Retail price (TZS)', 'Bei ya reja reja (TZS)')}</label>
+                                                        <Input type="number" placeholder={copy('E.g. 12000', 'Mf. 12000')} className="h-12 text-lg font-black bg-white border-orange-200" value={price} onChange={e => setPrice(e.target.value)} />
                                                     </div>
                                                     <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bei ya awali</label>
-                                                        <Input type="number" placeholder="Mf. 15000" className="h-12 text-lg font-black border-dashed bg-white" value={comparePrice} onChange={e => setComparePrice(e.target.value)} />
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Original price', 'Bei ya awali')}</label>
+                                                        <Input type="number" placeholder={copy('E.g. 15000', 'Mf. 15000')} className="h-12 text-lg font-black border-dashed bg-white" value={comparePrice} onChange={e => setComparePrice(e.target.value)} />
                                                     </div>
                                                 </div>
                                             ) : (
                                                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-xs font-semibold leading-5 text-emerald-900">
-                                                    Wholesale-only product. Bei ya mteja itatoka kwenye pricing tiers na proforma ya Takeer SafePay.
+                                                            {copy('Wholesale-only product. Customer pricing comes from pricing tiers and the PSP proforma.', 'Bidhaa ya jumla pekee. Bei ya mteja itatoka kwenye pricing tiers na proforma ya PSP.')}
                                                 </div>
                                             )}
                                             <PhysicalPublishPanel
@@ -5017,7 +5228,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     <Card className="border-brand-100 shadow-sm overflow-hidden rounded-[2rem]">
                                         <div className="bg-brand-50 p-4 border-b flex items-center gap-2 text-brand-800">
                                             <CheckCircle2 className="h-5 w-5" />
-                                            <h3 className="font-bold uppercase tracking-widest text-xs">Fulfillment, Stock & Pricing</h3>
+                                            <h3 className="font-bold uppercase tracking-widest text-xs">{copy('Fulfillment, stock & pricing', 'Utimilishaji, stock na bei')}</h3>
                                         </div>
                                         <CardContent className="p-5 space-y-4">
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -5070,31 +5281,31 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 {retailPriceEnabled ? (
                                                     <div className="grid grid-cols-1 gap-4">
                                                         <div className="space-y-1.5">
-                                                            <label className="text-xs font-bold text-brand-600 uppercase tracking-wider">Bei ya Reja Reja (TZS)</label>
-                                                            <Input type="number" placeholder="Mf. 35000" className="h-12 text-lg font-black bg-brand-50 border-brand-200" value={price} onChange={e => setPrice(e.target.value)} />
+                                                            <label className="text-xs font-bold text-brand-600 uppercase tracking-wider">{copy('Retail price (TZS)', 'Bei ya reja reja (TZS)')}</label>
+                                                            <Input type="number" placeholder={copy('E.g. 35000', 'Mf. 35000')} className="h-12 text-lg font-black bg-brand-50 border-brand-200" value={price} onChange={e => setPrice(e.target.value)} />
                                                         </div>
                                                     </div>
                                                 ) : (
                                                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-xs font-semibold leading-5 text-emerald-900">
-                                                        Wholesale-only product. Bei ya mteja itatoka kwenye pricing tiers na proforma ya Takeer SafePay.
+                                                        {copy('Wholesale-only product. The customer price comes from pricing tiers and the PSP proforma.', 'Bidhaa ya jumla pekee. Bei ya mteja itatoka kwenye pricing tiers na proforma ya PSP.')}
                                                     </div>
                                                 )}
                                                 {step === 'physical' && (
                                                     <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                                                         <div>
-                                                            <p className="text-xs font-black uppercase tracking-wider text-slate-700">Return policy</p>
-                                                            <p className="text-xs text-slate-500">Hii itaonekana kwenye Product Details ili mteja ajue kabla ya kununua.</p>
+                                                            <p className="text-xs font-black uppercase tracking-wider text-slate-700">{copy('Return policy', 'Sera ya kurudisha')}</p>
+                                                            <p className="text-xs text-slate-500">{copy('This appears in Product Details so the customer knows before buying.', 'Hii itaonekana kwenye Product Details ili mteja ajue kabla ya kununua.')}</p>
                                                         </div>
                                                         {returnPolicies.length > 0 && (
                                                             <label className="space-y-1.5">
-                                                                <span className="text-[11px] font-semibold text-slate-600">Saved policy</span>
+                                                                <span className="text-[11px] font-semibold text-slate-600">{copy('Saved policy', 'Sera iliyohifadhiwa')}</span>
                                                                 <select
                                                                     className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm"
                                                                     value={selectedReturnPolicyId}
                                                                     disabled={useCustomReturnPolicy}
                                                                     onChange={(e) => setSelectedReturnPolicyId(e.target.value)}
                                                                 >
-                                                                    <option value="">Use merchant default</option>
+                                                                    <option value="">{copy('Use merchant default', 'Tumia default ya merchant')}</option>
                                                                     {returnPolicies.map((policy) => (
                                                                         <option key={policy.id} value={policy.id}>
                                                                             {policy.name}{policy.is_default ? ' (Default)' : ''}
@@ -5109,7 +5320,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                 checked={useCustomReturnPolicy}
                                                                 onChange={(e) => setUseCustomReturnPolicy(e.target.checked)}
                                                             />
-                                                            Custom policy for this product
+                                                            {copy('Custom policy for this product', 'Sera maalum kwa bidhaa hii')}
                                                         </label>
                                                         {useCustomReturnPolicy ? (
                                                             <div className="grid gap-2 sm:grid-cols-3">
@@ -5124,8 +5335,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                         onClick={() => setRefundPolicy(option.key)}
                                                                         className={`rounded-xl border px-3 py-2 text-left ${refundPolicy === option.key ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-200' : 'border-slate-200 bg-white'}`}
                                                                     >
-                                                                        <span className="block text-xs font-black text-slate-900">{option.label}</span>
-                                                                        <span className="mt-1 block text-[10px] font-semibold leading-snug text-slate-500">{option.hint}</span>
+                                                                        <span className="block text-xs font-black text-slate-900">{option.key === 'standard' ? copy('Return accepted', 'Kurudisha kunakubalika') : option.key === 'strict' ? copy('Replacement only', 'Kubadilisha pekee') : copy('Final sale', 'Mauzo ya mwisho')}</span>
+                                                                        <span className="mt-1 block text-[10px] font-semibold leading-snug text-slate-500">{option.key === 'standard' ? copy('For items that can be returned.', 'Kwa bidhaa zinazoweza kurudishwa.') : option.key === 'strict' ? copy('For damaged, wrong, or quality issues.', 'Kwa bidhaa iliyoharibika, isiyo sahihi, au yenye tatizo la ubora.') : copy('Perishable or custom items, except for major errors.', 'Bidhaa zinazoharibika au maalum, isipokuwa kosa kubwa.')}</span>
                                                                     </button>
                                                                 ))}
                                                             </div>
@@ -5136,7 +5347,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         ) : null}
                                                         {useCustomReturnPolicy && refundPolicy !== 'final_sale' && (
                                                             <label className="space-y-1.5">
-                                                                <span className="text-[11px] font-semibold text-slate-600">Window days</span>
+                                                                <span className="text-[11px] font-semibold text-slate-600">{copy('Window days', 'Siku za kurudisha')}</span>
                                                                 <Input
                                                                     type="number"
                                                                     min="0"
@@ -5144,7 +5355,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                     className="h-11 bg-white"
                                                                     value={refundWindowDays}
                                                                     onChange={(e) => setRefundWindowDays(e.target.value)}
-                                                                    placeholder="Mf. 3"
+                                                                    placeholder={copy('E.g. 3', 'Mf. 3')}
                                                                 />
                                                             </label>
                                                         )}
@@ -5153,7 +5364,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                 className="min-h-20 rounded-xl bg-white mt-2"
                                                                 value={refundPolicyNote}
                                                                 onChange={(e) => setRefundPolicyNote(e.target.value)}
-                                                                placeholder="Mf. Replacement ndani ya saa 72 kama bidhaa ni damaged, wrong, au sealed haijafunguliwa."
+                                                                placeholder={copy('E.g. Replacement within 72 hours if the item is damaged, wrong, or unopened.', 'Mf. Replacement ndani ya saa 72 kama bidhaa ni damaged, wrong, au sealed haijafunguliwa.')}
                                                             />
                                                         )}
                                                     </div>
@@ -5167,7 +5378,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     <Card className="border-brand-100 shadow-sm overflow-hidden rounded-[2rem]">
                                         <div className="bg-brand-50 p-4 border-b flex items-center gap-2 text-brand-800">
                                             <CheckCircle2 className="h-5 w-5" />
-                                            <h3 className="font-bold uppercase tracking-widest text-xs">Shipping & Variant Details</h3>
+                                            <h3 className="font-bold uppercase tracking-widest text-xs">{copy('Shipping & variant details', 'Usafirishaji na maelezo ya variants')}</h3>
                                         </div>
                                         <CardContent className="p-5 space-y-3">
                                             {renderPhysicalPackageEditor({ compact: true })}
@@ -5180,11 +5391,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 boxed={false}
                                                 summary={(
                                                     <p className="text-sm text-slate-600">
-                                                        Configured variants: <span className="font-bold">{configuredPhysicalVariants.length}</span>
+                                                        {copy('Configured variants:', 'Variants zilizowekwa:')} <span className="font-bold">{configuredPhysicalVariants.length}</span>
                                                         {requiresLocationInventory ? (
-                                                            <> · Total stock: <span className="font-bold">{configuredVariantStockTotal}</span></>
+                                                            <> · {copy('Total stock:', 'Stock yote:')} <span className="font-bold">{configuredVariantStockTotal}</span></>
                                                         ) : (
-                                                            <> · Source mode: <span className="font-bold">{selectedFulfillmentMode.label}</span></>
+                                                            <> · {copy('Source mode:', 'Aina ya chanzo:')} <span className="font-bold">{copy(selectedFulfillmentMode.englishLabel || selectedFulfillmentMode.label, selectedFulfillmentMode.label)}</span></>
                                                         )}
                                                     </p>
                                                 )}
@@ -5212,17 +5423,17 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 {step === 'digital' ? <Globe className="h-5 w-5" /> : <Calendar className="h-5 w-5" />}
                             </div>
                             <div>
-                                <h2 className="text-lg sm:text-xl font-black">Taarifa za {step === 'digital' ? 'Digital' : 'Huduma'}</h2>
-                                <p className="text-xs sm:text-sm opacity-80">Jaza maelezo kisha weka sokoni.</p>
+                                <h2 className="text-lg sm:text-xl font-black">{step === 'digital' ? copy('Digital product details', 'Taarifa za digital') : copy('Service details', 'Taarifa za huduma')}</h2>
+                                <p className="text-xs sm:text-sm opacity-80">{copy('Enter the details, then publish it to the marketplace.', 'Jaza maelezo kisha weka sokoni.')}</p>
                             </div>
                         </div>
 
                         <CardContent className="p-4 sm:p-5 space-y-5">
                             {/* Title */}
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Jina la {step === 'digital' ? 'Bidhaa' : 'Huduma'}</label>
+                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{step === 'digital' ? copy('Product name', 'Jina la bidhaa') : copy('Service name', 'Jina la huduma')}</label>
                                 <Input
-                                    placeholder={step === 'digital' ? 'Mf. E-book ya Kupika' : 'Mf. Ushauri wa Biashara'}
+                                    placeholder={step === 'digital' ? copy('E.g. cooking e-book', 'Mf. E-book ya kupika') : copy('E.g. business consulting', 'Mf. ushauri wa biashara')}
                                     value={manualTitle} // Using manualTitle for consistency, could be a separate state if needed
                                     onChange={e => setManualTitle(e.target.value)}
                                     className="h-12 font-semibold text-base"
@@ -5231,9 +5442,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                             {/* Description */}
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Maelezo Kamili</label>
+                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Full description', 'Maelezo kamili')}</label>
                                 <Textarea
-                                    placeholder={step === 'digital' ? "Elezea kuhusu hii bidhaa, nini mteja atapata au kuna thamani gani mteja atafaidi..." : "Elezea huduma unayotoa, faida na maandalizi yoyote yenye thamani kwa mteja..."}
+                                    placeholder={step === 'digital' ? copy('Describe what the customer receives and the value they get from this product...', 'Elezea kuhusu hii bidhaa, nini mteja atapata au kuna thamani gani mteja atafaidi...') : copy('Describe the service, its benefits, and any customer preparation required...', 'Elezea huduma unayotoa, faida na maandalizi yoyote yenye thamani kwa mteja...')}
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
                                     className="min-h-[88px] rounded-2xl bg-white border-border"
@@ -5251,10 +5462,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 <Palette className="h-4 w-4 text-blue-700" />
                                                 <div>
                                                     <label className="text-xs font-black text-blue-700 uppercase tracking-wider">
-                                                        1. Unauza nini?
+                                                        {copy('1. What are you selling?', '1. Unauza nini?')}
                                                     </label>
                                                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
-                                                        Chagua aina inayofanana zaidi. Takeer itaweka namna rahisi ya kumpa mteja bidhaa hii.
+                                                        {copy('Choose the closest type. Takeer will set up a simple way to deliver it to the customer.', 'Chagua aina inayofanana zaidi. Takeer itaweka namna rahisi ya kumpa mteja bidhaa hii.')}
                                                     </p>
                                                 </div>
                                             </div>
@@ -5277,10 +5488,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     >
                                                         <div className="flex items-center gap-2">
                                                             <ContentIcon className={`h-4 w-4 ${selected ? 'text-blue-600' : 'text-slate-500'}`} />
-                                                            <span className="text-xs font-black leading-tight">{item.label}</span>
+                                                            <span className="text-xs font-black leading-tight">{copy(item.englishLabel || item.label, item.label)}</span>
                                                         </div>
                                                         <p className="mt-1.5 text-[10px] font-semibold leading-4 text-slate-500">
-                                                            {item.description}
+                                                            {copy(item.englishDescription || item.description, item.description)}
                                                         </p>
                                                     </button>
                                                 );
@@ -5293,9 +5504,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     {React.createElement(selectedDigitalContentType.icon, { className: 'h-4 w-4' })}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <p className="text-xs font-black uppercase tracking-wider text-blue-700">Picha / preview ya kuuza bidhaa</p>
+                                                    <p className="text-xs font-black uppercase tracking-wider text-blue-700">{copy('Sales preview', 'Picha / preview ya kuuza bidhaa')}</p>
                                                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
-                                                        {selectedDigitalContentType.previewHint}
+                                                        {copy(selectedDigitalContentType.englishPreviewHint || selectedDigitalContentType.previewHint, selectedDigitalContentType.previewHint)}
                                                     </p>
                                                 </div>
                                             </div>
@@ -5304,7 +5515,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         {(digitalContentType === 'template_asset' || digitalContentType === 'creative_asset') && (
                                             <div className="grid sm:grid-cols-1 gap-3">
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Ruhusa ya matumizi</label>
+                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Usage license', 'Ruhusa ya matumizi')}</label>
                                                     <select
                                                         value={digitalUsageLicense}
                                                         onChange={(e) => setDigitalUsageLicense(e.target.value)}
@@ -5316,11 +5527,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     </select>
                                                 </div>
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Maelekezo kwa mnunuzi</label>
+                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Buyer instructions', 'Maelekezo kwa mnunuzi')}</label>
                                                     <Textarea
                                                         value={digitalAccessInstructions}
                                                         onChange={(e) => setDigitalAccessInstructions(e.target.value)}
-                                                        placeholder="Mf. unzip, duplicate template, install fonts first, then fungua faili la maelekezo..."
+                                                        placeholder={copy('E.g. unzip the file, duplicate the template, install fonts first, then open the instructions...', 'Mf. unzip, duplicate template, install fonts first, then fungua faili la maelekezo...')}
                                                         className="min-h-[96px] rounded-xl bg-white"
                                                     />
                                                 </div>
@@ -5330,9 +5541,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">2. Mteja atapokea vipi?</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('2. How will the customer receive it?', '2. Mteja atapokea vipi?')}</label>
                                             <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                                                Tumechagua njia inayofaa kwa {selectedDigitalContentType.label}. Unaweza kubadilisha kama unahitaji.
+                                                {copy(`We selected the best delivery method for ${selectedDigitalContentType.englishLabel || selectedDigitalContentType.label}. You can change it if needed.`, `Tumechagua njia inayofaa kwa ${selectedDigitalContentType.label}. Unaweza kubadilisha kama unahitaji.`)}
                                             </p>
                                         </div>
                                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -5345,7 +5556,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     }`}
                                             >
                                                 <FileUp className="h-5 w-5" />
-                                                <span className="text-[11px] font-bold">Pakia faili sasa</span>
+                                                <span className="text-[11px] font-bold">{copy('Upload file now', 'Pakia faili sasa')}</span>
                                             </button>
                                             <button
                                                 type="button"
@@ -5356,7 +5567,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     }`}
                                             >
                                                 <PlayCircle className="h-5 w-5" />
-                                                <span className="text-[11px] font-bold">Video ndani ya Takeer</span>
+                                                <span className="text-[11px] font-bold">{copy('Video inside Takeer', 'Video ndani ya Takeer')}</span>
                                             </button>
                                             <button
                                                 type="button"
@@ -5367,7 +5578,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     }`}
                                             >
                                                 <ExternalLink className="h-5 w-5" />
-                                                <span className="text-[11px] font-bold">Nina link tayari</span>
+                                                <span className="text-[11px] font-bold">{copy('I have a link', 'Nina link tayari')}</span>
                                             </button>
                                             <button
                                                 type="button"
@@ -5378,7 +5589,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     }`}
                                             >
                                                 <Music className="h-5 w-5" />
-                                                <span className="text-[11px] font-bold">Audio ndani ya Takeer</span>
+                                                <span className="text-[11px] font-bold">{copy('Audio inside Takeer', 'Audio ndani ya Takeer')}</span>
                                             </button>
                                             <button
                                                 type="button"
@@ -5389,7 +5600,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     }`}
                                             >
                                                 <Images className="h-5 w-5" />
-                                                <span className="text-[11px] font-bold">Pack ya picha</span>
+                                                <span className="text-[11px] font-bold">{copy('Image pack', 'Pack ya picha')}</span>
                                             </button>
                                             <button
                                                 type="button"
@@ -5402,7 +5613,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     }`}
                                             >
                                                 <PenLine className="h-5 w-5" />
-                                                <span className="text-[11px] font-bold">Nitamalizia baadae</span>
+                                                <span className="text-[11px] font-bold">{copy('I will finish later', 'Nitamalizia baadaye')}</span>
                                             </button>
                                         </div>
                                     </div>
@@ -5416,8 +5627,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     className="w-full py-6 border-2 border-dashed border-blue-200 bg-blue-50/50 rounded-2xl flex flex-col items-center gap-2 hover:bg-blue-50 transition-colors text-blue-700"
                                                 >
                                                     <File className="h-8 w-8" />
-                                                    <span className="font-bold">Bonyeza kupakia faili</span>
-                                                    <span className="text-xs opacity-70">{selectedDigitalContentType.uploadHint}</span>
+                                                    <span className="font-bold">{copy('Click to upload a file', 'Bonyeza kupakia faili')}</span>
+                                                    <span className="text-xs opacity-70">{copy(selectedDigitalContentType.englishUploadHint || selectedDigitalContentType.uploadHint, selectedDigitalContentType.uploadHint)}</span>
                                                     <input
                                                         type="file"
                                                         accept={selectedDigitalContentType.accept}
@@ -5433,7 +5644,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <p className="font-bold text-sm truncate text-blue-900">{digitalFile.name}</p>
-                                                        <p className="text-xs text-blue-700 opacity-70">{formatFileSizeMb(digitalFile.size)}</p>
+                                                        <p className="text-xs text-blue-700 opacity-70">{formatFileSizeMb(digitalFile.size, copy)}</p>
                                                     </div>
                                                     <button onClick={() => setDigitalFile(null)} className="h-8 w-8 bg-blue-100 hover:bg-red-100 rounded-full flex items-center justify-center transition-colors">
                                                         <X className="h-4 w-4 text-blue-700 hover:text-red-600" />
@@ -5441,7 +5652,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 </div>
                                             )}
                                             <p className="text-[10px] text-muted-foreground mt-2">
-                                                Faili litahifadhiwa <b>salama</b> na Takeer. Preview inayouza bidhaa iwekwe kwenye Media za Bidhaa.
+                                                {copy('The file will be stored securely by Takeer. Add the sales preview to Product Media.', 'Faili litahifadhiwa salama na Takeer. Preview inayouza bidhaa iwekwe kwenye Media za Bidhaa.')}
                                             </p>
                                         </div>
                                     )}
@@ -5456,8 +5667,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     className="w-full py-6 border-2 border-dashed border-blue-200 bg-blue-50/50 rounded-2xl flex flex-col items-center gap-2 hover:bg-blue-50 transition-colors text-blue-700"
                                                 >
                                                     <PlayCircle className="h-9 w-9" />
-                                                    <span className="font-bold">Pakia full premium video</span>
-                                                    <span className="text-xs opacity-70">MP4, MOV, WEBM. Trailer kama ipo iweke kwenye Media za Bidhaa hapo juu.</span>
+                                                    <span className="font-bold">{copy('Upload the full premium video', 'Pakia full premium video')}</span>
+                                                    <span className="text-xs opacity-70">{copy('MP4, MOV, WEBM. Add a trailer to Product Media above if you have one.', 'MP4, MOV, WEBM. Trailer kama ipo iweke kwenye Media za Bidhaa hapo juu.')}</span>
                                                     <input
                                                         type="file"
                                                         accept="video/mp4,video/quicktime,video/webm"
@@ -5474,7 +5685,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <div className="flex-1 min-w-0">
                                                         <p className="font-bold text-sm truncate text-blue-900">{paidVideoFile.name}</p>
                                                         <p className="text-xs text-blue-700 opacity-70">
-                                                            {formatFileSizeMb(paidVideoFile.size)} {paidVideoFile.isUploading ? ` · ${paidVideoFile.progress || 0}%` : ''}
+                                                            {formatFileSizeMb(paidVideoFile.size, copy)} {paidVideoFile.isUploading ? ` · ${paidVideoFile.progress || 0}%` : ''}
                                                         </p>
                                                     </div>
                                                     <button type="button" onClick={() => setPaidVideoFile(null)} className="h-8 w-8 bg-blue-100 hover:bg-red-100 rounded-full flex items-center justify-center transition-colors">
@@ -5484,8 +5695,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             )}
                                             <label className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-white px-4 py-3">
                                                 <span>
-                                                    <span className="block text-sm font-black text-foreground">Allow buyer download</span>
-                                                    <span className="block text-[11px] text-muted-foreground">Off by default. Buyers can watch inside Takeer.</span>
+                                                        <span className="block text-sm font-black text-foreground">{copy('Allow buyer download', 'Ruhusu mnunuzi kupakua')}</span>
+                                                        <span className="block text-[11px] text-muted-foreground">{copy('Off by default. Buyers can watch inside Takeer.', 'Imezimwa kwa default. Wanunuzi wanaweza kutazama ndani ya Takeer.')}</span>
                                                 </span>
                                                 <input
                                                     type="checkbox"
@@ -5507,8 +5718,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     className="w-full py-6 border-2 border-dashed border-blue-200 bg-blue-50/50 rounded-2xl flex flex-col items-center gap-2 hover:bg-blue-50 transition-colors text-blue-700"
                                                 >
                                                     <Music className="h-9 w-9" />
-                                                    <span className="font-bold">Pakia premium audio</span>
-                                                    <span className="text-xs opacity-70">MP3, WAV, M4A, AAC, OGG. Preview ibaki kwenye Media za Bidhaa hapo juu.</span>
+                                                    <span className="font-bold">{copy('Upload premium audio', 'Pakia premium audio')}</span>
+                                                    <span className="text-xs opacity-70">{copy('MP3, WAV, M4A, AAC, OGG. Keep the preview in Product Media above.', 'MP3, WAV, M4A, AAC, OGG. Preview ibaki kwenye Media za Bidhaa hapo juu.')}</span>
                                                     <input
                                                         type="file"
                                                         accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/flac"
@@ -5525,7 +5736,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <div className="flex-1 min-w-0">
                                                         <p className="font-bold text-sm truncate text-blue-900">{paidAudioFile.name}</p>
                                                         <p className="text-xs text-blue-700 opacity-70">
-                                                            {formatFileSizeMb(paidAudioFile.size)} {paidAudioFile.isUploading ? ` · ${paidAudioFile.progress || 0}%` : ''}
+                                                            {formatFileSizeMb(paidAudioFile.size, copy)} {paidAudioFile.isUploading ? ` · ${paidAudioFile.progress || 0}%` : ''}
                                                         </p>
                                                     </div>
                                                     <button type="button" onClick={() => setPaidAudioFile(null)} className="h-8 w-8 bg-blue-100 hover:bg-red-100 rounded-full flex items-center justify-center transition-colors">
@@ -5535,8 +5746,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             )}
                                             <label className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-white px-4 py-3">
                                                 <span>
-                                                    <span className="block text-sm font-black text-foreground">Allow buyer download</span>
-                                                    <span className="block text-[11px] text-muted-foreground">Off by default. Buyers can listen inside Takeer.</span>
+                                                <span className="block text-sm font-black text-foreground">{copy('Allow buyer download', 'Ruhusu mnunuzi kupakua')}</span>
+                                                <span className="block text-[11px] text-muted-foreground">{copy('Off by default. Buyers can listen inside Takeer.', 'Imezimwa kwa default. Wanunuzi wanaweza kusikiliza ndani ya Takeer.')}</span>
                                                 </span>
                                                 <input
                                                     type="checkbox"
@@ -5556,8 +5767,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 className="w-full py-6 border-2 border-dashed border-blue-200 bg-blue-50/50 rounded-2xl flex flex-col items-center gap-2 hover:bg-blue-50 transition-colors text-blue-700"
                                             >
                                                 <Images className="h-9 w-9" />
-                                                <span className="font-bold">Pakia original gallery images</span>
-                                                <span className="text-xs opacity-70">JPG, PNG, WEBP. Takeer itatengeneza previews zenye watermark.</span>
+                                                <span className="font-bold">{copy('Upload original gallery images', 'Pakia picha za original gallery')}</span>
+                                                <span className="text-xs opacity-70">{copy('JPG, PNG, WEBP. Takeer will create watermarked previews.', 'JPG, PNG, WEBP. Takeer itatengeneza previews zenye watermark.')}</span>
                                                 <input
                                                     type="file"
                                                     accept="image/jpeg,image/png,image/webp"
@@ -5583,7 +5794,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                 </button>
                                                             </div>
                                                             <p className="mt-1 text-[10px] text-blue-700/70">
-                                                                {formatFileSizeMb(item.size)} {item.isUploading ? ` · ${item.progress || 0}%` : item.error ? ' · failed' : ''}
+                                                                {formatFileSizeMb(item.size, copy)} {item.isUploading ? ` · ${item.progress || 0}%` : item.error ? ` · ${copy('failed', 'imeshindikana')}` : ''}
                                                             </p>
                                                         </div>
                                                     ))}
@@ -5591,8 +5802,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             )}
                                             <label className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-white px-4 py-3">
                                                 <span>
-                                                    <span className="block text-sm font-black text-foreground">Allow buyer download</span>
-                                                    <span className="block text-[11px] text-muted-foreground">Off by default. Buyers view protected previews inside Takeer.</span>
+                                                    <span className="block text-sm font-black text-foreground">{copy('Allow buyer download', 'Ruhusu mnunuzi kupakua')}</span>
+                                                    <span className="block text-[11px] text-muted-foreground">{copy('Off by default. Buyers view protected previews inside Takeer.', 'Imezimwa kwa default. Wanunuzi wataona previews zilizolindwa ndani ya Takeer.')}</span>
                                                 </span>
                                                 <input
                                                     type="checkbox"
@@ -5615,21 +5826,21 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <PenLine className="h-5 w-5" />
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-black text-blue-900">Order-specific final delivery</p>
+                                                    <p className="text-sm font-black text-blue-900">{copy('Order-specific final delivery', 'Delivery ya mwisho kwa kila order')}</p>
                                                     <p className="mt-1 text-xs font-semibold leading-5 text-blue-700/80">
-                                                        Customer buys now. You upload the finished file later from the merchant order page.
+                                                        {copy('The customer buys now. You upload the finished file later from the merchant order page.', 'Mteja atanunua sasa. Utapakia faili lililokamilika baadaye kwenye ukurasa wa merchant order.')}
                                                     </p>
                                                 </div>
                                             </div>
                                             <label className="block space-y-1">
-                                                <span className="text-[10px] font-black uppercase tracking-wider text-blue-900/70">Delivery deadline after payment</span>
-                                                <Input type="number" min="1" className="h-11 bg-white" value={availabilityLeadTimeDays} onChange={(e) => setAvailabilityLeadTimeDays(e.target.value)} placeholder="Mf. 3" />
-                                                <span className="block text-[10px] font-semibold text-blue-700/80">Takeer will calculate each order deadline from the payment time.</span>
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-blue-900/70">{copy('Delivery deadline after payment', 'Deadline ya delivery baada ya malipo')}</span>
+                                                <Input type="number" min="1" className="h-11 bg-white" value={availabilityLeadTimeDays} onChange={(e) => setAvailabilityLeadTimeDays(e.target.value)} placeholder={copy('E.g. 3', 'Mf. 3')} />
+                                                <span className="block text-[10px] font-semibold text-blue-700/80">{copy('Takeer will calculate each order deadline from the payment time.', 'Takeer itahesabu deadline ya kila order kuanzia muda wa malipo.')}</span>
                                             </label>
                                             <Textarea
                                                 value={digitalAccessInstructions}
                                                 onChange={(e) => setDigitalAccessInstructions(e.target.value)}
-                                                placeholder="Explain what the buyer should send in chat, turnaround time, revision policy, and delivery expectations..."
+                                                placeholder={copy('Explain what the buyer should send in chat, turnaround time, revision policy, and delivery expectations...', 'Eleza mnunuzi atume nini kwenye chat, muda wa kazi, sera ya marekebisho, na matarajio ya delivery...')}
                                                 className="min-h-[110px] rounded-xl bg-white"
                                             />
                                         </div>
@@ -5645,7 +5856,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 className="h-12 font-mono text-sm"
                                             />
                                             <p className="text-[10px] text-muted-foreground">
-                                                Hakikisha link imewekwa <b>huru kushirikiwa</b> na kila mtu anayeipata.
+                                                {copy('Make sure the link can be shared by everyone who receives it.', 'Hakikisha link inaweza kushirikishwa na kila mtu anayeipata.')}
                                             </p>
                                         </div>
                                     )}
@@ -5654,14 +5865,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         <div className="rounded-2xl border border-blue-100 bg-white p-4 space-y-4">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
-                                                    <p className="text-xs font-black uppercase tracking-wider text-blue-700">Software releases</p>
+                                                    <p className="text-xs font-black uppercase tracking-wider text-blue-700">{copy('Software releases', 'Software releases')}</p>
                                                     <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                                                        Add versioned ZIP/code releases after this software product has been saved.
+                                                        {copy('Add versioned ZIP/code releases after this software product has been saved.', 'Ongeza releases za ZIP/code zenye versions baada ya kuhifadhi software hii.')}
                                                     </p>
                                                 </div>
                                                 {!productId && (
                                                     <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-amber-700">
-                                                        Save first
+                                                        {copy('Save first', 'Hifadhi kwanza')}
                                                     </span>
                                                 )}
                                             </div>
@@ -5669,8 +5880,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-3 space-y-3">
                                                 <label className="flex items-center justify-between gap-3">
                                                     <span>
-                                                        <span className="block text-sm font-black text-foreground">Issue license key after purchase</span>
-                                                        <span className="block text-[11px] text-muted-foreground">Buyer gets a unique activation/license key with this software.</span>
+                                                        <span className="block text-sm font-black text-foreground">{copy('Issue a license key after purchase', 'Toa license key baada ya manunuzi')}</span>
+                                                        <span className="block text-[11px] text-muted-foreground">{copy('The buyer receives a unique activation/license key with this software.', 'Mnunuzi atapata activation/license key ya kipekee pamoja na software hii.')}</span>
                                                     </span>
                                                     <input
                                                         type="checkbox"
@@ -5684,7 +5895,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         <Input
                                                             value={licenseKeyPrefix}
                                                             onChange={(e) => setLicenseKeyPrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12))}
-                                                            placeholder="Key prefix, e.g. PLUGIN"
+                                                            placeholder={copy('Key prefix, e.g. PLUGIN', 'Prefix ya key, mf. PLUGIN')}
                                                             className="h-11 bg-white"
                                                         />
                                                         <Input
@@ -5693,7 +5904,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             max="50"
                                                             value={licenseActivationLimit}
                                                             onChange={(e) => setLicenseActivationLimit(String(Math.max(1, Math.min(50, Number(e.target.value || 1)))))}
-                                                            placeholder="Devices per key"
+                                                            placeholder={copy('Devices per key', 'Vifaa kwa kila key')}
                                                             className="h-11 bg-white"
                                                         />
                                                     </div>
@@ -5705,31 +5916,31 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3">
                                                         <div className="flex items-start justify-between gap-3">
                                                             <div>
-                                                                <p className="text-xs font-black uppercase tracking-wider text-slate-700">App validation setup</p>
-                                                                <p className="mt-1 text-[11px] font-semibold text-muted-foreground">Use this in your plugin, app, or installer to check buyer license keys.</p>
+                                                                <p className="text-xs font-black uppercase tracking-wider text-slate-700">{copy('App validation setup', 'Usanidi wa validation ya app')}</p>
+                                                                <p className="mt-1 text-[11px] font-semibold text-muted-foreground">{copy('Use this in your plugin, app, or installer to check buyer license keys.', 'Tumia hii kwenye plugin, app, au installer yako kukagua license keys za wanunuzi.')}</p>
                                                             </div>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => copyToClipboard(`${window.location.origin}/api/software/licenses/validate`, 'Validation URL copied.')}
                                                                 className="h-9 w-9 rounded-lg bg-white text-slate-700 flex items-center justify-center border border-slate-200"
-                                                                title="Copy validation URL"
+                                                                title={copy('Copy validation URL', 'Nakili URL ya uthibitishaji')}
                                                             >
                                                                 <Copy className="h-4 w-4" />
                                                             </button>
                                                         </div>
                                                         <div className="grid gap-2 sm:grid-cols-2">
                                                             <div className="rounded-xl bg-white p-3 border border-slate-200">
-                                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Endpoint</p>
+                                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{copy('Endpoint', 'Endpoint')}</p>
                                                                 <code className="mt-1 block break-all text-xs font-black text-slate-900">POST /api/software/licenses/validate</code>
                                                             </div>
                                                             <div className="rounded-xl bg-white p-3 border border-slate-200">
-                                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Product slug</p>
+                                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{copy('Product slug', 'Slug ya bidhaa')}</p>
                                                                 <code className="mt-1 block break-all text-xs font-black text-slate-900">{softwareProductSlug || `product_id: ${productId}`}</code>
                                                             </div>
                                                         </div>
                                                         <div className="rounded-xl bg-white border border-slate-200 overflow-hidden">
                                                             <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-                                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Example payload</p>
+                                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{copy('Example payload', 'Mfano wa payload')}</p>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => copyToClipboard(JSON.stringify({
@@ -5740,7 +5951,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                         site_url: 'https://example.com',
                                                                     }, null, 2), 'Example payload copied.')}
                                                                     className="h-8 w-8 rounded-lg bg-slate-50 text-slate-700 flex items-center justify-center"
-                                                                    title="Copy example payload"
+                                                                title={copy('Copy example payload', 'Nakili mfano wa payload')}
                                                                 >
                                                                     <Copy className="h-4 w-4" />
                                                                 </button>
@@ -5756,7 +5967,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             </pre>
                                                         </div>
                                                         <p className="text-[11px] font-semibold text-slate-500">
-                                                            Each key allows {licenseActivationLimit || 1} active device{Number(licenseActivationLimit || 1) === 1 ? '' : 's'}. The validation response also includes a signed offline license payload.
+                                                            {copy(`Each key allows ${licenseActivationLimit || 1} active device${Number(licenseActivationLimit || 1) === 1 ? '' : 's'}. The validation response also includes a signed offline license payload.`, `Kila key inaruhusu kifaa ${licenseActivationLimit || 1} kilicho active. Majibu ya validation pia yana payload ya license iliyosainiwa kwa matumizi ya offline.`)}
                                                         </p>
                                                     </div>
 
@@ -5764,8 +5975,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         <div className="flex items-center gap-2">
                                                             <KeyRound className="h-4 w-4 text-blue-700" />
                                                             <div>
-                                                                <p className="text-xs font-black uppercase tracking-wider text-blue-700">Issued license keys</p>
-                                                                <p className="text-[11px] font-semibold text-muted-foreground">View, revoke, or rotate buyer keys for support.</p>
+                                                                <p className="text-xs font-black uppercase tracking-wider text-blue-700">{copy('Issued license keys', 'License keys zilizotolewa')}</p>
+                                                                <p className="text-[11px] font-semibold text-muted-foreground">{copy('View, revoke, or rotate buyer keys for support.', 'Tazama, revoke, au rotate keys za wanunuzi kwa support.')}</p>
                                                             </div>
                                                         </div>
                                                         <Button
@@ -5774,17 +5985,17 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             onClick={() => fetchSoftwareLicenseKeys(productId)}
                                                             className="h-9 rounded-xl text-xs font-black"
                                                         >
-                                                            Refresh
+                                                            {copy('Refresh', 'Refresh')}
                                                         </Button>
                                                     </div>
 
                                                     {softwareLicenseAnalytics && (
                                                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                                                             {[
-                                                                ['Keys', softwareLicenseAnalytics.total_keys || 0],
-                                                                ['Active', softwareLicenseAnalytics.active_keys || 0],
-                                                                ['Devices', softwareLicenseAnalytics.active_devices || 0],
-                                                                ['Validations', softwareLicenseAnalytics.total_validations || 0],
+                                                                [copy('Keys', 'Keys'), softwareLicenseAnalytics.total_keys || 0],
+                                                                [copy('Active', 'Active'), softwareLicenseAnalytics.active_keys || 0],
+                                                                [copy('Devices', 'Vifaa'), softwareLicenseAnalytics.active_devices || 0],
+                                                                [copy('Validations', 'Validations'), softwareLicenseAnalytics.total_validations || 0],
                                                             ].map(([label, value]) => (
                                                                 <div key={label} className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
                                                                     <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">{label}</p>
@@ -5796,8 +6007,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                                     {softwareLicenseKeys.length === 0 ? (
                                                         <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/50 p-4 text-center">
-                                                            <p className="text-sm font-black text-slate-900">No keys issued yet</p>
-                                                            <p className="mt-1 text-xs text-muted-foreground">Keys will appear here after buyers purchase this software.</p>
+                                                            <p className="text-sm font-black text-slate-900">{copy('No keys issued yet', 'Bado hakuna keys zilizotolewa')}</p>
+                                                            <p className="mt-1 text-xs text-muted-foreground">{copy('Keys will appear here after buyers purchase this software.', 'Keys zitaonekana hapa baada ya wanunuzi kununua software hii.')}</p>
                                                         </div>
                                                     ) : (
                                                         <div className="divide-y divide-blue-100 rounded-xl border border-blue-100 overflow-hidden">
@@ -5816,10 +6027,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             <div className="min-w-0">
                                                                                 <p className="text-sm font-black text-slate-900 truncate">{buyerName}</p>
                                                                                 <p className="text-[11px] font-semibold text-muted-foreground">
-                                                                                    {license.order?.public_id ? `Order ${license.order.public_id}` : 'Order'} · {issuedAt}
+                                                                                    {license.order?.public_id ? `${copy('Order', 'Order')} ${license.order.public_id}` : copy('Order', 'Order')} · {issuedAt}
                                                                                 </p>
                                                                                 <p className="mt-1 text-[11px] font-semibold text-slate-500">
-                                                                                    {license.activation_count || 0} validations · {license.active_device_count || 0} devices{lastActivatedAt ? ` · last ${lastActivatedAt}` : ''}
+                                                                                    {license.activation_count || 0} {copy('validations', 'validations')} · {license.active_device_count || 0} {copy('devices', 'vifaa')}{lastActivatedAt ? ` · ${copy('last', 'mwisho')} ${lastActivatedAt}` : ''}
                                                                                 </p>
                                                                             </div>
                                                                             <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${isRevoked ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
@@ -5835,7 +6046,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                                     type="button"
                                                                                     onClick={() => copyLicenseKey(license.key)}
                                                                                     className="h-9 w-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center"
-                                                                                    title="Copy license key"
+                                                                                        title={copy('Copy license key', 'Nakili license key')}
                                                                                 >
                                                                                     <Copy className="h-4 w-4" />
                                                                                 </button>
@@ -5844,7 +6055,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                                     onClick={() => updateLicenseKeyStatus(license.id, 'regenerate')}
                                                                                     disabled={licenseKeyBusy === `regenerate-${license.id}`}
                                                                                     className="h-9 w-9 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center disabled:opacity-50"
-                                                                                    title="Regenerate license key"
+                                                                                        title={copy('Regenerate license key', 'Tengeneza license key upya')}
                                                                                 >
                                                                                     {licenseKeyBusy === `regenerate-${license.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                                                                                 </button>
@@ -5854,7 +6065,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                                         onClick={() => updateLicenseKeyStatus(license.id, 'revoke')}
                                                                                         disabled={licenseKeyBusy === `revoke-${license.id}`}
                                                                                         className="h-9 w-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center disabled:opacity-50"
-                                                                                        title="Revoke license key"
+                                                                                        title={copy('Revoke license key', 'Batilisha license key')}
                                                                                     >
                                                                                         {licenseKeyBusy === `revoke-${license.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
                                                                                     </button>
@@ -5865,7 +6076,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             <div className="rounded-xl bg-slate-50 p-2 space-y-1">
                                                                                 {license.activations.slice(0, 3).map((activation) => (
                                                                                     <p key={activation.id} className="truncate text-[11px] font-semibold text-slate-600">
-                                                                                        {activation.device_id || 'Device'}{activation.app_version ? ` · v${activation.app_version}` : ''}{activation.site_url ? ` · ${activation.site_url}` : ''}
+                                                                                    {activation.device_id || copy('Device', 'Kifaa')}{activation.app_version ? ` · v${activation.app_version}` : ''}{activation.site_url ? ` · ${activation.site_url}` : ''}
                                                                                     </p>
                                                                                 ))}
                                                                             </div>
@@ -5884,25 +6095,25 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         <Input
                                                             value={releaseForm.version}
                                                             onChange={(e) => setReleaseForm(prev => ({ ...prev, version: e.target.value }))}
-                                                            placeholder="Version, e.g. 1.0.0"
+                                                            placeholder={copy('Version, e.g. 1.0.0', 'Version, mf. 1.0.0')}
                                                             className="h-11 bg-white"
                                                         />
                                                         <Input
                                                             value={releaseForm.title}
                                                             onChange={(e) => setReleaseForm(prev => ({ ...prev, title: e.target.value }))}
-                                                            placeholder="Release title"
+                                                            placeholder={copy('Release title', 'Kichwa cha release')}
                                                             className="h-11 bg-white"
                                                         />
                                                     </div>
                                                     <Textarea
                                                         value={releaseForm.changelog}
                                                         onChange={(e) => setReleaseForm(prev => ({ ...prev, changelog: e.target.value }))}
-                                                        placeholder="Changelog: fixed bugs, added features, compatibility notes..."
+                                                        placeholder={copy('Changelog: fixed bugs, added features, compatibility notes...', 'Changelog: bugs zilizorekebishwa, features mpya, compatibility notes...')}
                                                         className="min-h-[92px] rounded-xl bg-white"
                                                     />
                                                     <div className="flex flex-col sm:flex-row gap-3">
                                                         <label className="flex-1 cursor-pointer rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/60 px-4 py-3 text-center text-sm font-black text-blue-700">
-                                                            {releaseForm.file?.name ? releaseForm.file.name : 'Upload release file'}
+                                                            {releaseForm.file?.name ? releaseForm.file.name : copy('Upload release file', 'Pakia faili la release')}
                                                             <input
                                                                 type="file"
                                                                 accept=".zip,.rar,.7z,.pdf,.txt,.doc,.docx"
@@ -5916,11 +6127,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             disabled={releaseUploading || releaseSaving}
                                                             className="h-12 rounded-xl font-black"
                                                         >
-                                                            {releaseSaving ? 'Saving...' : 'Add Release'}
+                                                            {releaseSaving ? copy('Saving...', 'Inahifadhi...') : copy('Add release', 'Ongeza release')}
                                                         </Button>
                                                     </div>
                                                     {releaseForm.file?.isUploading && (
-                                                        <p className="text-xs font-bold text-blue-700">Uploading {releaseForm.file.progress || 0}%</p>
+                                                        <p className="text-xs font-bold text-blue-700">{copy('Uploading', 'Inapakia')} {releaseForm.file.progress || 0}%</p>
                                                     )}
                                                 </>
                                             )}
@@ -5931,7 +6142,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         <div key={release.id} className="p-3 flex items-start justify-between gap-3">
                                                             <div className="min-w-0">
                                                                 <p className="text-sm font-black text-slate-900">
-                                                                    v{release.version} {release.is_latest ? <span className="text-[10px] text-emerald-700 uppercase tracking-wider">Latest</span> : null}
+                                                                    v{release.version} {release.is_latest ? <span className="text-[10px] text-emerald-700 uppercase tracking-wider">{copy('Latest', 'Mpya zaidi')}</span> : null}
                                                                 </p>
                                                                 {release.title && <p className="text-xs font-bold text-slate-600 mt-0.5">{release.title}</p>}
                                                                 {release.changelog && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{release.changelog}</p>}
@@ -5958,11 +6169,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     <div className="flex items-center gap-2">
                                         <ShieldCheck className="h-4 w-4 text-blue-700" />
                                         <label className="text-xs font-black text-blue-700 uppercase tracking-wider">
-                                            Kikundi cha Ruhusa (Si lazima)
+                                            {copy('Access group (optional)', 'Kikundi cha ruhusa (si lazima)')}
                                         </label>
                                     </div>
                                     <p className="text-[11px] text-blue-900/80">
-                                        Unganisha bidhaa hii na subscription au bundle ili wateja wenye ruhusa tu waipate. Bado unaweza kuweka bei ya kununua peke yake kama unataka.
+                                        {copy('Link this product to a subscription or bundle so only entitled customers can access it. You can still set a standalone purchase price.', 'Unganisha bidhaa hii na subscription au bundle ili wateja wenye ruhusa tu waipate. Bado unaweza kuweka bei ya kununua peke yake kama unataka.')}
                                     </p>
 
                                     <div className="flex p-1 bg-white rounded-xl border border-blue-100">
@@ -5984,7 +6195,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         <div className="flex items-center justify-between rounded-xl border border-blue-200 bg-white px-3 py-2">
                                             <div>
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">
-                                                    {assignedAccessGroup.type === 'plan' ? 'Subscription' : 'Bundle'}
+                                                    {assignedAccessGroup.type === 'plan' ? copy('Subscription', 'Subscription') : copy('Bundle', 'Bundle')}
                                                 </p>
                                                 <p className="text-sm font-bold text-foreground truncate">{assignedAccessGroup.title}</p>
                                             </div>
@@ -6000,10 +6211,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                     <div className="grid gap-2 max-h-44 overflow-y-auto pr-1">
                                         {promotablesLoading ? (
-                                            <p className="text-xs text-blue-700/70 py-2">Inapakia vikundi vya ruhusa...</p>
+                                            <p className="text-xs text-blue-700/70 py-2">{copy('Loading access groups...', 'Inapakia vikundi vya ruhusa...')}</p>
                                         ) : (digitalAccessTab === 'plan' ? promotables.plans : promotables.bundles).length === 0 ? (
                                             <p className="text-xs text-blue-700/70 py-2 italic">
-                                                {digitalAccessTab === 'plan' ? 'Hujatengeneza Subscriptions.' : 'Hujatengeneza Bundles.'}
+                                                {digitalAccessTab === 'plan' ? copy('You have not created any subscriptions.', 'Hujatengeneza subscriptions.') : copy('You have not created any bundles.', 'Hujatengeneza bundles.')}
                                             </p>
                                         ) : (
                                             (digitalAccessTab === 'plan' ? promotables.plans : promotables.bundles).map((group) => (
@@ -6060,8 +6271,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             <div className="rounded-2xl border bg-white p-3 sm:p-4 space-y-3">
                                                 <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
                                                     <div>
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service category</label>
-                                                        <p className="text-xs text-muted-foreground mt-1">Optional, but helps organize services and improve discovery later.</p>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Service category', 'Category ya huduma')}</label>
+                                                        <p className="text-xs text-muted-foreground mt-1">{copy('Optional, but helps organize services and improve discovery later.', 'Si lazima, lakini inasaidia kupanga huduma na kuboresha utafutaji baadaye.')}</p>
                                                     </div>
                                                     {(serviceCategory || serviceSubcategory) && (
                                                         <span className="text-[10px] font-black uppercase tracking-widest text-purple-700 bg-purple-100 rounded-full px-3 py-1 w-max">
@@ -6071,7 +6282,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                     <div className="space-y-1.5">
-                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</span>
+                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Category', 'Category')}</span>
                                                         <select
                                                             className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
                                                             value={serviceCategory}
@@ -6091,14 +6302,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                 }
                                                             }}
                                                         >
-                                                            <option value="">No category</option>
+                                                            <option value="">{copy('No category', 'Hakuna category')}</option>
                                                             {serviceCategoryOptions.map((option) => (
-                                                                <option key={option.label} value={option.label}>{option.label}</option>
+                                                        <option key={option.label} value={option.label}>{localizeUploadOption(copy, option.label)}</option>
                                                             ))}
                                                         </select>
                                                     </div>
                                                     <div className="space-y-1.5">
-                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Subcategory</span>
+                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Subcategory', 'Subcategory')}</span>
                                                         <select
                                                             className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold disabled:opacity-60"
                                                             value={serviceSubcategory}
@@ -6116,16 +6327,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             }}
                                                             disabled={!serviceCategory}
                                                         >
-                                                            <option value="">No subcategory</option>
+                                                            <option value="">{copy('No subcategory', 'Hakuna subcategory')}</option>
                                                             {(selectedServiceCategory?.subcategories || []).map((subcategory) => (
-                                                                <option key={subcategory} value={subcategory}>{subcategory}</option>
+                                                                <option key={subcategory} value={subcategory}>{localizeUploadOption(copy, subcategory)}</option>
                                                             ))}
                                                         </select>
                                                     </div>
                                                 </div>
                                                 {selectedServiceTemplateOptions.length > 1 && (
                                                     <div className="space-y-1.5">
-                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Listing workflow</span>
+                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Listing workflow', 'Workflow ya listing')}</span>
                                                         <select
                                                             className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
                                                             value={selectedServiceTemplateKey}
@@ -6142,13 +6353,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             ))}
                                                         </select>
                                                         <p className="text-xs text-muted-foreground">
-                                                            Category controls discovery. Workflow controls the form, booking rules, availability, and verification.
+                                                            {copy('Category controls discovery. Workflow controls the form, booking rules, availability, and verification.', 'Category inadhibiti discovery. Workflow inadhibiti fomu, booking rules, upatikanaji, na verification.')}
                                                         </p>
                                                     </div>
                                                 )}
                                                 {selectedServiceSubtypeOptions.length > 0 && (
                                                     <div className="space-y-1.5">
-                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Workflow subtype</span>
+                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Workflow subtype', 'Aina ndogo ya workflow')}</span>
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                             {selectedServiceSubtypeOptions.map((subtype) => {
                                                                 const selected = selectedServiceSubtypeKey === subtype.key;
@@ -6179,21 +6390,21 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         : 'border-amber-200 bg-amber-50 text-amber-900'
                                                         }`}>
                                                         <p className="font-black uppercase tracking-wider">
-                                                            {selectedServiceTrustPolicy.risk_level === 'standard' ? 'Uhakiki wa kawaida' : 'Huduma yenye uhakiki maalum'}
+                                                            {selectedServiceTrustPolicy.risk_level === 'standard' ? copy('Standard verification', 'Uhakiki wa kawaida') : copy('Service with enhanced verification', 'Huduma yenye uhakiki maalum')}
                                                         </p>
                                                         <p className="mt-1 leading-relaxed">
                                                             {selectedServiceTrustPolicy.risk_level === 'standard'
-                                                                ? 'Huduma zote zinahitaji KYC iliyothibitishwa kabla ya kuchapishwa.'
-                                                                : `Category hii inahitaji ${selectedServiceRequiredDocuments.join(', ') || 'nyaraka za uhakiki'}${selectedServiceTrustPolicy.requires_manual_review ? ' na review ya Takeer' : ''} kabla ya kuchapishwa.`}
+                                                                ? copy('All services require verified KYC before publishing.', 'Huduma zote zinahitaji KYC iliyothibitishwa kabla ya kuchapishwa.')
+                                                                : copy(`This category requires ${selectedServiceRequiredDocuments.join(', ') || 'verification documents'}${selectedServiceTrustPolicy.requires_manual_review ? ' and Takeer review' : ''} before publishing.`, `Category hii inahitaji ${selectedServiceRequiredDocuments.join(', ') || 'nyaraka za uhakiki'}${selectedServiceTrustPolicy.requires_manual_review ? ' na review ya Takeer' : ''} kabla ya kuchapishwa.`)}
                                                         </p>
                                                         {selectedServiceTrustPolicy.payout_hold_days > 3 && (
                                                             <p className="mt-1 font-semibold">
-                                                                SafePay itashikilia malipo kwa siku {selectedServiceTrustPolicy.payout_hold_days} kabla ya payout.
+                                                                {copy(`The PSP release rule will apply for ${selectedServiceTrustPolicy.payout_hold_days} days before a payout request.`, `PSP release rule itatumika kwa siku ${selectedServiceTrustPolicy.payout_hold_days} kabla ya payout request.`)}
                                                             </p>
                                                         )}
                                                         {selectedServiceTrustPolicy.max_first_quote_amount && (
                                                             <p className="mt-1 font-semibold">
-                                                                Kikomo cha quote ya kwanza: TZS {Number(selectedServiceTrustPolicy.max_first_quote_amount).toLocaleString()}.
+                                                                {copy(`First quote limit: TZS ${Number(selectedServiceTrustPolicy.max_first_quote_amount).toLocaleString()}.`, `Kikomo cha quote ya kwanza: TZS ${Number(selectedServiceTrustPolicy.max_first_quote_amount).toLocaleString()}.`)}
                                                             </p>
                                                         )}
                                                     </div>
@@ -6202,58 +6413,58 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             {showRoomDetailsForm && (
                                                 <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-4 space-y-4">
                                                     <div>
-                                                        <p className="text-xs font-black uppercase tracking-wider text-sky-900">Room / stay details</p>
-                                                        <p className="text-xs text-sky-800 mt-1">These fields shape how this room appears for hotels, motels, lodges, guest houses, and apartments.</p>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-sky-900">{copy('Room / stay details', 'Maelezo ya chumba / malazi')}</p>
+                                                        <p className="text-xs text-sky-800 mt-1">{copy('These fields shape how this room appears for hotels, motels, lodges, guest houses, and apartments.', 'Maelezo haya yanaamua jinsi chumba kitaonekana kwa hoteli, motel, lodge, guest house, na apartments.')}</p>
                                                     </div>
 
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Room type</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Room type', 'Aina ya chumba')}</span>
                                                             <select
                                                                 className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
                                                                 value={roomDetails.room_type}
                                                                 onChange={(e) => updateRoomDetail('room_type', e.target.value)}
                                                             >
-                                                                {roomTypeOptions.map(type => <option key={type} value={type}>{type}</option>)}
+                                                                {roomTypeOptions.map(type => <option key={type} value={type}>{localizeUploadOption(copy, type)}</option>)}
                                                             </select>
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Bed type</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Bed type', 'Aina ya kitanda')}</span>
                                                             <select
                                                                 className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
                                                                 value={roomDetails.bed_type}
                                                                 onChange={(e) => updateRoomDetail('bed_type', e.target.value)}
                                                             >
-                                                                {bedTypeOptions.map(type => <option key={type} value={type}>{type}</option>)}
+                                                                {bedTypeOptions.map(type => <option key={type} value={type}>{localizeUploadOption(copy, type)}</option>)}
                                                             </select>
                                                         </label>
                                                     </div>
 
                                                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Guests</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Guests', 'Wageni')}</span>
                                                             <Input type="number" min="1" className="h-11 bg-white" value={roomDetails.max_guests} onChange={(e) => updateRoomDetail('max_guests', e.target.value)} />
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Rooms</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Rooms', 'Vyumba')}</span>
                                                             <Input type="number" min="1" className="h-11 bg-white" value={roomDetails.room_count} onChange={(e) => updateRoomDetail('room_count', e.target.value)} />
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Bathrooms</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Bathrooms', 'Bafu')}</span>
                                                             <Input type="number" min="0" step="0.5" className="h-11 bg-white" value={roomDetails.bathrooms} onChange={(e) => updateRoomDetail('bathrooms', e.target.value)} />
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Check-in</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Check-in', 'Kuingia')}</span>
                                                             <Input type="time" className="h-11 bg-white" value={roomDetails.checkin_time} onChange={(e) => updateRoomDetail('checkin_time', e.target.value)} />
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Check-out</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Check-out', 'Kutoka')}</span>
                                                             <Input type="time" className="h-11 bg-white" value={roomDetails.checkout_time} onChange={(e) => updateRoomDetail('checkout_time', e.target.value)} />
                                                         </label>
                                                     </div>
 
                                                     <div className="space-y-2">
-                                                        <p className="text-[11px] font-semibold text-slate-700">Availability status</p>
+                                                        <p className="text-[11px] font-semibold text-slate-700">{copy('Availability status', 'Hali ya upatikanaji')}</p>
                                                         <div className="flex flex-wrap gap-2">
                                                             {roomAvailabilityOptions.map(option => (
                                                                 <button
@@ -6262,14 +6473,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                     onClick={() => updateRoomDetail('availability', [option.key])}
                                                                     className={`rounded-full border px-3 py-1.5 text-xs font-black ${roomDetails.availability.includes(option.key) ? 'border-sky-500 bg-white text-sky-700' : 'border-slate-200 bg-white/70 text-slate-500'}`}
                                                                 >
-                                                                    {option.label}
+                                                                    {localizeUploadOption(copy, option.label)}
                                                                 </button>
                                                             ))}
                                                         </div>
                                                     </div>
 
                                                     <div className="space-y-2">
-                                                        <p className="text-[11px] font-semibold text-slate-700">Amenities</p>
+                                                        <p className="text-[11px] font-semibold text-slate-700">{copy('Amenities', 'Huduma zilizopo')}</p>
                                                         <div className="flex flex-wrap gap-2">
                                                             {roomAmenityOptions.map(option => (
                                                                 <button
@@ -6278,7 +6489,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                     onClick={() => toggleRoomArrayValue('amenities', option.key)}
                                                                     className={`rounded-full border px-3 py-1.5 text-xs font-black ${roomDetails.amenities.includes(option.key) ? 'border-emerald-500 bg-white text-emerald-700' : 'border-slate-200 bg-white/70 text-slate-500'}`}
                                                                 >
-                                                                    {option.label}
+                                                                    {localizeUploadOption(copy, option.label)}
                                                                 </button>
                                                             ))}
                                                         </div>
@@ -6289,33 +6500,33 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             {showReservationDetailsForm && (
                                                 <div className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4 space-y-4">
                                                     <div>
-                                                        <p className="text-xs font-black uppercase tracking-wider text-rose-900">Reservation details</p>
-                                                        <p className="text-xs text-rose-800 mt-1">Use this for table bookings, venue visits, event spaces, lounges, activity slots, and reservation-first businesses.</p>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-rose-900">{copy('Reservation details', 'Maelezo ya reservation')}</p>
+                                                        <p className="text-xs text-rose-800 mt-1">{copy('Use this for table bookings, venue visits, event spaces, lounges, activity slots, and reservation-first businesses.', 'Tumia hii kwa bookings za meza, ziara za venue, maeneo ya matukio, lounges, shughuli, na biashara za reservation.')}</p>
                                                     </div>
 
                                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Reservation type</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Reservation type', 'Aina ya reservation')}</span>
                                                             <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.reservation_type || 'table'} onChange={(e) => updateServiceDetail('reservation_type', e.target.value)}>
-                                                                <option value="table">Table</option>
-                                                                <option value="venue">Venue</option>
-                                                                <option value="visit">Visit</option>
-                                                                <option value="event_space">Event space</option>
-                                                                <option value="activity">Activity</option>
+                                                                <option value="table">{localizeUploadOption(copy, 'Table')}</option>
+                                                                <option value="venue">{localizeUploadOption(copy, 'Venue')}</option>
+                                                                <option value="visit">{localizeUploadOption(copy, 'Visit')}</option>
+                                                                <option value="event_space">{localizeUploadOption(copy, 'Event space')}</option>
+                                                                <option value="activity">{localizeUploadOption(copy, 'Activity')}</option>
                                                             </select>
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Seating / space</span>
-                                                            <Input className="h-11 bg-white" placeholder="Indoor, terrace, VIP..." value={serviceDetails.seating_type || ''} onChange={(e) => updateServiceDetail('seating_type', e.target.value)} />
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Seating / space', 'Seating / eneo')}</span>
+                                                            <Input className="h-11 bg-white" placeholder={copy('Indoor, terrace, VIP...', 'Ndani, terrace, VIP...')} value={serviceDetails.seating_type || ''} onChange={(e) => updateServiceDetail('seating_type', e.target.value)} />
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Party size limit</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Party size limit', 'Kikomo cha idadi ya watu')}</span>
                                                             <Input type="number" min="1" className="h-11 bg-white" placeholder="8" value={serviceDetails.party_size_limit || ''} onChange={(e) => updateServiceDetail('party_size_limit', e.target.value)} />
                                                         </label>
                                                     </div>
 
                                                     <div className="grid grid-cols-1 gap-3">
-                                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Reservation notes: late arrival, hold time, dress code, walk-in policy..." value={serviceDetails.reservation_notes || ''} onChange={(e) => updateServiceDetail('reservation_notes', e.target.value)} />
+                                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder={copy('Reservation notes: late arrival, hold time, dress code, walk-in policy...', 'Maelezo ya reservation: kuchelewa, muda wa kushikilia, dress code, sera ya walk-in...')} value={serviceDetails.reservation_notes || ''} onChange={(e) => updateServiceDetail('reservation_notes', e.target.value)} />
                                                     </div>
                                                 </div>
                                             )}
@@ -6323,58 +6534,58 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             {showRentalDetailsForm && (
                                                 <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 space-y-4">
                                                     <div>
-                                                        <p className="text-xs font-black uppercase tracking-wider text-amber-900">Rental / hire details</p>
-                                                        <p className="text-xs text-amber-800 mt-1">Use this for equipment, vehicles, event gear, spaces, costumes, and other rentable items.</p>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-amber-900">{copy('Rental / hire details', 'Maelezo ya rental / kukodisha')}</p>
+                                                        <p className="text-xs text-amber-800 mt-1">{copy('Use this for equipment, vehicles, event gear, spaces, costumes, and other rentable items.', 'Tumia hii kwa vifaa, magari, gear za tukio, maeneo, costumes, na vitu vingine vya kukodisha.')}</p>
                                                     </div>
 
                                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Rental type</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Rental type', 'Aina ya rental')}</span>
                                                             <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.rental_type || serviceDetails.service_subtype || 'tools_equipment'} onChange={(e) => {
                                                                 updateServiceDetail('rental_type', e.target.value);
                                                                 updateServiceDetail('service_subtype', e.target.value);
                                                             }}>
-                                                                <option value="tools_equipment">Tools / equipment</option>
-                                                                <option value="equipment">Equipment</option>
-                                                                <option value="vehicle">Vehicle</option>
-                                                                <option value="space">Space</option>
-                                                                <option value="event_equipment">Event equipment</option>
-                                                                <option value="event_gear">Event gear</option>
-                                                                <option value="costume">Costume / props</option>
-                                                                <option value="other">Other</option>
+                                                                <option value="tools_equipment">{localizeUploadOption(copy, 'Tools / equipment')}</option>
+                                                                <option value="equipment">{localizeUploadOption(copy, 'Equipment')}</option>
+                                                                <option value="vehicle">{localizeUploadOption(copy, 'Vehicle')}</option>
+                                                                <option value="space">{localizeUploadOption(copy, 'Space')}</option>
+                                                                <option value="event_equipment">{localizeUploadOption(copy, 'Event equipment')}</option>
+                                                                <option value="event_gear">{localizeUploadOption(copy, 'Event gear')}</option>
+                                                                <option value="costume">{localizeUploadOption(copy, 'Costume / props')}</option>
+                                                                <option value="other">{localizeUploadOption(copy, 'Other')}</option>
                                                             </select>
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Price unit</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Price unit', 'Kipimo cha bei')}</span>
                                                             <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.rental_unit || 'day'} onChange={(e) => {
                                                                 updateServiceDetail('rental_unit', e.target.value);
                                                                 setServicePriceDisplay(e.target.value === 'hour' ? 'hourly' : e.target.value === 'week' ? 'weekly' : e.target.value === 'month' ? 'monthly' : 'daily');
                                                             }}>
-                                                                <option value="hour">Per hour</option>
-                                                                <option value="day">Per day</option>
-                                                                <option value="night">Per night</option>
-                                                                <option value="week">Per week</option>
-                                                                <option value="month">Per month</option>
-                                                                <option value="trip">Per trip</option>
-                                                                <option value="event">Per event</option>
+                                                                <option value="hour">{localizeUploadOption(copy, 'Per hour')}</option>
+                                                                <option value="day">{localizeUploadOption(copy, 'Per day')}</option>
+                                                                <option value="night">{localizeUploadOption(copy, 'Per night')}</option>
+                                                                <option value="week">{localizeUploadOption(copy, 'Per week')}</option>
+                                                                <option value="month">{localizeUploadOption(copy, 'Per month')}</option>
+                                                                <option value="trip">{localizeUploadOption(copy, 'Per trip')}</option>
+                                                                <option value="event">{localizeUploadOption(copy, 'Per event')}</option>
                                                             </select>
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Available units</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Available units', 'Idadi iliyopo')}</span>
                                                             <Input type="number" min="1" className="h-11 bg-white" placeholder="1" value={serviceDetails.available_units ?? ''} onChange={(e) => updateServiceDetail('available_units', e.target.value)} />
                                                         </label>
                                                     </div>
 
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Refundable security deposit</span>
-                                                            <Input type="number" min="0" className="h-11 bg-white" placeholder="Optional refundable amount" value={serviceDetails.security_deposit ?? ''} onChange={(e) => updateServiceDetail('security_deposit', e.target.value)} />
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Refundable security deposit', 'Deposit ya usalama inayorudishwa')}</span>
+                                                            <Input type="number" min="0" className="h-11 bg-white" placeholder={copy('Optional refundable amount', 'Kiasi cha kurudishwa, si lazima')} value={serviceDetails.security_deposit ?? ''} onChange={(e) => updateServiceDetail('security_deposit', e.target.value)} />
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Included items</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Included items', 'Vitu vilivyojumuishwa')}</span>
                                                             <Input
                                                                 className="h-11 bg-white"
-                                                                placeholder="Helmet, charger, stand..."
+                                                                placeholder={copy('Helmet, charger, stand...', 'Helmet, charger, stand...')}
                                                                 value={Array.isArray(serviceDetails.included_items) ? serviceDetails.included_items.join(', ') : ''}
                                                                 onChange={(e) => updateServiceDetail('included_items', e.target.value.split(',').map((item) => item.trim()).filter(Boolean))}
                                                             />
@@ -6382,8 +6593,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     </div>
 
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Pickup and return notes: pickup point, return time, inspection, late return..." value={serviceDetails.pickup_return_notes || ''} onChange={(e) => updateServiceDetail('pickup_return_notes', e.target.value)} />
-                                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Rental requirements: ID, license, deposit, operator, damage policy..." value={serviceDetails.rental_requirements || ''} onChange={(e) => updateServiceDetail('rental_requirements', e.target.value)} />
+                                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder={copy('Pickup and return notes: pickup point, return time, inspection, late return...', 'Maelezo ya kuchukua na kurudisha: pickup, muda wa kurudisha, ukaguzi, kuchelewa...')} value={serviceDetails.pickup_return_notes || ''} onChange={(e) => updateServiceDetail('pickup_return_notes', e.target.value)} />
+                                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder={copy('Rental requirements: ID, license, deposit, operator, damage policy...', 'Mahitaji ya rental: ID, leseni, deposit, operator, sera ya uharibifu...')} value={serviceDetails.rental_requirements || ''} onChange={(e) => updateServiceDetail('rental_requirements', e.target.value)} />
                                                     </div>
                                                 </div>
                                             )}
@@ -6391,40 +6602,40 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             {showWorkshopDetailsForm && (
                                                 <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
                                                     <div>
-                                                        <p className="text-xs font-black uppercase tracking-wider text-indigo-900">Workshop / session details</p>
-                                                        <p className="text-xs text-indigo-800 mt-1">Use this for short courses, bootcamps, webinars, seminars, and live training sessions.</p>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-indigo-900">{copy('Workshop / session details', 'Maelezo ya workshop / session')}</p>
+                                                        <p className="text-xs text-indigo-800 mt-1">{copy('Use this for short courses, bootcamps, webinars, seminars, and live training sessions.', 'Tumia hii kwa kozi fupi, bootcamps, webinars, semina, na training za live.')}</p>
                                                     </div>
 
                                                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Format</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Format', 'Muundo')}</span>
                                                             <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.workshop_format || 'live_session'} onChange={(e) => updateServiceDetail('workshop_format', e.target.value)}>
-                                                                <option value="live_session">Live session</option>
-                                                                <option value="bootcamp">Bootcamp</option>
-                                                                <option value="seminar">Seminar</option>
-                                                                <option value="webinar">Webinar</option>
-                                                                <option value="cohort">Cohort</option>
-                                                                <option value="private_group">Private group</option>
+                                                                <option value="live_session">{localizeUploadOption(copy, 'Live session')}</option>
+                                                                <option value="bootcamp">{localizeUploadOption(copy, 'Bootcamp')}</option>
+                                                                <option value="seminar">{localizeUploadOption(copy, 'Seminar')}</option>
+                                                                <option value="webinar">{localizeUploadOption(copy, 'Webinar')}</option>
+                                                                <option value="cohort">{localizeUploadOption(copy, 'Cohort')}</option>
+                                                                <option value="private_group">{localizeUploadOption(copy, 'Private group')}</option>
                                                             </select>
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Sessions</span>
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Sessions', 'Sessions')}</span>
                                                             <Input type="number" min="1" className="h-11 bg-white" placeholder="1" value={serviceDetails.session_count ?? ''} onChange={(e) => updateServiceDetail('session_count', e.target.value)} />
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Capacity</span>
-                                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="Optional" value={serviceDetails.workshop_capacity ?? ''} onChange={(e) => updateServiceDetail('workshop_capacity', e.target.value)} />
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Capacity', 'Uwezo')}</span>
+                                                                                    <Input type="number" min="1" className="h-11 bg-white" placeholder={copy('Optional', 'Si lazima')} value={serviceDetails.workshop_capacity ?? ''} onChange={(e) => updateServiceDetail('workshop_capacity', e.target.value)} />
                                                         </label>
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Level</span>
-                                                            <Input className="h-11 bg-white" placeholder="Beginner, advanced..." value={serviceDetails.workshop_level || ''} onChange={(e) => updateServiceDetail('workshop_level', e.target.value)} />
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Level', 'Kiwango')}</span>
+                                                            <Input className="h-11 bg-white" placeholder={copy('Beginner, advanced...', 'Mwanzo, advanced...')} value={serviceDetails.workshop_level || ''} onChange={(e) => updateServiceDetail('workshop_level', e.target.value)} />
                                                         </label>
                                                     </div>
 
                                                     <div className="grid grid-cols-1 gap-3">
                                                         <label className="space-y-1.5">
-                                                            <span className="text-[11px] font-semibold text-slate-700">Start note</span>
-                                                            <Input className="h-11 bg-white" placeholder="Starts June, every Saturday..." value={serviceDetails.workshop_start_note || ''} onChange={(e) => updateServiceDetail('workshop_start_note', e.target.value)} />
+                                                            <span className="text-[11px] font-semibold text-slate-700">{copy('Start note', 'Maelezo ya kuanza')}</span>
+                                                            <Input className="h-11 bg-white" placeholder={copy('Starts June, every Saturday...', 'Inaanza Juni, kila Jumamosi...')} value={serviceDetails.workshop_start_note || ''} onChange={(e) => updateServiceDetail('workshop_start_note', e.target.value)} />
                                                         </label>
                                                     </div>
 
@@ -6432,12 +6643,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         <RepeatableTextList label="Learning outcomes" value={serviceDetails.learning_outcomes || serviceDetails.outcomes} onChange={(value) => {
                                                             updateServiceDetail('learning_outcomes', value);
                                                             updateServiceDetail('outcomes', value);
-                                                        }} addLabel="Add outcome" placeholder="Describe one learning outcome..." />
+                                                        }} addLabel={copy('Add outcome', 'Ongeza matokeo')} placeholder={copy('Describe one learning outcome...', 'Eleza matokeo moja ya kujifunza...')} />
                                                         <RepeatableTextList label="Requirements" value={serviceDetails.workshop_requirements || serviceDetails.requirements} onChange={(value) => {
                                                             updateServiceDetail('workshop_requirements', value);
                                                             updateServiceDetail('requirements', value);
-                                                        }} addLabel="Add requirement" placeholder="Describe one requirement..." />
-                                                        <RepeatableTextList label="Materials included" value={serviceDetails.materials_included} onChange={(value) => updateServiceDetail('materials_included', value)} addLabel="Add material" placeholder="Describe one material or resource..." />
+                                                        }} addLabel={copy('Add requirement', 'Ongeza hitaji')} placeholder={copy('Describe one requirement...', 'Eleza hitaji moja...')} />
+                                                        <RepeatableTextList label={copy('Materials included', 'Materials zilizojumuishwa')} value={serviceDetails.materials_included} onChange={(value) => updateServiceDetail('materials_included', value)} addLabel={copy('Add material', 'Ongeza material')} placeholder={copy('Describe one material or resource...', 'Eleza material au resource moja...')} />
                                                     </div>
                                                 </div>
                                             )}
@@ -6447,11 +6658,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             <div className="rounded-2xl border bg-slate-50/60 p-3 sm:p-4 space-y-3">
                                                 <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
                                                     <div>
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Aina ya Huduma</label>
-                                                        <p className="text-xs text-muted-foreground mt-1">Chagua namna kuu ya kuuza au kupokea maombi ya service hii.</p>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Service mode', 'Aina ya huduma')}</label>
+                                                        <p className="text-xs text-muted-foreground mt-1">{copy('Choose how this service is sold or how customers request it.', 'Chagua namna kuu ya kuuza au kupokea maombi ya service hii.')}</p>
                                                     </div>
                                                     <span className="text-[10px] font-black uppercase tracking-widest text-purple-700 bg-purple-100 rounded-full px-3 py-1 w-max">
-                                                        {serviceModeOptions.find((option) => option.key === serviceMode)?.label || 'Service'}
+                                                        {(() => { const option = serviceModeOptions.find((item) => item.key === serviceMode); return option ? copy(option.label, option.swahiliLabel) : copy('Service', 'Huduma'); })()}
                                                     </span>
                                                 </div>
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -6473,8 +6684,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             <div className="flex items-start gap-2">
                                                                 <Icon className="h-5 w-5 shrink-0" />
                                                                 <div className="min-w-0">
-                                                                    <span className="block text-sm font-black leading-tight">{label}</span>
-                                                                    <span className="block text-[11px] leading-snug mt-1">{hint}</span>
+                                                                    <span className="block text-sm font-black leading-tight">{copy(label, serviceModeOptions.find((option) => option.key === key)?.swahiliLabel || label)}</span>
+                                                                    <span className="block text-[11px] leading-snug mt-1">{copy(serviceModeOptions.find((option) => option.key === key)?.englishHint || hint, hint)}</span>
                                                                 </div>
                                                             </div>
                                                         </button>
@@ -6484,8 +6695,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                             <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
                                                 <div>
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Scheduling style</label>
-                                                    <p className="text-xs text-muted-foreground mt-1">Choose how this specific service accepts dates and bookings.</p>
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Scheduling style', 'Aina ya ratiba')}</label>
+                                                    <p className="text-xs text-muted-foreground mt-1">{copy('Choose how this specific service accepts dates and bookings.', 'Chagua jinsi huduma hii inavyopokea tarehe na bookings.')}</p>
                                                 </div>
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                     {[
@@ -6517,8 +6728,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                 : 'border-border bg-background text-muted-foreground hover:border-purple-300'
                                                                 }`}
                                                         >
-                                                            <span className="block text-sm font-black leading-tight">{option.label}</span>
-                                                            <span className="block text-[11px] leading-snug mt-1">{option.hint}</span>
+                                                            <span className="block text-sm font-black leading-tight">{localizeUploadOption(copy, option.label)}</span>
+                                                            <span className="block text-[11px] leading-snug mt-1">{copy(option.hint, option.key === 'none' ? 'Tumia requests, quote, au follow-up ya manual.' : option.key === 'recurring' ? 'Upatikanaji wa wiki, slots, buffer, na capacity.' : option.key === 'fixed_sessions' ? 'Training, workshop, webinar, cohort, au tarehe za tukio.' : 'Tumia Calendly, Google Form, au ukurasa mwingine wa booking.')}</span>
                                                         </button>
                                                     ))}
                                                 </div>
@@ -6526,7 +6737,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                             <div className="grid w-full grid-cols-1 gap-4">
                                                 <div className="col-span-full w-full rounded-2xl border p-3 sm:p-4 space-y-3">
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bei ionekane vipi?</label>
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('How should the price appear?', 'Bei ionekane vipi?')}</label>
                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                                         {servicePriceOptions.map((option) => (
                                                             <button
@@ -6538,24 +6749,24 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                     : 'bg-background text-muted-foreground border-border hover:border-purple-300'
                                                                     }`}
                                                             >
-                                                                {option.label}
+                                                                {copy(option.label, serviceOptionSwahili[option.key] || option.label)}
                                                             </button>
                                                         ))}
                                                     </div>
                                                     {servicePriceDisplay === 'hourly' && (
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
                                                             <div className="space-y-1.5">
-                                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Rate / Saa (TZS)</label>
+                                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Rate / hour (TZS)', 'Rate / saa (TZS)')}</label>
                                                                 <Input
                                                                     type="number"
-                                                                    placeholder="Mf. 50000"
+                                                                    placeholder={copy('E.g. 50000', 'Mf. 50000')}
                                                                     value={serviceHourlyRate}
                                                                     onChange={(e) => setServiceHourlyRate(e.target.value)}
                                                                     className="h-11 font-bold"
                                                                 />
                                                             </div>
                                                             <div className="space-y-1.5">
-                                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Minimum Saa</label>
+                                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Minimum hours', 'Minimum saa')}</label>
                                                                 <Input
                                                                     type="number"
                                                                     min="1"
@@ -6570,11 +6781,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <div className="rounded-xl border bg-slate-50/60 p-3 space-y-3">
                                                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                                             <div>
-                                                                <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">Additional charges</p>
-                                                                <p className="text-[11px] text-muted-foreground mt-0.5">Optional fees like cleaning, security, lab, extra guest, or refundable deposit.</p>
+                                                                <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">{copy('Additional charges', 'Gharama za ziada')}</p>
+                                                                <p className="text-[11px] text-muted-foreground mt-0.5">{copy('Optional fees like cleaning, security, lab, extra guest, or refundable deposit.', 'Gharama za hiari kama usafi, usalama, lab, mgeni wa ziada, au deposit inayorudishwa.')}</p>
                                                             </div>
                                                             <Button type="button" variant="outline" className="h-10 rounded-xl sm:w-32" onClick={addServiceCharge}>
-                                                                <Plus className="h-4 w-4 mr-1" /> Add
+                                                                <Plus className="h-4 w-4 mr-1" /> {copy('Add', 'Ongeza')}
                                                             </Button>
                                                         </div>
                                                         {serviceCharges.length > 0 && (
@@ -6583,8 +6794,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                     <div key={charge.id || index} className="rounded-xl border bg-white p-3 sm:p-4 space-y-3">
                                                                         <div className="flex items-start justify-between gap-3">
                                                                             <div>
-                                                                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Charge {index + 1}</p>
-                                                                                <p className="text-[11px] text-muted-foreground">Fee, deposit, tax, or required add-on.</p>
+                                                                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">{copy('Charge', 'Gharama')} {index + 1}</p>
+                                                                                <p className="text-[11px] text-muted-foreground">{copy('Fee, deposit, tax, or required add-on.', 'Fee, deposit, tax, au add-on unaohitajika.')}</p>
                                                                             </div>
                                                                             <Button type="button" variant="outline" size="sm" className="h-9 w-9 rounded-xl p-0 shrink-0" onClick={() => removeServiceCharge(index)}>
                                                                                 <Trash2 className="h-4 w-4" />
@@ -6592,16 +6803,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                         </div>
                                                                         <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
                                                                             <label className="space-y-1 lg:col-span-5">
-                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Name</span>
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Name', 'Jina')}</span>
                                                                                 <Input
-                                                                                    placeholder="Cleaning fee"
+                                                                                    placeholder={copy('Cleaning fee', 'Gharama ya usafi')}
                                                                                     value={charge.name || ''}
                                                                                     onChange={(e) => updateServiceCharge(index, { name: e.target.value })}
                                                                                     className="h-11"
                                                                                 />
                                                                             </label>
                                                                             <label className="space-y-1 lg:col-span-2">
-                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Amount</span>
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Amount', 'Kiasi')}</span>
                                                                                 <Input
                                                                                     type="number"
                                                                                     min="0"
@@ -6612,14 +6823,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                                 />
                                                                             </label>
                                                                             <label className="space-y-1 lg:col-span-3">
-                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">How it applies</span>
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('How it applies', 'Inavyotumika')}</span>
                                                                                 <select
                                                                                     className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
                                                                                     value={charge.unit || 'fixed'}
                                                                                     onChange={(e) => updateServiceCharge(index, { unit: e.target.value })}
                                                                                 >
                                                                                     {serviceChargeUnitOptions.map((option) => (
-                                                                                        <option key={option.key} value={option.key}>{option.label}</option>
+                                                                                        <option key={option.key} value={option.key}>{copy(option.label, serviceOptionSwahili[option.key] || option.label)}</option>
                                                                                     ))}
                                                                                 </select>
                                                                             </label>
@@ -6654,9 +6865,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             </div>
                                                                         )}
                                                                         <label className="space-y-1 block">
-                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Note</span>
+                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Note', 'Maelezo')}</span>
                                                                             <Input
-                                                                                placeholder="Refundable after checkout inspection"
+                                                                                placeholder={copy('Refundable after checkout inspection', 'Inarudishwa baada ya ukaguzi wa checkout')}
                                                                                 value={charge.description || ''}
                                                                                 onChange={(e) => updateServiceCharge(index, { description: e.target.value })}
                                                                                 className="h-11 text-sm"
@@ -6673,9 +6884,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
                                                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                                             <div>
-                                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service options / units</label>
+                                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Service options / units', 'Options / units za huduma')}</label>
                                                                 <p className="text-xs text-muted-foreground mt-1">
-                                                                    {serviceOptionTemplate?.description || 'Room types, packages, vehicles, halls, classes, consultation types, or equipment units.'}
+                                                                    {serviceOptionTemplate?.description || copy('Room types, packages, vehicles, halls, classes, consultation types, or equipment units.', 'Aina za vyumba, packages, magari, kumbi, madarasa, aina za consultation, au units za vifaa.')}
                                                                 </p>
                                                             </div>
                                                             <Button
@@ -6685,22 +6896,22 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                 onClick={addServiceOption}
                                                                 disabled={!serviceOptionCategoryReady}
                                                             >
-                                                                <Plus className="h-4 w-4 mr-1" /> Add option
+                                                                <Plus className="h-4 w-4 mr-1" /> {copy('Add option', 'Ongeza option')}
                                                             </Button>
                                                         </div>
                                                         {!serviceOptionCategoryReady ? (
                                                             <div className="rounded-xl border border-dashed bg-amber-50/70 px-4 py-3 text-xs text-amber-800 flex gap-2">
                                                                 <Info className="h-4 w-4 shrink-0 mt-0.5" />
                                                                 <div>
-                                                                    <p className="font-bold">Choose a category first.</p>
+                                                                    <p className="font-bold">{copy('Choose a category first.', 'Chagua category kwanza.')}</p>
                                                                     <p className="mt-0.5">
-                                                                        Service options use the selected subcategory template
+                                                                        {copy('Service options use the selected subcategory template.', 'Options za huduma hutumia template ya subcategory iliyochaguliwa.')}
                                                                     </p>
                                                                 </div>
                                                             </div>
                                                         ) : serviceOptions.length === 0 ? (
                                                             <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
-                                                                Optional. Use this when one service has multiple bookable choices, e.g. {(serviceOptionTemplate?.examples || ['Standard Room', 'Deluxe Room', 'Private Session', 'Group Class', 'Boat A', 'Hall B']).join(', ')}.
+                                                                {copy('Optional. Use this when one service has multiple bookable choices, e.g.', 'Si lazima. Tumia kama huduma moja ina chaguo nyingi za ku-book, mf.')} {(serviceOptionTemplate?.examples || ['Standard Room', 'Deluxe Room', 'Private Session', 'Group Class', 'Boat A', 'Hall B']).join(', ')}.
                                                             </div>
                                                         ) : (
                                                             <div className="space-y-2">
@@ -6708,8 +6919,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                     <div key={option.id || index} className="rounded-xl border bg-white p-3 sm:p-4 space-y-4">
                                                                         <div className="flex items-start justify-between gap-3">
                                                                             <div>
-                                                                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Option {index + 1}</p>
-                                                                                <p className="text-[11px] text-muted-foreground">{serviceOptionTemplate?.label || 'Service option'}</p>
+                                                                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">{copy('Option', 'Option')} {index + 1}</p>
+                                                                                <p className="text-[11px] text-muted-foreground">{localizeUploadOption(copy, serviceOptionTemplate?.label || 'Service option')}</p>
                                                                             </div>
                                                                             <Button type="button" variant="outline" size="sm" className="h-9 w-9 rounded-xl p-0 shrink-0" onClick={() => removeServiceOption(index)}>
                                                                                 <Trash2 className="h-4 w-4" />
@@ -6717,16 +6928,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                         </div>
                                                                         <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
                                                                             <label className="space-y-1 lg:col-span-5">
-                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{serviceOptionTemplate?.label || 'Option name'}</span>
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{localizeUploadOption(copy, serviceOptionTemplate?.label || 'Option name')}</span>
                                                                                 <Input
-                                                                                    placeholder={serviceOptionTemplate?.placeholder || serviceOptionTemplate?.examples?.[0] || 'Standard Package'}
+                                                                                    placeholder={serviceOptionTemplate?.placeholder || serviceOptionTemplate?.examples?.[0] || copy('Standard Package', 'Package ya kawaida')}
                                                                                     value={option.name || ''}
                                                                                     onChange={(e) => updateServiceOption(index, { name: e.target.value })}
                                                                                     className="h-11"
                                                                                 />
                                                                             </label>
                                                                             <label className="space-y-1 lg:col-span-2">
-                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Price</span>
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Price', 'Bei')}</span>
                                                                                 <Input
                                                                                     type="number"
                                                                                     min="0"
@@ -6737,27 +6948,27 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                                 />
                                                                             </label>
                                                                             <label className="space-y-1 lg:col-span-3">
-                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Price unit</span>
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Price unit', 'Kipimo cha bei')}</span>
                                                                                 <select
                                                                                     className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
                                                                                     value={option.price_display || 'fixed'}
                                                                                     onChange={(e) => updateServiceOption(index, { price_display: e.target.value })}
                                                                                 >
                                                                                     {servicePriceOptions.filter((item) => !['hidden', 'quote_only'].includes(item.key)).map((item) => (
-                                                                                        <option key={item.key} value={item.key}>{item.label}</option>
+                                                                                        <option key={item.key} value={item.key}>{copy(item.label, serviceOptionSwahili[item.key] || item.label)}</option>
                                                                                     ))}
                                                                                 </select>
                                                                             </label>
                                                                             {serviceOptionFieldEnabled('capacity_type') && (
                                                                                 <label className="space-y-1 lg:col-span-2">
-                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Limit</span>
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Limit', 'Kikomo')}</span>
                                                                                     <select
                                                                                         className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
                                                                                         value={option.capacity_type || 'limited'}
                                                                                         onChange={(e) => updateServiceOption(index, { capacity_type: e.target.value })}
                                                                                     >
-                                                                                        <option value="limited">Limited</option>
-                                                                                        <option value="unlimited">Unlimited</option>
+                                                                                        <option value="limited">{copy('Limited', 'Ina kikomo')}</option>
+                                                                                        <option value="unlimited">{copy('Unlimited', 'Bila kikomo')}</option>
                                                                                     </select>
                                                                                 </label>
                                                                             )}
@@ -6765,7 +6976,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                                                             {serviceOptionFieldEnabled('capacity') && (
                                                                                 <label className="space-y-1">
-                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Units / rooms</span>
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Units / rooms', 'Units / vyumba')}</span>
                                                                                     <Input
                                                                                         type="number"
                                                                                         min="1"
@@ -6779,7 +6990,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             )}
                                                                             {serviceOptionFieldEnabled('max_guests') && (
                                                                                 <label className="space-y-1">
-                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Max guests</span>
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Max guests', 'Wageni wa juu')}</span>
                                                                                     <Input
                                                                                         type="number"
                                                                                         min="1"
@@ -6792,11 +7003,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             )}
                                                                             {serviceOptionFieldEnabled('duration_minutes') && (
                                                                                 <label className="space-y-1">
-                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Duration</span>
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Duration', 'Muda')}</span>
                                                                                     <Input
                                                                                         type="number"
                                                                                         min="1"
-                                                                                        placeholder="Minutes"
+                                                                                        placeholder={copy('Minutes', 'Dakika')}
                                                                                         value={option.duration_minutes ?? ''}
                                                                                         onChange={(e) => updateServiceOption(index, { duration_minutes: e.target.value })}
                                                                                         className="h-11 text-sm"
@@ -6805,7 +7016,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             )}
                                                                             {serviceOptionFieldEnabled('checkin_time') && (
                                                                                 <label className="space-y-1">
-                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Check-in</span>
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Check-in', 'Kuingia')}</span>
                                                                                     <Input
                                                                                         type="time"
                                                                                         value={option.checkin_time || ''}
@@ -6816,7 +7027,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             )}
                                                                             {serviceOptionFieldEnabled('checkout_time') && (
                                                                                 <label className="space-y-1">
-                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Checkout</span>
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Checkout', 'Kutoka')}</span>
                                                                                     <Input
                                                                                         type="time"
                                                                                         value={option.checkout_time || ''}
@@ -6827,7 +7038,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             )}
                                                                         </div>
                                                                         <label className="space-y-1 block">
-                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Description</span>
+                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{copy('Description', 'Maelezo')}</span>
                                                                             <Input
                                                                                 placeholder={serviceOptionTemplate?.description_placeholder || 'What is included in this option'}
                                                                                 value={option.description || ''}
@@ -6845,79 +7056,79 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 {selectedServiceTemplateKey && selectedServiceTemplateSections.length > 0 && !showingSpecializedServiceForm && hasConcreteServiceSubtype && (
                                                     <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
                                                         <div>
-                                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Template details</label>
+                                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Template details', 'Maelezo ya template')}</label>
                                                             <p className="text-xs text-muted-foreground mt-1">
-                                                                These fields shape the public post and the merchant management view for {selectedServiceTemplate?.label || 'this service'}.
+                                                                {copy(`These fields shape the public post and the merchant management view for ${selectedServiceTemplate?.label || 'this service'}.`, `Sehemu hizi zinaunda post ya umma na mwonekano wa usimamizi wa merchant kwa ${selectedServiceTemplate?.label || 'huduma hii'}.`)}
                                                             </p>
                                                         </div>
 
                                                         {selectedServiceTemplateKey === 'tour' && (
                                                             <div className="space-y-3">
                                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                                    <Input placeholder="Destination, e.g. Serengeti + Ngorongoro" value={serviceDetails.destination || ''} onChange={(e) => updateServiceDetail('destination', e.target.value)} className="h-11" />
-                                                                    <Input placeholder="Duration, e.g. 3 days / 2 nights" value={serviceDetails.duration_label || ''} onChange={(e) => updateServiceDetail('duration_label', e.target.value)} className="h-11" />
-                                                                    <Input placeholder="Pickup point" value={serviceDetails.pickup_point || ''} onChange={(e) => updateServiceDetail('pickup_point', e.target.value)} className="h-11" />
-                                                                    <Input placeholder="Drop-off point" value={serviceDetails.dropoff_point || ''} onChange={(e) => updateServiceDetail('dropoff_point', e.target.value)} className="h-11" />
-                                                                    <Input type="number" min="1" placeholder="Group size / seats" value={serviceDetails.group_size || ''} onChange={(e) => updateServiceDetail('group_size', e.target.value)} className="h-11" />
+                                                                    <Input placeholder={copy('Destination, e.g. Serengeti + Ngorongoro', 'Mahali pa kwenda, mf. Serengeti + Ngorongoro')} value={serviceDetails.destination || ''} onChange={(e) => updateServiceDetail('destination', e.target.value)} className="h-11" />
+                                                                    <Input placeholder={copy('Duration, e.g. 3 days / 2 nights', 'Muda, mf. siku 3 / usiku 2')} value={serviceDetails.duration_label || ''} onChange={(e) => updateServiceDetail('duration_label', e.target.value)} className="h-11" />
+                                                                    <Input placeholder={copy('Pickup point', 'Mahali pa kuchukuliwa')} value={serviceDetails.pickup_point || ''} onChange={(e) => updateServiceDetail('pickup_point', e.target.value)} className="h-11" />
+                                                                    <Input placeholder={copy('Drop-off point', 'Mahali pa kushushwa')} value={serviceDetails.dropoff_point || ''} onChange={(e) => updateServiceDetail('dropoff_point', e.target.value)} className="h-11" />
+                                                                    <Input type="number" min="1" placeholder={copy('Group size / seats', 'Ukubwa wa group / viti')} value={serviceDetails.group_size || ''} onChange={(e) => updateServiceDetail('group_size', e.target.value)} className="h-11" />
                                                                     <select className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={serviceDetails.departure_type || 'scheduled'} onChange={(e) => updateServiceDetail('departure_type', e.target.value)}>
-                                                                        <option value="scheduled">Scheduled departures</option>
-                                                                        <option value="private">Private trips</option>
-                                                                        <option value="custom">Custom dates</option>
+                                                                        <option value="scheduled">{localizeUploadOption(copy, 'Scheduled departures')}</option>
+                                                                        <option value="private">{localizeUploadOption(copy, 'Private trips')}</option>
+                                                                        <option value="custom">{localizeUploadOption(copy, 'Custom dates')}</option>
                                                                     </select>
                                                                 </div>
                                                                 <div className="rounded-xl border bg-slate-50/60 p-3 space-y-2">
                                                                     <div className="flex items-center justify-between gap-2">
-                                                                        <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Itinerary</p>
+                                                                        <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">{copy('Itinerary', 'Ratiba ya safari')}</p>
                                                                         <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => updateServiceDetail('itinerary', [...(serviceDetails.itinerary || []), { day: (serviceDetails.itinerary || []).length + 1, title: '', description: '' }])}>
-                                                                            <Plus className="h-4 w-4 mr-1" /> Day
+                                                                            <Plus className="h-4 w-4 mr-1" /> {copy('Day', 'Siku')}
                                                                         </Button>
                                                                     </div>
                                                                     {(serviceDetails.itinerary || []).map((day, index) => (
                                                                         <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2">
                                                                             <Input className="md:col-span-2 h-11" type="number" min="1" value={day.day || index + 1} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, day: e.target.value } : item))} />
-                                                                            <Input className="md:col-span-4 h-11" placeholder="Day title" value={day.title || ''} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, title: e.target.value } : item))} />
-                                                                            <Input className="md:col-span-5 h-11" placeholder="Stops, meals, activities..." value={day.description || ''} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, description: e.target.value } : item))} />
+                                                                            <Input className="md:col-span-4 h-11" placeholder={copy('Day title', 'Kichwa cha siku')} value={day.title || ''} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, title: e.target.value } : item))} />
+                                                                            <Input className="md:col-span-5 h-11" placeholder={copy('Stops, meals, activities...', 'Stops, chakula, activities...')} value={day.description || ''} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, description: e.target.value } : item))} />
                                                                             <button type="button" className="md:col-span-1 h-11 rounded-xl border bg-white text-muted-foreground hover:text-red-600" onClick={() => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).filter((_, itemIndex) => itemIndex !== index))}>
                                                                                 <Trash2 className="h-4 w-4 mx-auto" />
                                                                             </button>
                                                                         </div>
                                                                     ))}
                                                                 </div>
-                                                                <RepeatableTextList label="Included items" value={serviceDetails.included} onChange={(value) => updateServiceDetail('included', value)} addLabel="Add included item" placeholder="Describe one included item..." />
-                                                                <RepeatableTextList label="Excluded items" value={serviceDetails.excluded} onChange={(value) => updateServiceDetail('excluded', value)} addLabel="Add excluded item" placeholder="Describe one excluded item..." />
-                                                                <Textarea placeholder="Traveler requirements, weather notes, documents, fitness level..." value={serviceDetails.requirements || ''} onChange={(e) => updateServiceDetail('requirements', e.target.value)} className="min-h-20" />
+                                                                <RepeatableTextList label={copy('Included items', 'Vilivyojumuishwa')} value={serviceDetails.included} onChange={(value) => updateServiceDetail('included', value)} addLabel={copy('Add included item', 'Ongeza kilichojumuishwa')} placeholder={copy('Describe one included item...', 'Eleza kitu kilichojumuishwa...')} />
+                                                                <RepeatableTextList label={copy('Excluded items', 'Visivyojumuishwa')} value={serviceDetails.excluded} onChange={(value) => updateServiceDetail('excluded', value)} addLabel={copy('Add excluded item', 'Ongeza kisichojumuishwa')} placeholder={copy('Describe one excluded item...', 'Eleza kitu kisichojumuishwa...')} />
+                                                                <Textarea placeholder={copy('Traveller requirements, weather notes, documents, fitness level...', 'Mahitaji ya msafiri, hali ya hewa, nyaraka, kiwango cha fitness...')} value={serviceDetails.requirements || ''} onChange={(e) => updateServiceDetail('requirements', e.target.value)} className="min-h-20" />
                                                             </div>
                                                         )}
 
                                                         {selectedServiceTemplateKey === 'stay' && (
                                                             <div className="space-y-3">
-                                                                <RepeatableTextList label="Amenities" value={serviceDetails.amenities} onChange={(value) => updateServiceDetail('amenities', value)} addLabel="Add amenity" placeholder="Describe one amenity..." />
-                                                                <Textarea placeholder="House rules, check-in policy, guest rules..." value={serviceDetails.house_rules || ''} onChange={(e) => updateServiceDetail('house_rules', e.target.value)} className="min-h-24" />
-                                                                <Textarea placeholder="Cancellation policy" value={serviceDetails.cancellation_policy || ''} onChange={(e) => updateServiceDetail('cancellation_policy', e.target.value)} className="min-h-20" />
+                                                                <RepeatableTextList label={copy('Amenities', 'Huduma zilizopo')} value={serviceDetails.amenities} onChange={(value) => updateServiceDetail('amenities', value)} addLabel={copy('Add amenity', 'Ongeza huduma')} placeholder={copy('Describe one amenity...', 'Eleza huduma moja...')} />
+                                                                <Textarea placeholder={copy('House rules, check-in policy, guest rules...', 'Sheria za nyumba, sera ya kuingia, sheria za wageni...')} value={serviceDetails.house_rules || ''} onChange={(e) => updateServiceDetail('house_rules', e.target.value)} className="min-h-24" />
+                                                                <Textarea placeholder={copy('Cancellation policy', 'Sera ya cancellation')} value={serviceDetails.cancellation_policy || ''} onChange={(e) => updateServiceDetail('cancellation_policy', e.target.value)} className="min-h-20" />
                                                             </div>
                                                         )}
 
                                                         {selectedServiceTemplateKey === 'learning' && (
                                                             <div className="space-y-3">
-                                                                <RepeatableTextList label="Learning outcomes" value={serviceDetails.outcomes} onChange={(value) => updateServiceDetail('outcomes', value)} addLabel="Add outcome" placeholder="Describe one learning outcome..." />
-                                                                <RepeatableTextList label="Student requirements" value={serviceDetails.requirements} onChange={(value) => updateServiceDetail('requirements', value)} addLabel="Add requirement" placeholder="Describe one requirement..." />
-                                                                <Input placeholder="Certificate, e.g. Certificate of completion included" value={serviceDetails.certificate || ''} onChange={(e) => updateServiceDetail('certificate', e.target.value)} className="h-11" />
+                                                                <RepeatableTextList label={copy('Learning outcomes', 'Matokeo ya kujifunza')} value={serviceDetails.outcomes} onChange={(value) => updateServiceDetail('outcomes', value)} addLabel={copy('Add outcome', 'Ongeza matokeo')} placeholder={copy('Describe one learning outcome...', 'Eleza matokeo moja ya kujifunza...')} />
+                                                                <RepeatableTextList label={copy('Student requirements', 'Mahitaji ya mwanafunzi')} value={serviceDetails.requirements} onChange={(value) => updateServiceDetail('requirements', value)} addLabel={copy('Add requirement', 'Ongeza hitaji')} placeholder={copy('Describe one requirement...', 'Eleza hitaji moja...')} />
+                                                                <Input placeholder={copy('Certificate, e.g. Certificate of completion included', 'Cheti, mf. cheti cha kukamilisha kimejumuishwa')} value={serviceDetails.certificate || ''} onChange={(e) => updateServiceDetail('certificate', e.target.value)} className="h-11" />
                                                             </div>
                                                         )}
 
                                                         {selectedServiceTemplateKey === 'orderable_service' && (
                                                             <div className="space-y-3">
-                                                                <Textarea placeholder="Customization details customers can choose: size, flavor, message, file upload, color..." value={serviceDetails.customization_notes || ''} onChange={(e) => updateServiceDetail('customization_notes', e.target.value)} className="min-h-24" />
+                                                                <Textarea placeholder={copy('Customization details customers can choose: size, flavor, message, file upload, color...', 'Maelezo ya customization ambayo wateja wanaweza kuchagua: size, ladha, ujumbe, file upload, rangi...')} value={serviceDetails.customization_notes || ''} onChange={(e) => updateServiceDetail('customization_notes', e.target.value)} className="min-h-24" />
                                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                                    <Input className="h-11 md:col-span-1" placeholder="Lead time, e.g. 24 hours notice" value={serviceDetails.lead_time || ''} onChange={(e) => updateServiceDetail('lead_time', e.target.value)} />
-                                                                    <Input className="h-11 md:col-span-1" type="number" min="1" placeholder="Minimum order quantity" value={serviceDetails.minimum_order || ''} onChange={(e) => updateServiceDetail('minimum_order', e.target.value)} />
+                                                                    <Input className="h-11 md:col-span-1" placeholder={copy('Lead time, e.g. 24 hours notice', 'Muda wa maandalizi, mf. taarifa ya saa 24')} value={serviceDetails.lead_time || ''} onChange={(e) => updateServiceDetail('lead_time', e.target.value)} />
+                                                                    <Input className="h-11 md:col-span-1" type="number" min="1" placeholder={copy('Minimum order quantity', 'Kiasi cha chini cha oda')} value={serviceDetails.minimum_order || ''} onChange={(e) => updateServiceDetail('minimum_order', e.target.value)} />
                                                                     <select className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={serviceDetails.quote_policy || 'quote_after_request'} onChange={(e) => updateServiceDetail('quote_policy', e.target.value)}>
-                                                                        <option value="quote_after_request">Quote after request</option>
-                                                                        <option value="deposit_before_work">Deposit before work</option>
-                                                                        <option value="full_payment_after_quote">Full payment after quote</option>
+                                                                        <option value="quote_after_request">{localizeUploadOption(copy, 'Quote after request')}</option>
+                                                                        <option value="deposit_before_work">{localizeUploadOption(copy, 'Deposit before work')}</option>
+                                                                        <option value="full_payment_after_quote">{localizeUploadOption(copy, 'Full payment after quote')}</option>
                                                                     </select>
                                                                 </div>
-                                                                <Textarea placeholder="Pickup or delivery notes" value={serviceDetails.pickup_delivery_notes || ''} onChange={(e) => updateServiceDetail('pickup_delivery_notes', e.target.value)} className="min-h-20" />
+                                                                <Textarea placeholder={copy('Pickup or delivery notes', 'Maelezo ya pickup au delivery')} value={serviceDetails.pickup_delivery_notes || ''} onChange={(e) => updateServiceDetail('pickup_delivery_notes', e.target.value)} className="min-h-20" />
                                                             </div>
                                                         )}
                                                     </div>
@@ -7001,25 +7212,25 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     <>
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                {step === 'service' ? 'Bei Kamili Mteja Atalipa (TZS)' : 'Bei ya Reja Reja (TZS)'}
+                                                {step === 'service' ? copy('Full customer price (TZS)', 'Bei Kamili Mteja Atalipa (TZS)') : copy('Retail price (TZS)', 'Bei ya Reja Reja (TZS)')}
                                             </label>
                                             <Input
                                                 type="number"
-                                                placeholder="Mf. 10000"
+                                                placeholder={copy('E.g. 10000', 'Mf. 10000')}
                                                 value={price}
                                                 onChange={e => setPrice(e.target.value)}
                                                 className={`h-14 text-xl font-black ${step === 'digital' ? 'bg-blue-50 border-blue-200' : 'bg-purple-50 border-purple-200'}`}
                                             />
                                             {step === 'service' && (
                                                 <p className="text-[10px] text-muted-foreground">
-                                                    Bei hii inafuata namna huduma inavyouzwa: kwa booking, rental unit, session, au package.
+                                                    {copy('This price follows how the service is sold: booking, rental unit, session, or package.', 'Bei hii inafuata namna huduma inavyouzwa: kwa booking, rental unit, session, au package.')}
                                                 </p>
                                             )}
                                         </div>
                                         <div className="space-y-1.5">
                                             <div className="flex items-center justify-between gap-3">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                    {step === 'service' ? 'Bei ya kulinganisha' : 'Bei ya awali'}
+                                                    {step === 'service' ? copy('Comparison price', 'Bei ya kulinganisha') : copy('Original price', 'Bei ya awali')}
                                                 </label>
                                                 <button
                                                     type="button"
@@ -7031,20 +7242,20 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     }}
                                                     className="text-[11px] font-black text-brand-700 hover:text-brand-800"
                                                 >
-                                                    {showComparePrice ? 'Ondoa' : 'Ongeza'}
+                                                    {showComparePrice ? copy('Remove', 'Ondoa') : copy('Add', 'Ongeza')}
                                                 </button>
                                             </div>
                                             {showComparePrice ? (
                                                 <>
                                                     <Input
                                                         type="number"
-                                                        placeholder="Mf. 15000"
+                                                        placeholder={copy('E.g. 15000', 'Mf. 15000')}
                                                         value={comparePrice}
                                                         onChange={e => setComparePrice(e.target.value)}
                                                         className="h-14 text-xl font-black border-dashed"
                                                     />
                                                     <p className="text-[10px] text-muted-foreground">
-                                                        Optional. Tumia tu kama unataka kuonyesha punguzo, bei ya kawaida, au reference kwa mteja.
+                                                        {copy('Optional. Use this only to show a discount, regular price, or customer reference.', 'Si lazima. Tumia tu kama unataka kuonyesha punguzo, bei ya kawaida, au reference kwa mteja.')}
                                                     </p>
                                                 </>
                                             ) : (
@@ -7053,18 +7264,18 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     onClick={() => setShowComparePrice(true)}
                                                     className="h-14 w-full rounded-xl border border-dashed border-slate-200 bg-white text-sm font-bold text-slate-500 hover:border-brand-200 hover:text-brand-700"
                                                 >
-                                                    Hakuna bei ya kulinganisha
+                                                    {copy('No comparison price', 'Hakuna bei ya kulinganisha')}
                                                 </button>
                                             )}
                                         </div>
                                     </>
                                 ) : wholesaleOnly ? (
                                     <div className="sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 font-medium">
-                                        Wholesale-only product. Bei ya mteja itatoka kwenye pricing tiers na proforma ya Takeer SafePay.
+                                        {copy('Wholesale-only product. Customer pricing comes from pricing tiers and the PSP proforma.', 'Bidhaa ya jumla pekee. Bei ya mteja itatoka kwenye pricing tiers na proforma ya PSP.')}
                                     </div>
                                 ) : (
                                     <div className="sm:col-span-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800 font-medium">
-                                        Service hii ni ya <span className="font-black uppercase">{serviceMode === 'request_quote' ? 'Request/Quote' : serviceMode === 'showcase_only' ? 'Showcase' : 'Contact/Booking'}</span>. Hakuna bei ya checkout inayohitajika.
+                                        {copy('This service uses', 'Service hii ni ya')} <span className="font-black uppercase">{serviceMode === 'request_quote' ? copy('Request/Quote', 'Omba quote') : serviceMode === 'showcase_only' ? copy('Showcase', 'Showcase') : copy('Contact/Booking', 'Contact/Booking')}</span>{copy('. No checkout price is required.', '. Hakuna bei ya checkout inayohitajika.')}
                                     </div>
                                 )}
                             </div>
@@ -7074,7 +7285,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     productCertificates={productCertificates}
                                     selectedProductCertificateIds={selectedProductCertificateIds}
                                     toggleProductCertificate={toggleProductCertificate}
-                                    certificateTypeLabel={certificateTypeLabel}
+                                    certificateTypeLabel={(value) => certificateTypeLabel(value, copy)}
                                     certificateForm={certificateForm}
                                     setCertificateForm={setCertificateForm}
                                     certificateOwnershipOptions={CERTIFICATE_OWNERSHIP_OPTIONS}
@@ -7091,7 +7302,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 disabled={images.some(img => img.isUploading) || isUploadingProductDetailSectionImage || (digitalDeliveryMode === 'upload' && digitalFile?.isUploading) || (digitalDeliveryMode === 'video_stream' && paidVideoFile?.isUploading) || (digitalDeliveryMode === 'audio_stream' && paidAudioFile?.isUploading) || (digitalDeliveryMode === 'gallery_pack' && paidGalleryItems.some(item => item.isUploading))}
                                 className={`w-full h-14 text-lg font-bold text-white rounded-2xl shadow-xl transition-all transform active:scale-95 ${step === 'digital' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20' : 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/20'}`}
                             >
-                                Weka Sokoni Sasa <ChevronRight className="ml-2 h-5 w-5" />
+                                {copy('Publish to shop now', 'Weka sokoni sasa')} <ChevronRight className="ml-2 h-5 w-5" />
                             </Button>
                         </CardContent>
                     </Card>
@@ -7110,7 +7321,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 >
                                     <img
                                         src={images[currentImageIndex]?.localUrl}
-                                        alt="Editor"
+                                                alt={copy('Editor', 'Mhariri')}
                                         className="w-full h-full object-cover select-none pointer-events-none"
                                     />
 
@@ -7130,7 +7341,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                                 {/* Tooltip on hover */}
                                                 <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-black/90 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/spot:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20 shadow-xl">
-                                                    Bofya kulia/vuta kuondoa
+                                                    {copy('Right-click or drag to remove', 'Bofya kulia/vuta kuondoa')}
                                                 </div>
                                             </div>
                                         </div>
@@ -7147,7 +7358,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     )}
                                 </div>
                                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-md px-4 py-2 rounded-full text-white text-[10px] font-black uppercase tracking-[0.2em] pointer-events-none">
-                                    Bofya pichani kuweka alama
+                                    {copy('Click on the image to place a marker', 'Bofya pichani kuweka alama')}
                                 </div>
                             </div>
 
@@ -7155,8 +7366,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             <div className="w-full md:w-80 flex flex-col bg-background">
                                 <div className="p-6 border-b flex items-center justify-between">
                                     <div>
-                                        <h3 className="font-black text-xl">Hotspots</h3>
-                                        <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Image {currentImageIndex + 1}</p>
+                                        <h3 className="font-black text-xl">{copy('Hotspots', 'Hotspots')}</h3>
+                                        <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">{copy('Image', 'Picha')} {currentImageIndex + 1}</p>
                                     </div>
                                     <button onClick={() => setShowHotspotModal(false)} className="h-10 w-10 bg-accent rounded-full flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition-all">
                                         <X className="h-5 w-5" />
@@ -7171,11 +7382,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <div className="h-16 w-16 bg-accent rounded-3xl flex items-center justify-center mx-auto opacity-40">
                                                         <MapPin className="h-8 w-8" />
                                                     </div>
-                                                    <p className="text-sm text-muted-foreground font-medium">Bofya picha iliyo kushoto kuongeza hotspot ya kwanza.</p>
+                                                    <p className="text-sm text-muted-foreground font-medium">{copy('Click the image on the left to add the first hotspot.', 'Bofya picha iliyo kushoto kuongeza hotspot ya kwanza.')}</p>
                                                 </div>
                                             ) : (
                                                 <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Alama Zilizowekwa</label>
+                                                    <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{copy('Placed markers', 'Alama zilizowekwa')}</label>
                                                     {(hotspots[currentImageIndex] || []).map((spot, idx) => (
                                                         <div key={idx} className="group flex items-center gap-3 p-3 bg-accent/30 hover:bg-red-50 rounded-2xl transition-all border border-transparent hover:border-red-100 overflow-hidden">
                                                             <div className="h-8 w-8 bg-white rounded-xl shadow-sm flex items-center justify-center shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
@@ -7201,12 +7412,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     ) : (
                                         <div className="space-y-6 animate-in slide-in-from-right-4">
                                             <div className="space-y-4">
-                                                <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest">1. Chagua Aina ya Alama</label>
+                                                <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest">{copy('1. Choose marker type', '1. Chagua aina ya alama')}</label>
                                                 <div className="grid grid-cols-3 gap-2">
                                                     {[
-                                                        { id: 'product', icon: ShoppingBag, label: 'Bidhaa' },
-                                                        { id: 'link', icon: LinkIcon, label: 'Link' },
-                                                        { id: 'text', icon: Info, label: 'Maelezo' },
+                                                        { id: 'product', icon: ShoppingBag, label: 'Product', swahiliLabel: 'Bidhaa' },
+                                                        { id: 'link', icon: LinkIcon, label: 'Link', swahiliLabel: 'Link' },
+                                                        { id: 'text', icon: Info, label: 'Details', swahiliLabel: 'Maelezo' },
                                                     ].map(t => (
                                                         <button
                                                             key={t.id}
@@ -7214,21 +7425,21 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all ${hotspotType === t.id ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-border text-muted-foreground hover:border-brand-200'}`}
                                                         >
                                                             <t.icon className="h-5 w-5" />
-                                                            <span className="text-[9px] font-black uppercase tracking-tighter">{t.label}</span>
+                                                            <span className="text-[9px] font-black uppercase tracking-tighter">{copy(t.label, t.swahiliLabel)}</span>
                                                         </button>
                                                     ))}
                                                 </div>
                                             </div>
 
                                             <div className="space-y-4 pt-2 border-t border-dashed border-border">
-                                                <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest">2. Taarifa za Alama</label>
+                                                <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest">{copy('2. Marker details', '2. Taarifa za alama')}</label>
 
                                                 {hotspotType === 'product' ? (
                                                     <div className="space-y-3">
                                                         <div className="relative">
                                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                                             <Input
-                                                                placeholder="Tafuta bidhaa zako..."
+                                                                placeholder={copy('Search your products...', 'Tafuta bidhaa zako...')}
                                                                 className="pl-10 h-11 text-xs border-brand-100 focus:ring-brand-500"
                                                                 value={searchQuery}
                                                                 onChange={e => setSearchQuery(e.target.value)}
@@ -7260,14 +7471,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <div className="space-y-2">
                                                         {hotspotType === 'link' ? (
                                                             <Input
-                                                                placeholder="https://mfano.co.tz/bidhaa"
+                                                                placeholder={copy('https://example.com/product', 'https://mfano.co.tz/bidhaa')}
                                                                 className="h-11 text-xs"
                                                                 value={hotspotData}
                                                                 onChange={e => setHotspotData(e.target.value)}
                                                             />
                                                         ) : (
                                                             <Textarea
-                                                                placeholder="Hii ni bidhaa bora kabisa..."
+                                                                placeholder={copy('This is a great product...', 'Hii ni bidhaa bora kabisa...')}
                                                                 className="min-h-[80px] text-xs"
                                                                 value={hotspotData}
                                                                 onChange={e => setHotspotData(e.target.value)}
@@ -7283,14 +7494,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     className="flex-1 h-12 text-xs font-bold rounded-xl"
                                                     onClick={() => { setPendingHotspot(null); }}
                                                 >
-                                                    Ghairi
+                                                    {copy('Cancel', 'Ghairi')}
                                                 </Button>
                                                 <Button
                                                     className="flex-[2] h-12 text-xs font-bold rounded-xl bg-brand-600 hover:bg-brand-700 text-white shadow-lg shadow-brand-500/20"
                                                     onClick={saveHotspot}
                                                     disabled={!hotspotData}
                                                 >
-                                                    Hifadhi Alama
+                                                    {copy('Save marker', 'Hifadhi alama')}
                                                 </Button>
                                             </div>
                                         </div>
@@ -7302,7 +7513,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         onClick={() => setShowHotspotModal(false)}
                                         className="w-full h-12 font-black tracking-widest uppercase text-xs rounded-2xl"
                                     >
-                                        Imekamilika
+                                        {copy('Done', 'Imekamilika')}
                                     </Button>
                                 </div>
                             </div>
@@ -7323,10 +7534,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 >
                     <DialogContent className="sm:max-w-lg">
                         <DialogHeader>
-                            <DialogTitle>Swatch Image</DialogTitle>
+                            <DialogTitle>{copy('Swatch image', 'Picha ya swatch')}</DialogTitle>
                             <DialogDescription>
-                                Swatch ni picha ndogo ya variant (mfano rangi au texture) inayoonekana kwa mteja wakati wa kuchagua bidhaa.
-                                Inashauriwa kutumia picha ya square, hasa 100x100 px.
+                                {copy('A swatch is a small variant image, such as a color or texture, shown to the customer when choosing a product. A square image, especially 100x100 px, is recommended.', 'Swatch ni picha ndogo ya variant (mfano rangi au texture) inayoonekana kwa mteja wakati wa kuchagua bidhaa. Inashauriwa kutumia picha ya square, hasa 100x100 px.')}
                             </DialogDescription>
                         </DialogHeader>
 
@@ -7339,8 +7549,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             onDragLeave={() => setSwatchDragOver(false)}
                             onDrop={onSwatchDrop}
                         >
-                            <p className="text-sm font-semibold text-slate-700">Buruta picha hapa</p>
-                            <p className="text-xs text-slate-500 mt-1">au tumia Chagua picha / Piga picha.</p>
+                            <p className="text-sm font-semibold text-slate-700">{copy('Drag an image here', 'Buruta picha hapa')}</p>
+                            <p className="text-xs text-slate-500 mt-1">{copy('or use Choose image / Take photo.', 'au tumia Chagua picha / Piga picha.')}</p>
                             {swatchFile && (
                                 <p className="text-xs font-bold text-brand-700 mt-2">Selected: {swatchFile.name}</p>
                             )}
@@ -7348,10 +7558,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                         <div className="grid grid-cols-2 gap-2">
                             <Button type="button" variant="outline" onClick={() => swatchFileInputRef.current?.click()}>
-                                Chagua picha
+                                {copy('Choose image', 'Chagua picha')}
                             </Button>
                             <Button type="button" variant="outline" onClick={() => swatchCameraInputRef.current?.click()}>
-                                Piga picha
+                                {copy('Take photo', 'Piga picha')}
                             </Button>
                         </div>
 
@@ -7378,9 +7588,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         />
 
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setSwatchModalOpen(false)}>Ghairi</Button>
+                            <Button type="button" variant="outline" onClick={() => setSwatchModalOpen(false)}>{copy('Cancel', 'Ghairi')}</Button>
                             <Button type="button" className="bg-brand-600 hover:bg-brand-700 text-white" onClick={submitSwatchModal}>
-                                Pakia Swatch
+                                {copy('Upload swatch', 'Pakia swatch')}
                             </Button>
                         </DialogFooter>
                     </DialogContent>

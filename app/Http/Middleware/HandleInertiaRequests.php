@@ -34,6 +34,12 @@ class HandleInertiaRequests extends Middleware
             $request->session()->forget('error');
         }
 
+        $sessionLocale = $request->session()->get('user_session_language');
+        $countryIso = strtoupper((string) data_get($request->session()->get('user_session_country'), 'iso_alpha2', ''));
+        $locale = in_array($sessionLocale, ['en', 'sw'], true)
+            ? $sessionLocale
+            : ($countryIso === 'TZ' ? 'sw' : 'en');
+
         return [
             ...parent::share($request),
             'auth' => [
@@ -43,6 +49,7 @@ class HandleInertiaRequests extends Middleware
                 'country' => $request->session()->get('user_session_country'),
                 'currency' => $request->session()->get('user_session_currency'),
             ],
+            'locale' => $locale,
             'flash' => [
                 'success' => $request->session()->get('success'),
                 'error' => $flashError,

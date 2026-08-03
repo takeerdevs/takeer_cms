@@ -17,10 +17,12 @@ import {
 import { cn } from '@/lib/utils';
 import ShopLocationsModal from '@/Components/ShopLocationsModal';
 import AddressPickerModal from '@/Components/AddressPickerModal';
-import { DeliveryFlowTimeline, DeliveryDirectionsButton, deliveryCurrentIndex, deliveryStatusText, deliveryStepsFor } from '@/Components/DeliveryFlowTimeline';
+import { DeliveryFlowTimeline, DeliveryDirectionsButton, deliveryCurrentIndex, deliveryStatusText, deliveryStatusTextSw, deliveryStepsFor } from '@/Components/DeliveryFlowTimeline';
 import { orderPackageCount, orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 const MediaDisplay = ({ url, className, mode = 'cover' }) => {
+    const { copy } = useLocale();
     if (!url) return null;
     const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || url.includes('/video/') || url.includes('type=video');
 
@@ -40,7 +42,7 @@ const MediaDisplay = ({ url, className, mode = 'cover' }) => {
                     "w-full transition-transform group-hover:scale-105",
                     mode === 'natural' ? "h-auto max-h-80 object-contain" : "h-full object-cover"
                 )}
-                alt="Chat attachment"
+                alt={copy('Chat attachment', 'Kiambatisho cha chat')}
             />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
         </div>
@@ -49,12 +51,12 @@ const MediaDisplay = ({ url, className, mode = 'cover' }) => {
 
 const isDefaultMediaBody = (body) => ['Picha/Video ya Bidhaa', 'Picha/Video ya Uthibitisho'].includes(String(body || '').trim());
 
-const sanitizeChatBody = (body) => String(body || '')
+const sanitizeChatBody = (body, copy = (english) => english) => String(body || '')
     .replace(/Pickup PIN ya mteja ni:\s*\d+\.?\s*/gi, '')
-    .replace(/Mteja atalipa basi atakapokuja na PIN hii kukuchukulia bidhaa\.?/gi, 'Mteja atalipia mtandaoni; baada ya malipo, ingiza PIN atakayokuonyesha kwenye order chat ili kuthibitisha pickup.')
-    .replace(/Mteja akija tumie POS kuingiza pin atakayokutajia na tutaangalia kama inafanana na hii automatic, huhitaji kuikariri\.?/gi, 'Mteja akifika, ingiza PIN atakayokuonyesha kwenye order chat au order details ili kuthibitisha pickup.');
+    .replace(/Mteja atalipa basi atakapokuja na PIN hii kukuchukulia bidhaa\.?/gi, copy('The buyer pays online; after payment, enter the PIN they show you in the order chat to confirm pickup.', 'Mteja atalipia mtandaoni; baada ya malipo, ingiza PIN atakayokuonyesha kwenye order chat ili kuthibitisha pickup.'))
+    .replace(/Mteja akija tumie POS kuingiza pin atakayokutajia na tutaangalia kama inafanana na hii automatic, huhitaji kuikariri\.?/gi, copy('When the buyer arrives, enter the PIN they show you in the order chat or order details to confirm pickup.', 'Mteja akifika, ingiza PIN atakayokuonyesha kwenye order chat au order details ili kuthibitisha pickup.'));
 
-const roleAwareSystemBody = (message, role, order) => {
+const roleAwareSystemBody = (message, role, order, copy = (english) => english) => {
     const payloadBody = role === 'buyer' ? message?.payload?.buyer_body : message?.payload?.merchant_body;
     if (payloadBody) return payloadBody;
 
@@ -62,13 +64,19 @@ const roleAwareSystemBody = (message, role, order) => {
     if (role !== 'buyer') return body;
 
     if (body.includes('mapendekezo ya usafirishaji') || body.includes('thibitisha gharama ya usafiri kwa mteja')) {
-        const title = order?.product?.title || order?.display_title || 'order yako';
-        return `Habari, order yako imeanzishwa kwa ajili ya: ${title}.\nTumeangalia eneo lako na kupata makadirio ya usafiri. Subiri muuzaji ahakiki gharama na kuthibitisha kuwa order ipo kabla ya kulipa.`;
+        const title = order?.product?.title || order?.display_title || copy('your order', 'order yako');
+        return copy(
+            `Hello, your order has been started for: ${title}.\nWe checked your location and found a shipping estimate. Wait for the merchant to review the cost and confirm the order before paying.`,
+            `Habari, order yako imeanzishwa kwa ajili ya: ${title}.\nTumeangalia eneo lako na kupata makadirio ya usafiri. Subiri muuzaji ahakiki gharama na kuthibitisha kuwa order ipo kabla ya kulipa.`,
+        );
     }
 
     if (body.includes('Mteja amechagua KUCHUKUA DUKANI')) {
-        const title = order?.product?.title || order?.display_title || 'order yako';
-        return `Habari, order yako imeanzishwa kwa ajili ya: ${title}.\nUmechagua KUCHUKUA DUKANI. Subiri muuzaji athibitishe kuwa order ipo; baada ya hapo utaweza kulipia.`;
+        const title = order?.product?.title || order?.display_title || copy('your order', 'order yako');
+        return copy(
+            `Hello, your order has been started for: ${title}.\nYou selected SELF-PICKUP. Wait for the merchant to confirm the order is available; then you can pay.`,
+            `Habari, order yako imeanzishwa kwa ajili ya: ${title}.\nUmechagua KUCHUKUA DUKANI. Subiri muuzaji athibitishe kuwa order ipo; baada ya hapo utaweza kulipia.`,
+        );
     }
 
     return body;
@@ -120,6 +128,7 @@ const mergeDeliveryMessageIntoOrder = (order, message) => {
 };
 
 const ChatRoleAvatar = ({ role, className }) => {
+    const { copy } = useLocale();
     const isMerchant = role === 'merchant';
     const Icon = isMerchant ? Store : UserRound;
 
@@ -130,8 +139,8 @@ const ChatRoleAvatar = ({ role, className }) => {
                 isMerchant ? "bg-brand-600" : "bg-white border border-slate-100 text-slate-600",
                 className
             )}
-            title={isMerchant ? 'Merchant' : 'Customer'}
-            aria-label={isMerchant ? 'Merchant' : 'Customer'}
+            title={isMerchant ? copy('Merchant', 'Muuzaji') : copy('Customer', 'Mteja')}
+            aria-label={isMerchant ? copy('Merchant', 'Muuzaji') : copy('Customer', 'Mteja')}
         >
             <Icon className="h-1/2 w-1/2" strokeWidth={2.6} />
         </div>
@@ -139,6 +148,7 @@ const ChatRoleAvatar = ({ role, className }) => {
 };
 
 const PickupPinCard = ({ pickupPin, amount, timestamp, onShopLocations, showShopLocations = true, className }) => {
+    const { copy } = useLocale();
     const pinDigits = String(pickupPin || '').padStart(4, '0').split('');
 
     return (
@@ -147,7 +157,7 @@ const PickupPinCard = ({ pickupPin, amount, timestamp, onShopLocations, showShop
                 <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
                     <Lock className="h-6 w-6" />
                 </div>
-                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-brand-500">Pickup PIN</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-brand-500">{copy('Pickup PIN', 'PIN ya kuchukua')}</p>
                 <div className="mt-3 flex justify-center gap-2">
                     {pinDigits.map((digit, index) => (
                         <span key={`${digit}-${index}`} className="flex h-14 w-12 items-center justify-center rounded-2xl border border-brand-100 bg-white text-3xl font-black text-brand-900 shadow-sm dark:border-brand-800 dark:bg-slate-950 dark:text-brand-100">
@@ -156,13 +166,13 @@ const PickupPinCard = ({ pickupPin, amount, timestamp, onShopLocations, showShop
                     ))}
                 </div>
                 <p className="mx-auto mt-3 max-w-xs text-[11px] font-bold leading-relaxed text-slate-500">
-                    Onyesha PIN hii dukani ili kuchukua bidhaa zako.
+                    {copy('Show this PIN at the shop to collect your products.', 'Onyesha PIN hii dukani ili kuchukua bidhaa zako.')}
                 </p>
             </div>
             <div className="space-y-2 p-4">
                 {amount !== undefined && amount !== null && (
                     <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-950">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Malipo</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Payment', 'Malipo')}</span>
                         <span className="text-sm font-black text-slate-900 dark:text-slate-100">TZS {Number(amount || 0).toLocaleString()}</span>
                     </div>
                 )}
@@ -174,7 +184,7 @@ const PickupPinCard = ({ pickupPin, amount, timestamp, onShopLocations, showShop
                     >
                         <span className="flex min-w-0 items-center gap-3">
                             <Store className="h-5 w-5 shrink-0 text-brand-600" />
-                            <span className="text-xs font-black uppercase tracking-widest">Shop locations</span>
+                            <span className="text-xs font-black uppercase tracking-widest">{copy('Shop locations', 'Maeneo ya duka')}</span>
                         </span>
                         <ChevronRight className="h-4 w-4 shrink-0" />
                     </button>
@@ -190,6 +200,7 @@ const PickupPinCard = ({ pickupPin, amount, timestamp, onShopLocations, showShop
 };
 
 const ReleasePinCard = ({ releasePin, timestamp, onReportIssue, className }) => {
+    const { copy } = useLocale();
     const pinDigits = String(releasePin || '').padStart(4, '0').split('');
 
     return (
@@ -198,7 +209,7 @@ const ReleasePinCard = ({ releasePin, timestamp, onReportIssue, className }) => 
                 <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
                     <Truck className="h-6 w-6" />
                 </div>
-                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-brand-500">Delivery PIN</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-brand-500">{copy('Delivery PIN', 'PIN ya delivery')}</p>
                 <div className="mt-3 flex justify-center gap-2">
                     {pinDigits.map((digit, index) => (
                         <span key={`${digit}-${index}`} className="flex h-14 w-12 items-center justify-center rounded-2xl border border-sky-100 bg-white text-3xl font-black text-brand-900 shadow-sm dark:border-sky-800 dark:bg-slate-950 dark:text-brand-100">
@@ -207,7 +218,7 @@ const ReleasePinCard = ({ releasePin, timestamp, onReportIssue, className }) => 
                     ))}
                 </div>
                 <p className="mx-auto mt-3 max-w-xs text-[11px] font-bold leading-relaxed text-slate-500">
-                    Kagua mzigo kwanza. Mpe dereva PIN hii baada ya kuhakikisha ni order yako na iko salama.
+                    {copy('Inspect the package first. Give this PIN to the rider after confirming it is your order and is safe.', 'Kagua mzigo kwanza. Mpe dereva PIN hii baada ya kuhakikisha ni order yako na iko salama.')}
                 </p>
             </div>
             <div className="space-y-2 p-4">
@@ -219,7 +230,7 @@ const ReleasePinCard = ({ releasePin, timestamp, onReportIssue, className }) => 
                     >
                         <span className="flex min-w-0 items-center gap-3">
                             <AlertTriangle className="h-5 w-5 shrink-0" />
-                            <span className="text-xs font-black uppercase tracking-widest">Ripoti tatizo</span>
+                            <span className="text-xs font-black uppercase tracking-widest">{copy('Report an issue', 'Ripoti tatizo')}</span>
                         </span>
                         <ChevronRight className="h-4 w-4 shrink-0" />
                     </button>
@@ -234,15 +245,15 @@ const ReleasePinCard = ({ releasePin, timestamp, onReportIssue, className }) => 
     );
 };
 
-const orderItemMeta = (item = {}, order = null) => {
+const orderItemMeta = (item = {}, order = null, translate = (english) => english) => {
     const type = item.type || item.product_type || item.purchasable_type || (!item.isExtra ? order?.product?.type : null);
     const deliveryType = item.digital_delivery_type || (!item.isExtra ? order?.product?.digital_delivery_type : null);
     const isCustomPhysical = type === 'physical' && deliveryType === 'custom_delivery';
 
     if (type === 'physical' || isCustomPhysical) {
         return {
-            label: 'Physical fulfillment',
-            detail: 'Pickup/delivery handling required after payment.',
+            label: translate('Physical fulfillment', 'Utimilishaji wa bidhaa'),
+            detail: translate('Pickup/delivery handling required after payment.', 'Utunzaji wa pickup/delivery unahitajika baada ya malipo.'),
             Icon: PackageCheck,
             tone: 'text-amber-700 bg-amber-50 border-amber-100',
         };
@@ -250,8 +261,8 @@ const orderItemMeta = (item = {}, order = null) => {
 
     if (type === 'service') {
         return {
-            label: 'Service order',
-            detail: 'Shown in Orders; no physical pickup unless the service requires it.',
+            label: translate('Service order', 'Order ya huduma'),
+            detail: translate('Shown in Orders; no physical pickup unless the service requires it.', 'Inaonekana kwenye Orders; hakuna pickup ya kimwili isipokuwa huduma inahitaji.'),
             Icon: Wrench,
             tone: 'text-indigo-700 bg-indigo-50 border-indigo-100',
         };
@@ -259,8 +270,8 @@ const orderItemMeta = (item = {}, order = null) => {
 
     if (deliveryType === 'custom_delivery') {
         return {
-            label: 'Custom digital work',
-            detail: 'Merchant delivers the final file in Orders.',
+            label: translate('Custom digital work', 'Kazi maalum ya kidijitali'),
+            detail: translate('Merchant delivers the final file in Orders.', 'Muuzaji anawasilisha faili ya mwisho kwenye Orders.'),
             Icon: Sparkles,
             tone: 'text-violet-700 bg-violet-50 border-violet-100',
         };
@@ -268,8 +279,8 @@ const orderItemMeta = (item = {}, order = null) => {
 
     if (type === 'digital') {
         return {
-            label: 'Digital download',
-            detail: 'Access is added to the customer Orders page after payment.',
+            label: translate('Digital download', 'Upakuaji wa kidijitali'),
+            detail: translate('Access is added to the customer Orders page after payment.', 'Ufikiaji unaongezwa kwenye ukurasa wa Orders wa mteja baada ya malipo.'),
             Icon: FileDown,
             tone: 'text-sky-700 bg-sky-50 border-sky-100',
         };
@@ -277,16 +288,16 @@ const orderItemMeta = (item = {}, order = null) => {
 
     if (item.isExtra) {
         return {
-            label: 'Added item',
-            detail: 'This item will be handled according to its product type after payment.',
+            label: translate('Added item', 'Item iliyoongezwa'),
+            detail: translate('This item will be handled according to its product type after payment.', 'Item hii itashughulikiwa kulingana na aina yake baada ya malipo.'),
             Icon: ShoppingBag,
             tone: 'text-slate-700 bg-slate-50 border-slate-100',
         };
     }
 
     return {
-        label: 'Order item',
-        detail: 'Added to this order.',
+        label: translate('Order item', 'Item ya order'),
+        detail: translate('Added to this order.', 'Imeongezwa kwenye order hii.'),
         Icon: ShoppingBag,
         tone: 'text-slate-700 bg-slate-50 border-slate-100',
     };
@@ -354,6 +365,7 @@ const offeringGroupOrderItems = (order) => {
 };
 
 function OrderSelectionSummaryCard({ items = [], subtotal = 0, shipping = 0, discount = 0, total = 0, title = 'Your selection' }) {
+    const { copy } = useLocale();
     return (
         <div className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-3">
@@ -363,7 +375,7 @@ function OrderSelectionSummaryCard({ items = [], subtotal = 0, shipping = 0, dis
                 <div className="min-w-0">
                     <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">{title}</p>
                     <p className="text-lg font-black leading-tight text-slate-950">
-                        {items.length} item{items.length === 1 ? '' : 's'} selected
+                        {items.length} {copy(items.length === 1 ? 'item selected' : 'items selected', items.length === 1 ? 'item imechaguliwa' : 'item zimechaguliwa')}
                     </p>
                 </div>
             </div>
@@ -374,11 +386,11 @@ function OrderSelectionSummaryCard({ items = [], subtotal = 0, shipping = 0, dis
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <p className="break-words text-base font-black leading-tight text-slate-700">
-                                    {Number(item.quantity || 1).toLocaleString()} x {item.title || 'Order item'}
+                                    {Number(item.quantity || 1).toLocaleString()} x {item.title || copy('Order item', 'Bidhaa ya oda')}
                                 </p>
                                 {Array.isArray(item.addOns) && item.addOns.length > 0 && (
                                     <p className="mt-1 text-sm font-bold leading-snug text-slate-500">
-                                        Add-ons: {item.addOns.map((addOn) => addOn.name).join(', ')}
+                                        {copy('Add-ons:', 'Viongezi:')} {item.addOns.map((addOn) => addOn.name).join(', ')}
                                     </p>
                                 )}
                             </div>
@@ -392,14 +404,14 @@ function OrderSelectionSummaryCard({ items = [], subtotal = 0, shipping = 0, dis
 
             <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
                 <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-black text-slate-500">Subtotal</span>
+                    <span className="text-sm font-black text-slate-500">{copy('Subtotal', 'Jumla ndogo')}</span>
                     <span className="text-base font-black text-slate-950">TZS {Number(subtotal || 0).toLocaleString()}</span>
                 </div>
                 {Number(shipping) > 0 && (
                     <div className="flex items-center justify-between gap-3">
                         <span className="flex items-center gap-2 text-sm font-black text-slate-500">
                             <Truck className="h-4 w-4 text-emerald-500" />
-                            Usafirishaji
+                            {copy('Shipping', 'Usafirishaji')}
                         </span>
                         <span className="text-base font-black text-emerald-600">+ TZS {Number(shipping).toLocaleString()}</span>
                     </div>
@@ -408,13 +420,13 @@ function OrderSelectionSummaryCard({ items = [], subtotal = 0, shipping = 0, dis
                     <div className="flex items-center justify-between gap-3">
                         <span className="flex items-center gap-2 text-sm font-black text-slate-500">
                             <Tag className="h-4 w-4 text-amber-500" />
-                            Punguzo
+                            {copy('Discount', 'Punguzo')}
                         </span>
                         <span className="text-base font-black text-amber-600">- TZS {Number(discount).toLocaleString()}</span>
                     </div>
                 )}
                 <div className="flex items-end justify-between gap-3 border-t border-slate-100 pt-4">
-                    <span className="text-sm font-black text-slate-500">Total</span>
+                    <span className="text-sm font-black text-slate-500">{copy('Total', 'Jumla')}</span>
                     <span className="text-3xl font-black tracking-tight text-slate-950">TZS {Number(total || 0).toLocaleString()}</span>
                 </div>
             </div>
@@ -481,29 +493,29 @@ const findBestShippingZone = (lat, lng, region, zones) => {
     return null;
 };
 
-const statusCopy = (order) => {
-    if (!order) return { label: 'Inaendelea', tone: 'bg-slate-100 text-slate-600 border-slate-200' };
-    if (order.payment_status === 'failed') return { label: 'Imesitishwa', tone: 'bg-red-50 text-red-700 border-red-100' };
-    if (order.payment_status === 'resolved_merchant_paid') return { label: 'Imekamilika', tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
-    if (order.payment_status === 'disputed') return { label: 'Mgogoro', tone: 'bg-red-50 text-red-700 border-red-100' };
-    if (order.payment_status === 'escrow_locked') return { label: 'Escrow', tone: 'bg-indigo-50 text-indigo-700 border-indigo-100' };
-    if (order.payment_status === 'awaiting_merchant_confirmation') return { label: 'Imelipwa', tone: 'bg-sky-50 text-sky-700 border-sky-100' };
-    if (order.is_inquiry && order.inquiry_status === 'quoted' && !(order.is_merchant_confirmed || order.merchant_confirmed_at)) return { label: 'Awaiting Approval', tone: 'bg-amber-50 text-amber-700 border-amber-100' };
-    if (order.is_inquiry && order.inquiry_status === 'quoted') return { label: 'Offer Ready', tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
-    if (order.is_inquiry) return { label: 'Bargaining', tone: 'bg-amber-50 text-amber-700 border-amber-100' };
-    return { label: String(order.payment_status || 'Inaendelea').replaceAll('_', ' '), tone: 'bg-slate-100 text-slate-600 border-slate-200' };
+const statusCopy = (order, translate = (english) => english) => {
+    if (!order) return { label: translate('In progress', 'Inaendelea'), tone: 'bg-slate-100 text-slate-600 border-slate-200' };
+    if (order.payment_status === 'failed') return { label: translate('Failed', 'Imesitishwa'), tone: 'bg-red-50 text-red-700 border-red-100' };
+    if (order.payment_status === 'paid_out') return { label: translate('Completed', 'Imekamilika'), tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
+    if (order.payment_status === 'disputed') return { label: translate('Disputed', 'Mgogoro'), tone: 'bg-red-50 text-red-700 border-red-100' };
+    if (order.payment_status === 'release_eligible') return { label: translate('Ready for PSP payout', 'Tayari kwa PSP payout'), tone: 'bg-indigo-50 text-indigo-700 border-indigo-100' };
+    if (order.payment_status === 'pending_fulfillment') return { label: translate('Paid', 'Imelipwa'), tone: 'bg-sky-50 text-sky-700 border-sky-100' };
+    if (order.is_inquiry && order.inquiry_status === 'quoted' && !(order.is_merchant_confirmed || order.merchant_confirmed_at)) return { label: translate('Awaiting approval', 'Inasubiri idhini'), tone: 'bg-amber-50 text-amber-700 border-amber-100' };
+    if (order.is_inquiry && order.inquiry_status === 'quoted') return { label: translate('Offer ready', 'Ofa iko tayari'), tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
+    if (order.is_inquiry) return { label: translate('Bargaining', 'Majadiliano'), tone: 'bg-amber-50 text-amber-700 border-amber-100' };
+    return { label: String(order.payment_status || translate('In progress', 'Inaendelea')).replaceAll('_', ' '), tone: 'bg-slate-100 text-slate-600 border-slate-200' };
 };
 
-const deliveryCopy = (order) => {
+const deliveryCopy = (order, translate = (english) => english) => {
     const type = order?.delivery?.delivery_type || order?.delivery?.type;
-    if (type === 'self_pickup') return 'Self pickup';
-    if (type === 'forwarder') return 'Forwarder drop-off';
-    if (type === 'local_boda') return 'Local delivery';
-    if (type === 'intercity_bus') return 'Intercity bus';
-    if (type === 'shipping') return 'Local delivery';
-    if (isPhysicalOrder(order)) return 'Physical order';
-    if (isDigitalOrder(order)) return digitalAccessCopy(order);
-    return 'Delivery pending';
+    if (type === 'self_pickup') return translate('Self pickup', 'Kuchukua mwenyewe');
+    if (type === 'forwarder') return translate('Forwarder drop-off', 'Kupeleka kwa forwarder');
+    if (type === 'local_boda') return translate('Local delivery', 'Delivery ya karibu');
+    if (type === 'intercity_bus') return translate('Intercity bus', 'Basi la mkoa');
+    if (type === 'shipping') return translate('Local delivery', 'Delivery ya karibu');
+    if (isPhysicalOrder(order)) return translate('Physical order', 'Order ya bidhaa');
+    if (isDigitalOrder(order)) return digitalAccessCopy(order, translate);
+    return translate('Delivery pending', 'Delivery inasubiri');
 };
 
 const isDigitalOrder = (order) => {
@@ -528,29 +540,29 @@ const isPhysicalOrder = (order) => {
 
 const isServiceOrder = (order) => order?.product?.type === 'service';
 
-const orderIntentMeta = (order) => {
+const orderIntentMeta = (order, translate = (english) => english) => {
     if (isServiceOrder(order)) {
         return {
-            label: 'Huduma',
-            itemLabel: 'Huduma',
-            totalLabel: 'Huduma',
+            label: translate('Service', 'Huduma'),
+            itemLabel: translate('Service', 'Huduma'),
+            totalLabel: translate('Service', 'Huduma'),
             Icon: Wrench,
         };
     }
 
     if (isDigitalOrder(order)) {
         return {
-            label: digitalAccessCopy(order),
-            itemLabel: 'Digital',
-            totalLabel: 'Digital',
+            label: digitalAccessCopy(order, translate),
+            itemLabel: translate('Digital', 'Digitali'),
+            totalLabel: translate('Digital', 'Digitali'),
             Icon: DownloadCloud,
         };
     }
 
     return {
-        label: deliveryCopy(order),
-        itemLabel: 'Bidhaa',
-        totalLabel: 'Bidhaa',
+        label: deliveryCopy(order, translate),
+        itemLabel: translate('Product', 'Bidhaa'),
+        totalLabel: translate('Product', 'Bidhaa'),
         Icon: ShoppingBag,
     };
 };
@@ -569,30 +581,30 @@ const ProductFallbackIcon = ({ type, className }) => {
     );
 };
 
-const digitalAccessCopy = (order) => {
+const digitalAccessCopy = (order, translate = (english) => english) => {
     const type = order?.product?.digital_delivery_type;
-    if (type === 'custom_delivery') return 'Custom delivery';
-    if (type === 'video_stream') return 'Video access';
-    if (type === 'audio_stream') return 'Audio access';
-    if (type === 'gallery_pack') return 'Gallery access';
-    if (type === 'live_event') return 'Event access';
-    return 'Digital access';
+    if (type === 'custom_delivery') return translate('Custom delivery', 'Delivery maalum');
+    if (type === 'video_stream') return translate('Video access', 'Ufikiaji wa video');
+    if (type === 'audio_stream') return translate('Audio access', 'Ufikiaji wa audio');
+    if (type === 'gallery_pack') return translate('Gallery access', 'Ufikiaji wa gallery');
+    if (type === 'live_event') return translate('Event access', 'Ufikiaji wa tukio');
+    return translate('Digital access', 'Ufikiaji wa kidijitali');
 };
 
-const formatTimeLeft = (expiresAt, nowMs = Date.now()) => {
+const formatTimeLeft = (expiresAt, nowMs = Date.now(), translate = (english) => english) => {
     if (!expiresAt) return '';
     const expiresMs = new Date(expiresAt).getTime();
     if (!Number.isFinite(expiresMs)) return '';
 
     const diffMs = expiresMs - nowMs;
-    if (diffMs <= 0) return 'Expired';
+    if (diffMs <= 0) return translate('Expired', 'Imeisha');
 
     const totalMinutes = Math.ceil(diffMs / 60000);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
 
-    if (hours > 0) return `Time left ${hours}h ${minutes}m`;
-    return `Time left ${minutes}m`;
+    if (hours > 0) return `${translate('Time left', 'Muda uliobaki')} ${hours}h ${minutes}m`;
+    return `${translate('Time left', 'Muda uliobaki')} ${minutes}m`;
 };
 
 const formatChatNoticeTimestamp = (value) => {
@@ -620,13 +632,16 @@ const ChatNoticeTimestamp = ({ value, className }) => {
     );
 };
 
-const systemBodyForOrder = (body, order) => {
+const systemBodyForOrder = (body, order, copy = (english) => english) => {
     if (!isDigitalOrder(order) || !body) return body;
     if (!body.includes('anza mchakato wa kusafirisha') && !body.includes('usafirishaji')) return body;
 
-    const title = order?.product?.title || order?.display_title || 'digital product';
-    const accessLabel = digitalAccessCopy(order).toLowerCase();
-    return `Habari, order mpya imewekwa kwa ajili ya: ${title}.\nMalipo yamefanikiwa. Hii ni oda ya ${accessLabel}, hakuna gharama ya usafiri inayohitajika. Mteja anaweza kufungua/download content yake kwenye Takeer.`;
+    const title = order?.product?.title || order?.display_title || copy('digital product', 'bidhaa ya digitali');
+    const accessLabel = digitalAccessCopy(order, copy).toLowerCase();
+    return copy(
+        `Hello, a new order was placed for: ${title}.\nPayment succeeded. This is an ${accessLabel} order, so no shipping cost is needed. The buyer can open or download the content on Takeer.`,
+        `Habari, order mpya imewekwa kwa ajili ya: ${title}.\nMalipo yamefanikiwa. Hii ni oda ya ${accessLabel}, hakuna gharama ya usafiri inayohitajika. Mteja anaweza kufungua/download content yake kwenye Takeer.`,
+    );
 };
 
 export default function Chat({
@@ -639,6 +654,7 @@ export default function Chat({
     order: initialOrder
 }) {
     const { auth, country } = usePage().props;
+    const { copy, locale } = useLocale();
     const [messages, setMessages] = useState(initialMessages);
     const [order, setOrder] = useState(initialOrder);
     const [nowMs, setNowMs] = useState(Date.now());
@@ -738,14 +754,14 @@ export default function Chat({
             setSelectedZoneId(String(result.zone.id));
             setSelectedHotspot(result.hotspot);
             if (result.zone.delivery_type === 'intercity_bus' && Number(result.zone.flat_rate_fee || 0) <= 0) {
-                toast.success('Destination imepatikana. Gharama ya usafiri itathibitishwa kwenye chat.');
+                toast.success(copy('Destination found. The shipping cost will be confirmed in chat.', 'Destination imepatikana. Gharama ya usafiri itathibitishwa kwenye chat.'));
             } else {
-                toast.success(`Tumekupatia gharama ya usafiri: TZS ${Number(result.zone.flat_rate_fee).toLocaleString()}`);
+                toast.success(copy(`Shipping cost found: TZS ${Number(result.zone.flat_rate_fee).toLocaleString()}`, `Tumekupatia gharama ya usafiri: TZS ${Number(result.zone.flat_rate_fee).toLocaleString()}`));
             }
         } else {
             setSelectedZoneId('');
             setSelectedHotspot(null);
-            toast.info("Eneo lako linahitaji muuzaji aweke gharama mwenyewe. Unaweza kuendelea.");
+            toast.info(copy('Your location needs the merchant to set the cost manually. You can continue.', 'Eneo lako linahitaji muuzaji aweke gharama mwenyewe. Unaweza kuendelea.'));
         }
     };
 
@@ -780,7 +796,7 @@ export default function Chat({
     const [releasePinInput, setReleasePinInput] = useState('');
     const [pickupPinInput, setPickupPinInput] = useState('');
 
-    // Buyer Escrow States
+    // Buyer provider-settlement states
     const [isConfirmingReceipt, setIsConfirmingReceipt] = useState(false);
     const [isDisputeDrawerOpen, setIsDisputeDrawerOpen] = useState(false);
     const [disputeReason, setDisputeReason] = useState('');
@@ -850,10 +866,10 @@ export default function Chat({
         setQuoteSubmitting(true);
         try {
             const quoteLabel = order?.product?.type === 'service'
-                ? 'Offer ya huduma'
+                ? copy('Service offer', 'Offer ya huduma')
                 : order?.product?.type === 'digital'
-                    ? 'Offer ya digital work'
-                    : (isForwarderOrder ? 'Gharama ya kupeleka kwa forwarder' : 'Gharama ya usafiri');
+                    ? copy('Digital work offer', 'Offer ya digital work')
+                    : (isForwarderOrder ? copy('Forwarder delivery cost', 'Gharama ya kupeleka kwa forwarder') : copy('Shipping cost', 'Gharama ya usafiri'));
             const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
             const res = await fetch(`/api/merchant/orders/${orderId}/quote`, {
                 method: 'POST',
@@ -868,7 +884,7 @@ export default function Chat({
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kutuma gharama.');
 
-            toast.success(`${quoteLabel} imetumwa kwa mteja.`);
+            toast.success(`${quoteLabel} ${copy('was sent to the buyer.', 'imetumwa kwa mteja.')}`);
             setShippingFeeInput('');
             if (data.order) setOrder(data.order);
 
@@ -877,14 +893,14 @@ export default function Chat({
                 id: Date.now(),
                 sender_id: auth.user.id,
                 type: 'text',
-                body: `${quoteLabel} imewekwa: TZS ${Number(shippingFeeInput).toLocaleString()}`,
+                body: `${quoteLabel} ${copy('set:', 'imewekwa:')} TZS ${Number(shippingFeeInput).toLocaleString()}`,
                 payload: { acting_as: actingAs },
                 sender: { role: auth.user.role, name: auth.user.name },
                 created_at: new Date().toISOString()
             };
             setMessages(prev => [...prev, actionMsg]);
         } catch (error) {
-            toast.error(error.message);
+            toast.error(error.message || copy('Something went wrong. Please try again.', 'Kuna tatizo. Tafadhali jaribu tena.'));
         } finally {
             setQuoteSubmitting(false);
         }
@@ -908,7 +924,7 @@ export default function Chat({
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kuthibitisha order.');
 
-            toast.success(data.message || 'Order imethibitishwa.');
+            toast.success(data.message || copy('Order confirmed.', 'Order imethibitishwa.'));
             if (data.order) setOrder(data.order);
             const isPaidPickupConfirmation = canMerchantConfirmPaidPickup;
             setMessages(prev => [...prev, {
@@ -916,14 +932,14 @@ export default function Chat({
                 sender_id: auth.user.id,
                 type: 'text',
                 body: isPaidPickupConfirmation
-                    ? 'Nimethibitisha kuwa order ipo. Iko tayari kwa pickup kulingana na muda mliochagua.'
-                    : 'Nimethibitisha kuwa order ipo tayari. Unaweza kulipia sasa.',
+                    ? copy('I confirmed the order is available. It is ready for pickup at the selected time.', 'Nimethibitisha kuwa order ipo. Iko tayari kwa pickup kulingana na muda mliochagua.')
+                    : copy('I confirmed that the order is ready. You can pay now.', 'Nimethibitisha kuwa order ipo tayari. Unaweza kulipia sasa.'),
                 payload: { acting_as: actingAs },
                 sender: { role: auth.user.role, name: auth.user.name },
                 created_at: new Date().toISOString()
             }]);
         } catch (error) {
-            toast.error(error.message);
+            toast.error(error.message || copy('Something went wrong. Please try again.', 'Kuna tatizo. Tafadhali jaribu tena.'));
         } finally {
             setConfirmingAvailability(false);
         }
@@ -931,15 +947,15 @@ export default function Chat({
 
     const submitDispatch = async (e) => {
         e.preventDefault();
-        const canDispatchNow = !!order && order?.product?.type === 'physical' && ['awaiting_merchant_confirmation', 'escrow_locked'].includes(order.payment_status);
+        const canDispatchNow = !!order && order?.product?.type === 'physical' && ['pending_fulfillment', 'release_eligible'].includes(order.payment_status);
         if (!canDispatchNow || dispatchSubmitting) return;
 
         if (!dispatchVideo) {
-            toast.error('Tafadhali chagua video ya packing kwanza.');
+            toast.error(copy('Choose the packing video first.', 'Tafadhali chagua video ya packing kwanza.'));
             return;
         }
         if (dispatchMode === 'intercity' && !transportReceipt) {
-            toast.error('Tafadhali pakia risiti/waybill ya usafirishaji.');
+            toast.error(copy('Upload the shipping receipt/waybill.', 'Tafadhali pakia risiti/waybill ya usafirishaji.'));
             return;
         }
 
@@ -1010,7 +1026,7 @@ export default function Chat({
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kuhifadhi dispatch evidence.');
 
-            toast.success('Dispatch evidence imehifadhiwa.');
+            toast.success(copy('Dispatch evidence saved.', 'Dispatch evidence imehifadhiwa.'));
             setDispatchVideo(null);
             setTransportReceipt(null);
             setDeliveryPersonName('');
@@ -1029,7 +1045,7 @@ export default function Chat({
             });
 
         } catch (error) {
-            toast.error(error.message);
+            toast.error(error.message || copy('Something went wrong. Please try again.', 'Kuna tatizo. Tafadhali jaribu tena.'));
         } finally {
             setDispatchSubmitting(false);
             setIsUploading(false);
@@ -1056,12 +1072,12 @@ export default function Chat({
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kuhakiki PIN.');
 
-            toast.success('Pickup imethibitishwa! Malipo yameidhinishwa.');
+            toast.success(copy('Pickup confirmed! Payment is eligible for release.', 'Pickup imethibitishwa! Malipo yameidhinishwa.'));
             setPickupPinInput('');
             if (data.order) {
                 setOrder(prev => ({
                     ...prev,
-                    payment_status: data.order.payment_status || 'resolved_merchant_paid',
+                    payment_status: data.order.payment_status || 'paid_out',
                     delivery: {
                         ...(prev?.delivery || {}),
                         delivery_status: data.order.delivery_status || 'delivered',
@@ -1074,7 +1090,7 @@ export default function Chat({
                     : [...prev, data.chat_message]);
             }
         } catch (error) {
-            toast.error(error.message);
+            toast.error(error.message || copy('Something went wrong. Please try again.', 'Kuna tatizo. Tafadhali jaribu tena.'));
         } finally {
             setPinVerifying(false);
         }
@@ -1100,7 +1116,7 @@ export default function Chat({
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kuhakiki PIN.');
 
-            toast.success('Mzigo umefika! Malipo yameidhinishwa.');
+            toast.success(copy('The package has arrived! Payment is eligible for release.', 'Mzigo umefika! Malipo yameidhinishwa.'));
             setReleasePinInput('');
             if (data.order) setOrder(data.order);
         } catch (error) {
@@ -1125,10 +1141,10 @@ export default function Chat({
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kudhibitisha.');
 
-            toast.success(data.message);
-            setOrder(prev => ({ ...prev, payment_status: 'resolved_merchant_paid' }));
+            toast.success(data.message || copy('Action completed.', 'Hatua imekamilika.'));
+            setOrder(prev => ({ ...prev, payment_status: 'paid_out' }));
         } catch (error) {
-            toast.error(error.message);
+            toast.error(error.message || copy('Something went wrong. Please try again.', 'Kuna tatizo. Tafadhali jaribu tena.'));
         } finally {
             setIsConfirmingReceipt(false);
         }
@@ -1154,11 +1170,11 @@ export default function Chat({
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kutuma ripoti.');
 
-            toast.success(data.message);
+            toast.success(data.message || copy('Report submitted.', 'Ripoti imetumwa.'));
             setIsDisputeDrawerOpen(false);
             setOrder(prev => ({ ...prev, payment_status: 'disputed' }));
         } catch (error) {
-            toast.error(error.message);
+            toast.error(error.message || copy('Something went wrong. Please try again.', 'Kuna tatizo. Tafadhali jaribu tena.'));
         } finally {
             setIsSubmittingDispute(false);
         }
@@ -1166,7 +1182,7 @@ export default function Chat({
 
     const submitReview = async () => {
         if (!reviewComment.trim()) {
-            toast.error('Tafadhali weka maoni yako.');
+            toast.error(copy('Enter your review.', 'Tafadhali weka maoni yako.'));
             return;
         }
         setIsSubmittingReview(true);
@@ -1195,12 +1211,12 @@ export default function Chat({
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kutuma review.');
 
-            toast.success('Asante kwa review yako!');
+            toast.success(copy('Thank you for your review!', 'Asante kwa review yako!'));
             setReviewComment('');
             setMessages(prev => [...prev, data.message]);
             if (data.order) setOrder(data.order);
         } catch (error) {
-            toast.error(error.message);
+            toast.error(error.message || copy('Something went wrong. Please try again.', 'Kuna tatizo. Tafadhali jaribu tena.'));
         } finally {
             setIsSubmittingReview(false);
         }
@@ -1264,7 +1280,7 @@ export default function Chat({
 
         // Validation: size check (e.g. 50MB for chat)
         if (file.size > 50 * 1024 * 1024) {
-            toast.error("Faili ni kubwa mno. Tafadhali tumia chini ya 50MB.");
+            toast.error(copy('The file is too large. Please use a file under 50MB.', 'Faili ni kubwa mno. Tafadhali tumia chini ya 50MB.'));
             return;
         }
 
@@ -1425,7 +1441,7 @@ export default function Chat({
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kutuma mabadiliko.');
 
             if (data.order_deleted) {
-                toast.success("Oda imefutwa kwa sababu haina vitu tena.");
+                toast.success(copy('The order was cancelled because it has no items left.', 'Oda imefutwa kwa sababu haina vitu tena.'));
                 window.location.href = '/orders'; // Or library
                 return;
             }
@@ -1434,18 +1450,18 @@ export default function Chat({
             setMessages(prev => prev.map(m => m.id === tempId ? data.message : m));
             if (data.order) setOrder(data.order);
 
-            toast.success(`${actionMsg.body} imewekwa kikamilifu!`);
+            toast.success(`${actionMsg.body} ${copy('was completed successfully!', 'imewekwa kikamilifu!')}`);
             return data;
 
         } catch (error) {
-            toast.error(error.message);
+            toast.error(error.message || copy('Something went wrong. Please try again.', 'Kuna tatizo. Tafadhali jaribu tena.'));
             // Revert optimistic if failed
             setMessages(prev => prev.filter(m => m.id !== tempId));
             return null;
         }
     };
 
-    const runPickupAgreementAction = async (endpoint, payload = {}, successMessage = 'Pickup agreement updated.', method = 'POST') => {
+    const runPickupAgreementAction = async (endpoint, payload = {}, successMessage = copy('Pickup agreement updated.', 'Makubaliano ya pickup yamesasishwa.'), method = 'POST') => {
         if (pickupActionSubmitting) return;
 
         setPickupActionSubmitting(true);
@@ -1462,13 +1478,13 @@ export default function Chat({
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Imeshindwa kukamilisha hatua hii.');
+            if (!res.ok) throw new Error(data.message || copy('Could not complete this action.', 'Imeshindwa kukamilisha hatua hii.'));
 
             if (data.order) setOrder(data.order);
             await refreshMessages();
             toast.success(data.message || successMessage);
         } catch (error) {
-            toast.error(error.message);
+            toast.error(error.message || copy('Something went wrong. Please try again.', 'Kuna tatizo. Tafadhali jaribu tena.'));
         } finally {
             setPickupActionSubmitting(false);
         }
@@ -1517,14 +1533,14 @@ export default function Chat({
         event?.preventDefault();
         const requestedDate = new Date(pickupExtensionDeadline);
         if (Number.isNaN(requestedDate.getTime()) || requestedDate <= new Date()) {
-            toast.error('Tafadhali weka tarehe na muda sahihi wa baadaye.');
+            toast.error(copy('Enter a valid future date and time.', 'Tafadhali weka tarehe na muda sahihi wa baadaye.'));
             return;
         }
 
         await runPickupAgreementAction(
             `/api/buyer/orders/${orderId}/pickup-extension`,
             { requested_deadline_at: requestedDate.toISOString(), reason: pickupExtensionReason },
-            'Ombi la kuongeza muda limetumwa.'
+            copy('The extension request was sent.', 'Ombi la kuongeza muda limetumwa.')
         );
         setPickupActionForm(null);
     };
@@ -1532,7 +1548,7 @@ export default function Chat({
     const requestDeliveryConversion = async (event) => {
         event?.preventDefault();
         if (!conversionAddress.trim()) {
-            toast.error('Weka anwani ya kufikishiwa.');
+            toast.error(copy('Enter the delivery address.', 'Weka anwani ya kufikishiwa.'));
             return;
         }
 
@@ -1543,7 +1559,7 @@ export default function Chat({
                 physical_address: conversionAddress.trim(),
                 note: conversionNote.trim(),
             },
-            'Ombi la kubadili kwenda delivery limetumwa.'
+            copy('The delivery conversion request was sent.', 'Ombi la kubadili kwenda delivery limetumwa.')
         );
         setPickupActionForm(null);
     };
@@ -1553,14 +1569,14 @@ export default function Chat({
         const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
         const shippingFee = Number(String(conversionQuoteFee).replace(/,/g, ''));
         if (!merchantUsername || !Number.isFinite(shippingFee) || shippingFee <= 0) {
-            toast.error('Weka gharama sahihi ya delivery.');
+            toast.error(copy('Enter a valid delivery cost.', 'Weka gharama sahihi ya delivery.'));
             return;
         }
 
         await runPickupAgreementAction(
             `/api/merchant/${merchantUsername}/orders/${orderId}/pickup-delivery-conversion/quote`,
             { shipping_fee: shippingFee, note: conversionQuoteNote.trim() },
-            'Delivery quote imetumwa.'
+            copy('The delivery quote was sent.', 'Delivery quote imetumwa.')
         );
         setPickupActionForm(null);
     };
@@ -1568,14 +1584,14 @@ export default function Chat({
     const acceptDeliveryConversion = async (event) => {
         event?.preventDefault();
         if (!conversionPaymentNumber.trim()) {
-            toast.error('Weka namba ya malipo.');
+            toast.error(copy('Enter the payment number.', 'Weka namba ya malipo.'));
             return;
         }
 
         await runPickupAgreementAction(
             `/api/buyer/orders/${orderId}/pickup-delivery-conversion/accept`,
             { payment_number: conversionPaymentNumber.trim() },
-            'Delivery fee payment request imetumwa.'
+            copy('The delivery fee payment request was sent.', 'Delivery fee payment request imetumwa.')
         );
         setPickupActionForm(null);
     };
@@ -1583,7 +1599,7 @@ export default function Chat({
     const resolvePickupExtension = async (decision, extensionId = null) => {
         const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
         if (!merchantUsername) {
-            toast.error('Merchant haijapatikana kwa order hii.');
+            toast.error(copy('The merchant was not found for this order.', 'Merchant haijapatikana kwa order hii.'));
             return;
         }
 
@@ -1595,24 +1611,24 @@ export default function Chat({
             const suggested = pending.requested_deadline_at
                 ? new Date(pending.requested_deadline_at).toISOString().slice(0, 16).replace('T', ' ')
                 : '';
-            const approved = window.prompt('Thibitisha muda mpya wa pickup:', suggested);
+            const approved = window.prompt(copy('Confirm the new pickup time:', 'Thibitisha muda mpya wa pickup:'), suggested);
             if (!approved) return;
 
             const approvedDate = new Date(approved.replace(' ', 'T'));
             if (Number.isNaN(approvedDate.getTime()) || approvedDate <= new Date()) {
-                toast.error('Tafadhali weka tarehe na muda sahihi wa baadaye.');
+                toast.error(copy('Enter a valid future date and time.', 'Tafadhali weka tarehe na muda sahihi wa baadaye.'));
                 return;
             }
             payload.approved_deadline_at = approvedDate.toISOString();
         }
 
-        const note = window.prompt(decision === 'approved' ? 'Ujumbe kwa mteja? (hiari)' : 'Sababu ya kukataa? (hiari)', '') || '';
+        const note = window.prompt(decision === 'approved' ? copy('Message for the buyer? (optional)', 'Ujumbe kwa mteja? (hiari)') : copy('Reason for declining? (optional)', 'Sababu ya kukataa? (hiari)'), '') || '';
         if (note) payload.note = note;
 
         await runPickupAgreementAction(
             `/api/merchant/${merchantUsername}/orders/${orderId}/pickup-extension`,
             payload,
-            decision === 'approved' ? 'Muda wa pickup umeongezwa.' : 'Ombi la kuongeza muda limekataliwa.'
+            decision === 'approved' ? copy('Pickup time extended.', 'Muda wa pickup umeongezwa.') : copy('The extension request was declined.', 'Ombi la kuongeza muda limekataliwa.')
         );
     };
 
@@ -1620,20 +1636,20 @@ export default function Chat({
         event?.preventDefault();
         const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
         if (!merchantUsername) {
-            toast.error('Merchant haijapatikana kwa order hii.');
+            toast.error(copy('The merchant was not found for this order.', 'Merchant haijapatikana kwa order hii.'));
             return;
         }
 
         const amount = Number(String(extraChargeAmount).replace(/,/g, ''));
         if (!Number.isFinite(amount) || amount <= 0) {
-            toast.error('Tafadhali weka kiwango sahihi.');
+            toast.error(copy('Enter a valid amount.', 'Tafadhali weka kiwango sahihi.'));
             return;
         }
 
         await runPickupAgreementAction(
             `/api/merchant/${merchantUsername}/orders/${orderId}/extra-charges`,
             { amount, note: extraChargeNote.trim() },
-            'Gharama ya ziada imetumwa kwa mteja.'
+            copy('The extra charge was sent to the buyer.', 'Gharama ya ziada imetumwa kwa mteja.')
         );
         setPickupActionForm(null);
         setActiveAction(null);
@@ -1642,14 +1658,14 @@ export default function Chat({
     const removeExtraCharge = async () => {
         const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
         if (!merchantUsername) {
-            toast.error('Merchant haijapatikana kwa order hii.');
+            toast.error(copy('The merchant was not found for this order.', 'Merchant haijapatikana kwa order hii.'));
             return;
         }
 
         await runPickupAgreementAction(
             `/api/merchant/${merchantUsername}/orders/${orderId}/extra-charges`,
             {},
-            'Gharama ya ziada imeondolewa.',
+            copy('The extra charge was removed.', 'Gharama ya ziada imeondolewa.'),
             'DELETE'
         );
         setPickupActionForm(null);
@@ -1659,22 +1675,22 @@ export default function Chat({
     const cancelPickupAfterGrace = async () => {
         const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
         if (!merchantUsername) {
-            toast.error('Merchant haijapatikana kwa order hii.');
+            toast.error(copy('The merchant was not found for this order.', 'Merchant haijapatikana kwa order hii.'));
             return;
         }
 
-        const reason = window.prompt('Sababu ya cancellation baada ya deadline kupita? (hiari)', 'Mteja hakuchukua mzigo ndani ya muda mliokubaliana.') || '';
+        const reason = window.prompt(copy('Reason for cancellation after the deadline? (optional)', 'Sababu ya cancellation baada ya deadline kupita? (hiari)'), copy('The buyer did not collect the package within the agreed time.', 'Mteja hakuchukua mzigo ndani ya muda mliokubaliana.')) || '';
         await runPickupAgreementAction(
             `/api/merchant/${merchantUsername}/orders/${orderId}/pickup-cancel-after-grace`,
             { reason },
-            'Order imecanceliwa baada ya deadline kupita.'
+            copy('The order was cancelled after the deadline.', 'Order imecanceliwa baada ya deadline kupita.')
         );
     };
 
     const acceptExtraCharge = async (event) => {
         event?.preventDefault();
         if (!extraChargePaymentNumber.trim()) {
-            toast.error('Weka namba ya malipo.');
+            toast.error(copy('Enter the payment number.', 'Weka namba ya malipo.'));
             return;
         }
 
@@ -1684,7 +1700,7 @@ export default function Chat({
                 payment_number: extraChargePaymentNumber.trim(),
                 proposal_id: order?.pickup_policy_snapshot?.active_extra_charge?.id,
             },
-            'Extra cost payment request imetumwa.'
+            copy('The extra cost payment request was sent.', 'Extra cost payment request imetumwa.')
         );
         setPickupActionForm(null);
     };
@@ -1698,7 +1714,7 @@ export default function Chat({
             && msg.payload?.action_type === 'review';
         const shouldHideCompletedMerchantPaymentNotice = isPaymentNotice
             && actingAs === 'merchant'
-            && order?.payment_status === 'resolved_merchant_paid';
+            && order?.payment_status === 'paid_out';
         const key = isPaymentNotice ? 'payment-initiation' : null;
 
         if (shouldHideCompletedMerchantPaymentNotice || isDeliveryTimelineNotice || isReviewNotice) {
@@ -1741,9 +1757,9 @@ export default function Chat({
         let dateStr = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
         if (dateObj.toDateString() === today.toDateString()) {
-            dateStr = 'Leo';
+            dateStr = copy('Today', 'Leo');
         } else if (dateObj.toDateString() === yesterday.toDateString()) {
-            dateStr = 'Jana';
+            dateStr = copy('Yesterday', 'Jana');
         }
 
         if (!acc[dateStr]) acc[dateStr] = [];
@@ -1751,13 +1767,13 @@ export default function Chat({
         return acc;
     }, {});
 
-    const currentStatus = statusCopy(order);
+    const currentStatus = statusCopy(order, copy);
     const productType = order?.product?.type;
     const serviceOrder = isServiceOrder(order);
     const digitalOrder = isDigitalOrder(order);
     const physicalOrder = isPhysicalOrder(order);
     const customDigitalOrder = productType === 'digital' && order?.product?.digital_delivery_type === 'custom_delivery';
-    const intentMeta = orderIntentMeta(order);
+    const intentMeta = orderIntentMeta(order, copy);
     const IntentIcon = intentMeta.Icon;
     const merchantConfirmed = Boolean(order?.is_merchant_confirmed || order?.merchant_confirmed_at);
     const canBuyerPay = actingAs === 'buyer'
@@ -1798,7 +1814,7 @@ export default function Chat({
         && !merchantConfirmed;
     const canMerchantConfirmPaidPickup = actingAs === 'merchant'
         && order?.product?.type === 'physical'
-        && order?.payment_status === 'awaiting_merchant_confirmation'
+        && order?.payment_status === 'pending_fulfillment'
         && order?.delivery?.delivery_type === 'self_pickup'
         && !merchantConfirmed;
     const canMerchantConfirm = canMerchantConfirmUnpaid || canMerchantConfirmPaidPickup;
@@ -1807,14 +1823,14 @@ export default function Chat({
         || order?.variant_snapshot?.swatch_image_url
         || order?.product?.image_url
         || order?.product?.url;
-    const expiryLabel = order?.payment_status === 'pending' ? formatTimeLeft(order?.expires_at, nowMs) : '';
+    const expiryLabel = order?.payment_status === 'pending' ? formatTimeLeft(order?.expires_at, nowMs, copy) : '';
     const offeringItems = offeringGroupOrderItems(order);
     const orderItems = offeringItems.length > 0 ? offeringItems : [
         {
             key: `main-${order?.product?.id || order?.product_id || 'item'}`,
             id: order?.product_id,
             variant_id: order?.variant_id,
-            title: order?.product?.title || order?.display_title || 'Order item',
+            title: order?.product?.title || order?.display_title || copy('Order item', 'Bidhaa ya oda'),
             image: orderImageUrl,
             quantityLabel: orderQuantityLabel(order),
             price: Number(order?.unit_price || 0) * orderPackageCount(order),
@@ -1831,9 +1847,9 @@ export default function Chat({
             key: `extra-${item.variant_id || item.id || index}`,
             id: item.id,
             variant_id: item.variant_id,
-            title: item.title || 'Added product',
+            title: item.title || copy('Added product', 'Bidhaa iliyoongezwa'),
             image: item.image,
-            quantityLabel: `${Number(item.quantity || 1).toLocaleString()} ${Number(item.quantity || 1) === 1 ? 'item' : 'items'}`,
+            quantityLabel: `${Number(item.quantity || 1).toLocaleString()} ${copy(Number(item.quantity || 1) === 1 ? 'item' : 'items', Number(item.quantity || 1) === 1 ? 'bidhaa' : 'bidhaa')}`,
             price: Number(item.price || 0) * (isPhysicalDealItem({ ...item, isExtra: true }, order) ? Number(item.quantity || 1) : 1),
             quantity: item.quantity ?? 1,
             type: item.type || item.product_type,
@@ -1848,9 +1864,9 @@ export default function Chat({
     const discountTotal = Number(order?.discount_amount || 0);
     const dealTotal = Math.max(0, itemsSubtotal + shippingTotal - discountTotal);
     const dealSummaryParts = [
-        `${orderItems.length} ${orderItems.length === 1 ? 'item' : 'items'}`,
-        shippingTotal > 0 ? `Usafiri ${shippingTotal.toLocaleString()}` : null,
-        discountTotal > 0 ? `Punguzo -${discountTotal.toLocaleString()}` : null,
+        `${orderItems.length} ${copy(orderItems.length === 1 ? 'item' : 'items', orderItems.length === 1 ? 'bidhaa' : 'bidhaa')}`,
+        shippingTotal > 0 ? `${copy('Shipping', 'Usafiri')} ${shippingTotal.toLocaleString()}` : null,
+        discountTotal > 0 ? `${copy('Discount', 'Punguzo')} -${discountTotal.toLocaleString()}` : null,
     ].filter(Boolean);
     const hasPhysicalOrderItems = orderItems.some((item) => isPhysicalDealItem(item, order));
     const isSelfPickupOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'self_pickup';
@@ -1864,9 +1880,9 @@ export default function Chat({
     const pickupClosed = Boolean(
         order?.pickup_completed_at
         || ['completed', 'buyer_no_show'].includes(order?.pickup_status)
-        || ['resolved_merchant_paid', 'resolved_buyer_refunded', 'refund_pending'].includes(order?.payment_status)
+        || ['paid_out', 'refunded', 'refund_pending'].includes(order?.payment_status)
     );
-    const pickupPaid = ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status);
+    const pickupPaid = ['pending_fulfillment', 'release_eligible', 'payout_processing'].includes(order?.payment_status);
     const hasPendingPickupExtension = isSelfPickupOrder
         && order?.pickup_status === 'extension_requested'
         && pendingPickupExtension?.status === 'pending';
@@ -1912,7 +1928,7 @@ export default function Chat({
     const isIntercityOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'intercity_bus';
     const isLocalDeliveryOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'local_boda';
     const deliveryStatus = order?.delivery?.delivery_status || order?.delivery?.status;
-    const isPaymentResolved = order?.payment_status === 'resolved_merchant_paid';
+    const isPaymentResolved = order?.payment_status === 'paid_out';
     const isDeliveryHandoffReady = ['delivered', 'customer_confirmed'].includes(deliveryStatus);
     const isDeliveryCompleted = isPaymentResolved || isDeliveryHandoffReady;
     const deliveryStageStatuses = ['dispatched', 'with_boda', 'in_transit', 'arrived', 'ready_at_terminal', 'delivered'];
@@ -1927,71 +1943,71 @@ export default function Chat({
         && !isPaymentResolved
         && deliveryStatus !== 'customer_confirmed'
         && (isForwarderOrder
-            ? ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status)
-            : ['escrow_locked', 'shipped'].includes(order?.payment_status))
+            ? ['pending_fulfillment', 'release_eligible', 'payout_processing'].includes(order?.payment_status)
+            : ['release_eligible', 'payout_processing'].includes(order?.payment_status))
         && (isLocalDeliveryOrder || isIntercityOrder || isForwarderOrder)
         && canBuyerActOnDelivery
     );
     const buyerReceiptCopy = isForwarderOrder
         ? {
-            title: 'Thibitisha Handoff',
-            body: 'Muuzaji amesema mzigo umepokelewa na forwarder. Hakiki tracking/risiti au wasiliana na forwarder. Ukiridhika, thibitisha ili escrow iachiliwe kwa muuzaji.',
-            confirm: 'NIMETHIBITISHA HANDOFF',
-            report: 'RIPOTI TATIZO',
+            title: copy('Confirm handoff', 'Thibitisha handoff'),
+            body: copy('The merchant says the package was received by the forwarder. Check the tracking/receipt or contact the forwarder. If everything is correct, confirm so the PSP payout can be requested.', 'Muuzaji amesema mzigo umepokelewa na forwarder. Hakiki tracking/risiti au wasiliana na forwarder. Ukiridhika, thibitisha ili PSP payout iweze kuombwa.'),
+            confirm: copy('I CONFIRM HANDOFF', 'NIMETHIBITISHA HANDOFF'),
+            report: copy('REPORT AN ISSUE', 'RIPOTI TATIZO'),
         }
         : isIntercityOrder
             ? {
-                title: 'Thibitisha Pickup',
-                body: 'Ukishachukua mzigo kwenye terminal au ofisi ya cargo na umeukagua uko salama, thibitisha ili muuzaji alipwe. Kama kuna tatizo, fungua ripoti.',
-                confirm: 'NIMEPOKEA MZIGO',
-                report: 'RIPOTI TATIZO',
+                title: copy('Confirm pickup', 'Thibitisha pickup'),
+                body: copy('After collecting the package from the terminal or cargo office and checking that it is safe, confirm so the merchant can be paid. If there is a problem, report it.', 'Ukishachukua mzigo kwenye terminal au ofisi ya cargo na umeukagua uko salama, thibitisha ili muuzaji alipwe. Kama kuna tatizo, fungua ripoti.'),
+                confirm: copy('I RECEIVED THE PACKAGE', 'NIMEPOKEA MZIGO'),
+                report: copy('REPORT AN ISSUE', 'RIPOTI TATIZO'),
             }
             : {
-                title: 'Thibitisha Mzigo',
-                body: 'Je, umepokea mzigo wako na uko salama? Thibitisha ili muuzaji alipwe au fungua madai kama kuna tatizo.',
-                confirm: 'NDIO, NIMEPOKEA',
-                report: 'SIJAPATA / TATIZO',
+                title: copy('Confirm package', 'Thibitisha mzigo'),
+                body: copy('Did you receive your package in good condition? Confirm so the merchant can be paid, or report a problem if needed.', 'Je, umepokea mzigo wako na uko salama? Thibitisha ili muuzaji alipwe au fungua madai kama kuna tatizo.'),
+                confirm: copy('YES, I RECEIVED IT', 'NDIO, NIMEPOKEA'),
+                report: copy('NOT RECEIVED / ISSUE', 'SIJAPATA / TATIZO'),
             };
     const isDeliveryStageOrder = Boolean(
         order?.delivery
         && !isSelfPickupOrder
         && (
             deliveryStageStatuses.includes(order.delivery.delivery_status || order.delivery.status)
-            || ['escrow_locked', 'shipped'].includes(order?.payment_status)
+            || ['release_eligible', 'payout_processing'].includes(order?.payment_status)
         )
     );
     const agreementActionDesc = serviceOrder
-        ? 'Scope, muda au gharama ya huduma'
+        ? copy('Service scope, timing, or cost', 'Scope, muda au gharama ya huduma')
         : customDigitalOrder
-            ? 'Scope, files au revisions'
-            : 'Makubaliano ya oda';
+            ? copy('Scope, files, or revisions', 'Scope, files au revisions')
+            : copy('Order agreement', 'Makubaliano ya oda');
     const merchantQuickActions = physicalOrder ? [
-        { id: 'shipping_cost', label: isForwarderOrder ? 'Forwarder Drop-off' : 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: isForwarderOrder ? 'Gharama hadi forwarder' : 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PICKUP ONLY' },
-        { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza bei ya oda', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-        { id: 'extra_charge', label: 'Extra Charge', icon: CreditCard, color: 'bg-orange-50 text-orange-600', border: 'border-orange-100', desc: activeExtraCharge?.status === 'proposed' ? 'Update/remove charge' : 'Storage au gharama nyingine', disabled: !canProposeExtraCharge && !canRemoveExtraCharge, disabledReason: 'PICKUP ONLY' },
-        { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza lock ya stock kwa dk 30', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
-        { id: 'release_stock', label: 'Achia Stock', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Sitisha na rudisha stock', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
-        { id: 'upsell', label: 'Pendekeza Bidhaa', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Uza zaidi hapa', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-        { id: 'shipping_proof', label: 'Waybill & Video', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa safari', disabled: order?.delivery?.delivery_type === 'self_pickup', disabledReason: 'PICKUP ONLY' },
+        { id: 'shipping_cost', label: isForwarderOrder ? copy('Forwarder drop-off', 'Forwarder drop-off') : copy('Shipping cost', 'Gharama ya usafiri'), icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: isForwarderOrder ? copy('Cost to forwarder', 'Gharama hadi forwarder') : copy('Set the cost here', 'Weka gharama hapa'), disabled: order?.delivery?.delivery_type === 'self_pickup' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? copy('DELIVERY ACTIVE', 'DELIVERY INAENDELEA') : copy('PICKUP ONLY', 'PICKUP PEKEE') },
+        { id: 'discount', label: copy('Discount', 'Punguzo'), icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: copy('Reduce the order price', 'Punguza bei ya oda'), disabled: isDeliveryStageOrder, disabledReason: copy('DELIVERY ACTIVE', 'DELIVERY INAENDELEA') },
+        { id: 'extra_charge', label: copy('Extra charge', 'Gharama ya ziada'), icon: CreditCard, color: 'bg-orange-50 text-orange-600', border: 'border-orange-100', desc: activeExtraCharge?.status === 'proposed' ? copy('Update/remove charge', 'Sasisha/ondoa gharama') : copy('Storage or another cost', 'Ghala au gharama nyingine'), disabled: !canProposeExtraCharge && !canRemoveExtraCharge, disabledReason: copy('PICKUP ONLY', 'PICKUP PEKEE') },
+        { id: 'extend_lock', label: copy('Extend time', 'Ongeza muda'), icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: copy('Extend stock lock by 30 minutes', 'Ongeza lock ya stock kwa dk 30'), disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? copy('DELIVERY ACTIVE', 'DELIVERY INAENDELEA') : copy('PENDING ONLY', 'INASUBIRI TU') },
+        { id: 'release_stock', label: copy('Release stock', 'Achia stock'), icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: copy('Stop and return stock', 'Sitisha na rudisha stock'), disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? copy('DELIVERY ACTIVE', 'DELIVERY INAENDELEA') : copy('PENDING ONLY', 'INASUBIRI TU') },
+        { id: 'upsell', label: copy('Recommend products', 'Pendekeza bidhaa'), icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: copy('Sell more here', 'Uza zaidi hapa'), disabled: isDeliveryStageOrder, disabledReason: copy('DELIVERY ACTIVE', 'DELIVERY INAENDELEA') },
+        { id: 'shipping_proof', label: copy('Waybill & video', 'Waybill na video'), icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: copy('Shipping evidence', 'Ushahidi wa safari'), disabled: order?.delivery?.delivery_type === 'self_pickup', disabledReason: copy('PICKUP ONLY', 'PICKUP PEKEE') },
     ] : [
-        { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza offer/bei ya oda' },
-        { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza muda wa kulipa', disabled: order?.payment_status !== 'pending', disabledReason: 'PENDING ONLY' },
-        { id: 'release_stock', label: 'Sitisha Oda', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Funga enquiry hii', disabled: order?.payment_status !== 'pending', disabledReason: 'PENDING ONLY' },
-        { id: 'upsell', label: serviceOrder ? 'Pendekeza Huduma' : 'Pendekeza Digital', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: agreementActionDesc },
+        { id: 'discount', label: copy('Discount', 'Punguzo'), icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: copy('Reduce the offer/order price', 'Punguza offer/bei ya oda') },
+        { id: 'extend_lock', label: copy('Extend time', 'Ongeza muda'), icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: copy('Extend payment time', 'Ongeza muda wa kulipa'), disabled: order?.payment_status !== 'pending', disabledReason: copy('PENDING ONLY', 'INASUBIRI TU') },
+        { id: 'release_stock', label: copy('Cancel order', 'Sitisha oda'), icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: copy('Close this enquiry', 'Funga enquiry hii'), disabled: order?.payment_status !== 'pending', disabledReason: 'PENDING ONLY' },
+        { id: 'upsell', label: serviceOrder ? copy('Recommend service', 'Pendekeza huduma') : copy('Recommend digital', 'Pendekeza digital'), icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: agreementActionDesc },
     ];
     const buyerQuickActions = physicalOrder ? [
-        { id: 'shop_locations', label: 'Shop Locations', icon: MapPin, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ona duka lilipo', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-        { id: 'order_delivery', label: 'Usafirishaji', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Badili delivery vs pickup', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-        { id: 'order_items', label: 'Oda', icon: ShoppingBag, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ona na badili vitu', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-        { id: 'upsell', label: 'Bidhaa Zaidi', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Vitu vingine vya duka hili', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-        { id: 'complaint', label: 'Complaint Centre', icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: 'Toa malalamiko' },
-        { id: 'unboxing_video', label: 'Unboxing Video', icon: Video, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa kupokea' },
-        { id: 'review', label: 'Review', icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Toa maoni yako' },
+        { id: 'shop_locations', label: copy('Shop locations', 'Maeneo ya shop'), icon: MapPin, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: copy('See where the shop is', 'Ona duka lilipo'), disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+        { id: 'order_delivery', label: copy('Delivery', 'Usafirishaji'), icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: copy('Change delivery vs pickup', 'Badili delivery dhidi ya pickup'), disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+        { id: 'order_items', label: copy('Order', 'Oda'), icon: ShoppingBag, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: copy('View and change items', 'Ona na badili vitu'), disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+        { id: 'upsell', label: copy('More products', 'Bidhaa zaidi'), icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: copy('Other products from this shop', 'Vitu vingine vya duka hili'), disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+        { id: 'complaint', label: copy('Complaint centre', 'Kituo cha malalamiko'), icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: copy('Make a complaint', 'Toa malalamiko') },
+        { id: 'unboxing_video', label: copy('Unboxing video', 'Video ya unboxing'), icon: Video, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: copy('Proof of receipt', 'Ushahidi wa kupokea') },
+        { id: 'review', label: copy('Review', 'Review'), icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: copy('Share your feedback', 'Toa maoni yako') },
     ] : [
-        { id: 'order_items', label: serviceOrder ? 'Huduma' : 'Digital Order', icon: IntentIcon, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ona makubaliano na jumla' },
-        { id: 'upsell', label: serviceOrder ? 'Huduma Zaidi' : 'Digital Zaidi', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: agreementActionDesc },
-        { id: 'complaint', label: 'Complaint Centre', icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: 'Toa malalamiko' },
-        { id: 'review', label: 'Review', icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Toa maoni yako' },
+        { id: 'order_items', label: serviceOrder ? copy('Service', 'Huduma') : copy('Digital order', 'Oda ya digital'), icon: IntentIcon, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: copy('View agreement and total', 'Ona makubaliano na jumla') },
+        { id: 'upsell', label: serviceOrder ? copy('More services', 'Huduma zaidi') : copy('More digital', 'Digital zaidi'), icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: agreementActionDesc },
+        { id: 'complaint', label: copy('Complaint centre', 'Kituo cha malalamiko'), icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: copy('Make a complaint', 'Toa malalamiko') },
+        { id: 'review', label: copy('Review', 'Review'), icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: copy('Share your feedback', 'Toa maoni yako') },
     ];
 
     useEffect(() => {
@@ -2008,7 +2024,7 @@ export default function Chat({
 
     return (
         <AppLayout>
-            <Head title={`Chat Oda #${publicId?.substring(0, 8)} | Takeer`} />
+            <Head title={`${copy('Order chat', 'Chat ya oda')} #${publicId?.substring(0, 8)} | Takeer`} />
 
             <div className="relative flex h-[calc(100vh-64px)] min-h-0 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
                 {/* Fixed Order Header */}
@@ -2019,14 +2035,14 @@ export default function Chat({
                                 <IntentIcon className="h-5 w-5" />
                             </div>
                             <div className="flex flex-col">
-                                <h3 className="text-sm font-black text-brand-900 dark:text-brand-100 uppercase tracking-tight">Oda #{publicId?.substring(0, 8)}</h3>
+                                <h3 className="text-sm font-black text-brand-900 dark:text-brand-100 uppercase tracking-tight">{copy('Order', 'Oda')} #{publicId?.substring(0, 8)}</h3>
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] font-black py-0.5 px-2 bg-brand-50 text-brand-600 rounded-full border border-brand-100 uppercase tracking-tighter">
                                         {intentMeta.label}
                                     </span>
                                     <span className={cn(
                                         "text-[10px] font-black py-0.5 px-2 rounded-full uppercase tracking-tighter border",
-                                        ['resolved_merchant_paid', 'awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status) || orderStatus === 'delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                                        ['paid_out', 'pending_fulfillment', 'release_eligible', 'payout_processing'].includes(order?.payment_status) || orderStatus === 'delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
                                             order?.payment_status === 'failed' ? "bg-red-50 text-red-600 border-red-100" :
                                                 "bg-amber-50 text-amber-600 border-amber-100"
                                     )}>
@@ -2037,15 +2053,15 @@ export default function Chat({
                         </div>
 
                         <div className="flex flex-col items-end">
-                            <p className="text-[9px] font-black text-brand-600/60 uppercase tracking-widest leading-none mb-1">Jumla ya Oda</p>
+                            <p className="text-[9px] font-black text-brand-600/60 uppercase tracking-widest leading-none mb-1">{copy('Order total', 'Jumla ya oda')}</p>
                             <p className="text-lg font-black text-brand-800 dark:text-brand-200 tracking-tighter leading-none">TZS {dealTotal.toLocaleString()}</p>
                             <div className="flex gap-2 text-[9px] font-bold text-slate-400 mt-1">
                                 <span>{intentMeta.totalLabel}: {itemsSubtotal.toLocaleString()}</span>
                                 {shippingTotal > 0 && (
-                                    <span className="text-emerald-500 font-black">+ Usafiri: {shippingTotal.toLocaleString()}</span>
+                                    <span className="text-emerald-500 font-black">+ {copy('Shipping', 'Usafiri')}: {shippingTotal.toLocaleString()}</span>
                                 )}
                                 {discountTotal > 0 && (
-                                    <span className="text-amber-600 font-black">- Punguzo: {discountTotal.toLocaleString()}</span>
+                                    <span className="text-amber-600 font-black">- {copy('Discount', 'Punguzo')}: {discountTotal.toLocaleString()}</span>
                                 )}
                             </div>
                         </div>
@@ -2063,7 +2079,7 @@ export default function Chat({
                         >
                             <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Oda</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Order', 'Oda')}</p>
                                     <span className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${currentStatus.tone}`}>
                                         {currentStatus.label}
                                     </span>
@@ -2077,7 +2093,7 @@ export default function Chat({
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
                                 <span className="inline-flex rounded-xl bg-brand-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-brand-700">
-                                    {isDealExpanded ? 'Ficha' : `Ona ${intentMeta.itemLabel}`}
+                                    {isDealExpanded ? copy('Hide', 'Ficha') : `${copy('View', 'Ona')} ${intentMeta.itemLabel}`}
                                 </span>
                                 <ChevronDown className={cn("h-5 w-5 text-slate-400 transition-transform duration-300", isDealExpanded && "rotate-180")} />
                             </div>
@@ -2101,7 +2117,7 @@ export default function Chat({
                                     />
 
                                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-slate-500">
-                                        <span>{deliveryCopy(order)}</span>
+                                        <span>{deliveryCopy(order, copy)}</span>
                                         {agreedAt && <span>{new Date(agreedAt).toLocaleDateString()}</span>}
                                     </div>
                                 </div>
@@ -2116,7 +2132,7 @@ export default function Chat({
                                         className="h-9 rounded-xl bg-brand-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-brand-700"
                                     >
                                         <Zap className="mr-1.5 h-3.5 w-3.5 fill-white" />
-                                        Accept & Pay
+                                        {copy('Accept & pay', 'Kubali na lipa')}
                                     </Button>
                                 )}
                                 {canMerchantQuote && (
@@ -2128,7 +2144,7 @@ export default function Chat({
                                         className="h-9 rounded-xl bg-slate-900 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-slate-800"
                                     >
                                         <Save className="mr-1.5 h-3.5 w-3.5" />
-                                        Send Offer
+                                        {copy('Send offer', 'Tuma offer')}
                                     </Button>
                                 )}
                                 {canMerchantConfirmUnpaid && (
@@ -2138,7 +2154,7 @@ export default function Chat({
                                         className="h-9 rounded-xl bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                     >
                                         {confirmingAvailability ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
-                                        Confirm Available
+                                        {copy('Confirm available', 'Thibitisha inapatikana')}
                                     </Button>
                                 )}
                                 {canCancelBeforePayment && (
@@ -2148,7 +2164,7 @@ export default function Chat({
                                         className="h-9 rounded-xl border-red-100 px-4 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
                                     >
                                         <X className="mr-1.5 h-3.5 w-3.5" />
-                                        Cancel
+                                        {copy('Cancel', 'Ghairi')}
                                     </Button>
                                 )}
                                 {canRequestPickupExtension && (
@@ -2159,7 +2175,7 @@ export default function Chat({
                                         className="h-9 rounded-xl border-sky-100 px-4 text-[10px] font-black uppercase tracking-widest text-sky-700 hover:bg-sky-50"
                                     >
                                         {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Clock className="mr-1.5 h-3.5 w-3.5" />}
-                                        Request Pickup Time
+                                        {copy('Request pickup time', 'Omba muda wa pickup')}
                                     </Button>
                                 )}
                                 {canResolvePickupExtension && (
@@ -2170,7 +2186,7 @@ export default function Chat({
                                             className="h-9 rounded-xl bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                         >
                                             {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
-                                            Approve Pickup Time
+                                            {copy('Approve pickup time', 'Kubali muda wa pickup')}
                                         </Button>
                                         <Button
                                             variant="outline"
@@ -2179,7 +2195,7 @@ export default function Chat({
                                             className="h-9 rounded-xl border-red-100 px-4 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
                                         >
                                             <X className="mr-1.5 h-3.5 w-3.5" />
-                                            Reject Time
+                                            {copy('Reject time', 'Kataa muda')}
                                         </Button>
                                     </>
                                 )}
@@ -2190,7 +2206,7 @@ export default function Chat({
                                         className="h-9 rounded-xl bg-amber-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-700"
                                     >
                                         {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Tag className="mr-1.5 h-3.5 w-3.5" />}
-                                        Add Extra Cost
+                                        {copy('Add extra cost', 'Ongeza gharama ya ziada')}
                                     </Button>
                                 )}
                                 {canCancelPickupAfterGrace && (
@@ -2201,7 +2217,7 @@ export default function Chat({
                                         className="h-9 rounded-xl border-red-100 px-4 text-[10px] font-black uppercase tracking-widest text-red-700 hover:bg-red-50"
                                     >
                                         {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <X className="mr-1.5 h-3.5 w-3.5" />}
-                                        Cancel Pickup
+                                        {copy('Cancel pickup', 'Ghairi pickup')}
                                     </Button>
                                 )}
                                 {canAcceptExtraCharge && (
@@ -2211,7 +2227,7 @@ export default function Chat({
                                         className="h-9 rounded-xl bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                     >
                                         {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
-                                        Accept & Pay Extra Cost
+                                        {copy('Accept & pay extra cost', 'Kubali na lipa gharama ya ziada')}
                                     </Button>
                                 )}
                                 {canRequestDeliveryConversion && (
@@ -2222,7 +2238,7 @@ export default function Chat({
                                         className="h-9 rounded-xl border-emerald-100 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-50"
                                     >
                                         <Truck className="mr-1.5 h-3.5 w-3.5" />
-                                        Request Delivery
+                                        {copy('Request delivery', 'Omba delivery')}
                                     </Button>
                                 )}
                                 {canQuoteDeliveryConversion && (
@@ -2232,7 +2248,7 @@ export default function Chat({
                                         className="h-9 rounded-xl bg-sky-700 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-sky-800"
                                     >
                                         <Truck className="mr-1.5 h-3.5 w-3.5" />
-                                        Quote Delivery
+                                        {copy('Quote delivery', 'Tuma quote ya delivery')}
                                     </Button>
                                 )}
                                 {canAcceptDeliveryConversion && (
@@ -2242,7 +2258,7 @@ export default function Chat({
                                         className="h-9 rounded-xl bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                     >
                                         <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
-                                        Accept & Pay Delivery
+                                        {copy('Accept & pay delivery', 'Kubali na lipa delivery')}
                                     </Button>
                                 )}
                                 {expiryLabel && (
@@ -2266,8 +2282,8 @@ export default function Chat({
                     {messages.length === 0 && (
                         <div className="h-full flex flex-col items-center justify-center text-center px-6 opacity-60">
                             <ShieldCheck className="h-12 w-12 text-muted-foreground mb-3" />
-                            <p className="text-sm font-medium">Safe-Chat kwa Oda #{publicId?.substring(0, 8)}</p>
-                            <p className="text-xs text-muted-foreground mt-1">Ujumbe wote unawekwa kwenye kumbukumbu kwa usalama iwapo kutatokea mgogoro (Dispute).</p>
+                            <p className="text-sm font-medium">{copy('Safe Chat for order', 'Safe-Chat kwa oda')} #{publicId?.substring(0, 8)}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{copy('All messages are securely recorded in case a dispute occurs.', 'Ujumbe wote unawekwa kwenye kumbukumbu kwa usalama iwapo kutatokea mgogoro (Dispute).')}</p>
                         </div>
                     )}
 
@@ -2293,17 +2309,17 @@ export default function Chat({
                                     const isMe = msgActingAs === actingAs;
 
                                     const getSenderName = () => {
-                                        if (isMe) return 'Wewe';
-                                        if (msgActingAs === 'merchant') return 'Muuzaji';
+                                        if (isMe) return copy('You', 'Wewe');
+                                        if (msgActingAs === 'merchant') return copy('Merchant', 'Muuzaji');
                                         if (msgActingAs === 'system') return 'Takeer';
                                         if (order?.account_phone) {
                                             const p = order.account_phone;
                                             return p.substring(0, 4) + '***' + p.slice(-3);
                                         }
-                                        return 'Mteja';
+                                        return copy('Buyer', 'Mteja');
                                     };
                                     const renderedName = getSenderName();
-                                    const displayedBody = sanitizeChatBody(isSystem ? roleAwareSystemBody(msg, actingAs, order) : msg.body);
+                                    const displayedBody = sanitizeChatBody(isSystem ? roleAwareSystemBody(msg, actingAs, order, copy) : msg.body, copy);
 
                                     if (isSystem) {
                                         if (msgActingAs !== 'system') {
@@ -2367,16 +2383,16 @@ export default function Chat({
                                                                 "relative group w-full min-w-48 overflow-hidden rounded-[2.5rem] border border-slate-100 bg-white shadow-xl shadow-slate-200/50 transition-all sm:min-w-64",
                                                                 productUrl && "cursor-pointer hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-brand-100"
                                                             )}
-                                                            title={productUrl ? 'Fungua maelezo ya bidhaa' : undefined}
+                                                            title={productUrl ? copy('Open product details', 'Fungua maelezo ya bidhaa') : undefined}
                                                         >
-                                                            {p.image && <img src={p.image} className="h-auto max-h-80 w-full object-contain bg-slate-50 opacity-90 transition-opacity group-hover:opacity-100" alt={p.title || 'Bidhaa'} />}
+                                                            {p.image && <img src={p.image} className="h-auto max-h-80 w-full object-contain bg-slate-50 opacity-90 transition-opacity group-hover:opacity-100" alt={p.title || copy('Product', 'Bidhaa')} />}
                                                             <div className="p-5">
                                                                 <h4 className="mb-1 whitespace-normal break-words font-black leading-snug text-brand-900">{p.title}</h4>
                                                                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                                                                     <span className="text-xl font-black text-brand-600">TZS {Number(p.price).toLocaleString()}</span>
                                                                     {productUrl && (
                                                                         <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-brand-700">
-                                                                            Details <ExternalLink className="h-3 w-3" />
+                                                                            {copy('Details', 'Maelezo')} <ExternalLink className="h-3 w-3" />
                                                                         </span>
                                                                     )}
                                                                 </div>
@@ -2403,7 +2419,7 @@ export default function Chat({
                                                                         }}
                                                                         className="w-full h-12 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black uppercase text-xs tracking-widest flex items-center gap-2"
                                                                     >
-                                                                        <Plus className="h-4 w-4" /> WEKA KWENYE ODA
+                                                                        <Plus className="h-4 w-4" /> {copy('ADD TO ORDER', 'WEKA KWENYE ODA')}
                                                                     </Button>
                                                                 )}
                                                             </div>
@@ -2425,7 +2441,7 @@ export default function Chat({
                                                         )}>
                                                             <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800 flex items-center justify-center">
                                                                 {item?.image ? (
-                                                                    <img src={item.image} alt={item?.title || 'Added product'} className="h-full w-full object-cover" />
+                                                                    <img src={item.image} alt={item?.title || copy('Added product', 'Bidhaa iliyoongezwa')} className="h-full w-full object-cover" />
                                                                 ) : (
                                                                     <ShoppingBag className="h-6 w-6" />
                                                                 )}
@@ -2433,13 +2449,13 @@ export default function Chat({
                                                             <div className="min-w-0 flex-1">
                                                                 <div className="mb-1 flex items-center gap-1.5 text-emerald-600">
                                                                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                                                                    <span className="text-[9px] font-black uppercase tracking-widest">Added to order</span>
+                                                                    <span className="text-[9px] font-black uppercase tracking-widest">{copy('Added to order', 'Imeongezwa kwenye oda')}</span>
                                                                 </div>
                                                                 <p className="line-clamp-2 text-sm font-black leading-snug text-slate-900 dark:text-slate-100">
                                                                     {item?.title || displayedBody}
                                                                 </p>
                                                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold text-slate-500">
-                                                                    <span>{Number(item?.quantity || 1).toLocaleString()} {Number(item?.quantity || 1) === 1 ? 'item' : 'items'}</span>
+                                                                    <span>{Number(item?.quantity || 1).toLocaleString()} {copy(Number(item?.quantity || 1) === 1 ? 'item' : 'items', Number(item?.quantity || 1) === 1 ? 'item' : 'items')}</span>
                                                                     <span>TZS {Number(item?.price || 0).toLocaleString()}</span>
                                                                 </div>
                                                             </div>
@@ -2537,55 +2553,55 @@ export default function Chat({
                                                             : 'border-sky-100 bg-sky-50 text-sky-900';
                                             const Icon = (isPickupWindowExpired || isPickupCancelledAfterGrace) ? AlertTriangle : (isExtraChargeProposal || isExtraChargeRemoved || isExtraChargePaymentStarted || isExtraChargePaidHeld ? Tag : (isDeliveryConversionRequested || isDeliveryConversionQuoted || isDeliveryConversionPaymentStarted || isDeliveryConversionPaidHeld ? Truck : Clock));
                                             const title = isPickupWindowExpired
-                                                ? 'Pickup Window Expired'
+                                                ? copy('Pickup window expired', 'Muda wa pickup umeisha')
                                                 : isPickupCancelledAfterGrace
-                                                    ? 'Pickup Cancelled'
+                                                    ? copy('Pickup cancelled', 'Pickup imeghairiwa')
                                                     : isExtensionRequest
-                                                        ? 'Pickup Extension Requested'
+                                                        ? copy('Pickup extension requested', 'Ombi la kuongeza muda wa pickup')
                                                         : isExtensionApproved
-                                                            ? 'Pickup Time Approved'
+                                                            ? copy('Pickup time approved', 'Muda wa pickup umeidhinishwa')
                                                             : isExtensionRejected
-                                                                ? 'Pickup Extension Rejected'
+                                                                ? copy('Pickup extension rejected', 'Ombi la kuongeza muda wa pickup limekataliwa')
                                                                 : isExtraChargeProposal
-                                                                    ? 'Extra Cost Proposed'
+                                                                    ? copy('Extra cost proposed', 'Gharama ya ziada imependekezwa')
                                                                     : isExtraChargeRemoved
-                                                                        ? 'Extra Cost Removed'
+                                                                        ? copy('Extra cost removed', 'Gharama ya ziada imeondolewa')
                                                                         : isExtraChargePaidHeld
-                                                                            ? 'Extra Cost Paid & Held'
+                                                                            ? copy('Extra cost paid & held', 'Gharama ya ziada imelipwa na kushikiliwa')
                                                                             : isExtraChargePaymentStarted
-                                                                                ? 'Extra Cost Payment Started'
+                                                                                ? copy('Extra cost payment started', 'Malipo ya gharama ya ziada yameanza')
                                                                                 : isDeliveryConversionRequested
-                                                                                    ? 'Delivery Requested'
+                                                                                    ? copy('Delivery requested', 'Delivery imeombwa')
                                                                                     : isDeliveryConversionQuoted
-                                                                                        ? 'Delivery Fee Quoted'
+                                                                                        ? copy('Delivery fee quoted', 'Gharama ya delivery imenukuliwa')
                                                                                         : isDeliveryConversionPaidHeld
-                                                                                            ? 'Delivery Fee Paid & Held'
-                                                                                            : 'Delivery Payment Started';
+                                                                                            ? copy('Delivery fee paid & held', 'Gharama ya delivery imelipwa na kushikiliwa')
+                                                                                            : copy('Delivery payment started', 'Malipo ya delivery yameanza');
                                             const body = isPickupWindowExpired
-                                                ? 'Muda wa pickup umepita. Kubalianeni hatua inayofuata hapa kwenye chat: kuongeza muda, kubadili kwenda delivery, kuweka gharama ya ziada, au cancellation.'
+                                                ? copy('The pickup window has passed. Agree on the next step here in chat: extend the time, switch to delivery, add an extra cost, or cancel.', 'Muda wa pickup umepita. Kubalianeni hatua inayofuata hapa kwenye chat: kuongeza muda, kubadili kwenda delivery, kuweka gharama ya ziada, au cancellation.')
                                                 : isPickupCancelledAfterGrace
-                                                    ? `Pickup deadline imepita bila pickup. Order imefutwa; penalty TZS ${Number(msg.payload?.penalty_amount || 0).toLocaleString()} imeenda kwa merchant na refund TZS ${Number(msg.payload?.refund_amount || 0).toLocaleString()} inasubiri approval ya admin.`
+                                                    ? copy(`The pickup deadline passed without pickup. The order was cancelled; a TZS ${Number(msg.payload?.penalty_amount || 0).toLocaleString()} penalty went to the merchant and a TZS ${Number(msg.payload?.refund_amount || 0).toLocaleString()} refund is awaiting admin approval.`, `Pickup deadline imepita bila pickup. Order imefutwa; penalty TZS ${Number(msg.payload?.penalty_amount || 0).toLocaleString()} imeenda kwa merchant na refund TZS ${Number(msg.payload?.refund_amount || 0).toLocaleString()} inasubiri approval ya admin.`)
                                                     : isExtensionRequest
-                                                        ? `Mteja ameomba kuchukua mpaka ${requestedDeadline || 'muda mpya uliopendekezwa'}.`
+                                                        ? copy(`The buyer requested pickup until ${requestedDeadline || 'the proposed new time'}.`, `Mteja ameomba kuchukua mpaka ${requestedDeadline || 'muda mpya uliopendekezwa'}.`)
                                                         : isExtensionApproved
-                                                            ? `Muda mpya wa kuchukua order ni ${pickupDeadline || 'umethibitishwa'}.`
+                                                            ? copy(`The new pickup time for the order is ${pickupDeadline || 'confirmed'}.`, `Muda mpya wa kuchukua order ni ${pickupDeadline || 'umethibitishwa'}.`)
                                                             : isExtensionRejected
-                                                                ? 'Muuzaji amekataa ombi la kuongeza muda wa pickup.'
+                                                                ? copy('The merchant rejected the pickup extension request.', 'Muuzaji amekataa ombi la kuongeza muda wa pickup.')
                                                                 : isExtraChargeProposal
-                                                                    ? `Muuzaji ameomba gharama ya ziada ya TZS ${amount.toLocaleString()}.`
+                                                                    ? copy(`The merchant requested an extra cost of TZS ${amount.toLocaleString()}.`, `Muuzaji ameomba gharama ya ziada ya TZS ${amount.toLocaleString()}.`)
                                                                     : isExtraChargeRemoved
-                                                                        ? `Muuzaji ameondoa proposal ya gharama ya ziada ya TZS ${amount.toLocaleString()}.`
+                                                                        ? copy(`The merchant removed the extra cost proposal of TZS ${amount.toLocaleString()}.`, `Muuzaji ameondoa proposal ya gharama ya ziada ya TZS ${amount.toLocaleString()}.`)
                                                                         : isExtraChargePaidHeld
-                                                                            ? `Gharama ya ziada ya TZS ${amount.toLocaleString()} imelipwa na mteja.`
+                                                                            ? copy(`The extra cost of TZS ${amount.toLocaleString()} was paid by the buyer.`, `Gharama ya ziada ya TZS ${amount.toLocaleString()} imelipwa na mteja.`)
                                                                             : isExtraChargePaymentStarted
-                                                                                ? `Mteja amekubali gharama ya ziada ya TZS ${amount.toLocaleString()} na ameanza malipo.`
+                                                                                ? copy(`The buyer accepted the extra cost of TZS ${amount.toLocaleString()} and started payment.`, `Mteja amekubali gharama ya ziada ya TZS ${amount.toLocaleString()} na ameanza malipo.`)
                                                                                 : isDeliveryConversionRequested
-                                                                                    ? `Mteja ameomba order ibadilishwe kutoka pickup kwenda delivery${msg.payload?.physical_address ? `: ${msg.payload.physical_address}` : ''}.`
+                                                                                    ? copy(`The buyer requested changing the order from pickup to delivery${msg.payload?.physical_address ? `: ${msg.payload.physical_address}` : ''}.`, `Mteja ameomba order ibadilishwe kutoka pickup kwenda delivery${msg.payload?.physical_address ? `: ${msg.payload.physical_address}` : ''}.`)
                                                                                     : isDeliveryConversionQuoted
-                                                                                        ? `Muuzaji ameweka gharama ya delivery: TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()}.`
+                                                                                        ? copy(`The merchant quoted a delivery fee of TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()}.`, `Muuzaji ameweka gharama ya delivery: TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()}.`)
                                                                                         : isDeliveryConversionPaidHeld
-                                                                                            ? `Delivery fee ya TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} imelipwa na imehifadhiwa escrow mpaka delivery ikamilike.`
-                                                                                            : `Mteja amekubali delivery fee ya TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} na ameanza malipo.`;
+                                                                                            ? copy(`The TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} delivery fee was paid through the PSP; the order payout follows delivery completion.`, `Delivery fee ya TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} imelipwa kupitia PSP; payout ya order itafuata baada ya delivery.`)
+                                                                                            : copy(`The buyer accepted the TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} delivery fee and started payment.`, `Mteja amekubali delivery fee ya TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} na ameanza malipo.`);
 
                                             return (
                                                 <div key={msg.id} className="flex justify-center my-3">
@@ -2595,7 +2611,7 @@ export default function Chat({
                                                                 <Icon className="h-4 w-4" />
                                                             </div>
                                                             <div className="min-w-0 flex-1">
-                                                                <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">Pickup Agreement</p>
+                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">{copy('Pickup Agreement', 'Makubaliano ya pickup')}</p>
                                                                 <h4 className="mt-0.5 text-sm font-black uppercase tracking-wide">{title}</h4>
                                                                 <p className="mt-1 text-sm font-bold leading-relaxed opacity-90">{body}</p>
                                                                 {msg.payload?.reason && (
@@ -2612,7 +2628,7 @@ export default function Chat({
                                                                             className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                                                         >
                                                                             {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
-                                                                            Approve
+                                                                            {copy('Approve', 'Kubali')}
                                                                         </Button>
                                                                         <Button
                                                                             variant="outline"
@@ -2621,7 +2637,7 @@ export default function Chat({
                                                                             className="h-8 rounded-xl border-red-100 bg-white px-3 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
                                                                         >
                                                                             <X className="mr-1.5 h-3.5 w-3.5" />
-                                                                            Reject
+                                                                            {copy('Reject', 'Kataa')}
                                                                         </Button>
                                                                     </div>
                                                                 )}
@@ -2633,7 +2649,7 @@ export default function Chat({
                                                                             className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                                                         >
                                                                             {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
-                                                                            Accept & Pay
+                                                                            {copy('Accept & pay', 'Kubali na lipa')}
                                                                         </Button>
                                                                     </div>
                                                                 )}
@@ -2645,7 +2661,7 @@ export default function Chat({
                                                                             className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                                                         >
                                                                             {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CreditCard className="mr-1.5 h-3.5 w-3.5" />}
-                                                                            Pay Now
+                                                                            {copy('Pay now', 'Lipa sasa')}
                                                                         </Button>
                                                                     </div>
                                                                 )}
@@ -2657,7 +2673,7 @@ export default function Chat({
                                                                             className="h-8 rounded-xl bg-orange-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-orange-700"
                                                                         >
                                                                             <CreditCard className="mr-1.5 h-3.5 w-3.5" />
-                                                                            Edit
+                                                                            {copy('Edit', 'Hariri')}
                                                                         </Button>
                                                                         <Button
                                                                             variant="outline"
@@ -2666,7 +2682,7 @@ export default function Chat({
                                                                             className="h-8 rounded-xl border-red-100 bg-white px-3 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
                                                                         >
                                                                             <X className="mr-1.5 h-3.5 w-3.5" />
-                                                                            Remove
+                                                                            {copy('Remove', 'Ondoa')}
                                                                         </Button>
                                                                     </div>
                                                                 )}
@@ -2678,7 +2694,7 @@ export default function Chat({
                                                                             className="h-8 rounded-xl bg-sky-700 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-sky-800"
                                                                         >
                                                                             <Truck className="mr-1.5 h-3.5 w-3.5" />
-                                                                            Quote Delivery
+                                                                            {copy('Quote delivery', 'Nukuu ya delivery')}
                                                                         </Button>
                                                                     </div>
                                                                 )}
@@ -2690,7 +2706,7 @@ export default function Chat({
                                                                             className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                                                         >
                                                                             <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
-                                                                            Accept & Pay
+                                                                            {copy('Accept & pay', 'Kubali na lipa')}
                                                                         </Button>
                                                                     </div>
                                                                 )}
@@ -2730,7 +2746,7 @@ export default function Chat({
                                                         <div className="max-w-[85%] rounded-2xl border border-brand-100/60 bg-brand-50/80 px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-700/90 shadow-sm dark:border-brand-900/40 dark:bg-brand-900/40 dark:text-brand-200">
                                                             <div className="inline-flex items-center gap-2">
                                                                 <Store className="h-3.5 w-3.5 shrink-0" />
-                                                                <span>Pickup PIN imetumwa kwa mteja kwa ajili ya kuchukua bidhaa.</span>
+                                                                <span>{copy('The pickup PIN has been sent to the buyer for collection.', 'Pickup PIN imetumwa kwa mteja kwa ajili ya kuchukua bidhaa.')}</span>
                                                             </div>
                                                             <ChatNoticeTimestamp value={msg.created_at} className="text-brand-500/60 dark:text-brand-200/50" />
                                                         </div>
@@ -2743,7 +2759,7 @@ export default function Chat({
                                                     <div className="max-w-[85%] rounded-2xl border border-brand-100/70 bg-white px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-800 shadow-sm dark:border-brand-900/40 dark:bg-slate-900 dark:text-brand-100">
                                                         <div className="inline-flex items-center gap-2">
                                                             <CreditCard className="h-3.5 w-3.5 shrink-0 text-brand-600" />
-                                                            <span>Malipo yameanzishwa · TZS {paymentAmount.toLocaleString()}</span>
+                                                            <span>{copy('Payment started', 'Malipo yameanzishwa')} · TZS {paymentAmount.toLocaleString()}</span>
                                                             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
                                                         </div>
                                                         <ChatNoticeTimestamp value={msg.created_at} />
@@ -2764,7 +2780,7 @@ export default function Chat({
                                                             isMe ? "rounded-tr-xl" : "rounded-tl-xl"
                                                         )}>
                                                             <div className="min-w-0">
-                                                                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-600">Punguzo</p>
+                                                                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-600">{copy('Discount', 'Punguzo')}</p>
                                                                 <p className="mt-1 text-2xl font-black text-amber-950 dark:text-amber-100">- TZS {amount.toLocaleString()}</p>
                                                             </div>
                                                             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-amber-500 shadow-sm dark:bg-slate-950">
@@ -2841,7 +2857,7 @@ export default function Chat({
                                                                     {actionType === 'discount' && (
                                                                         <div className="flex items-center justify-between py-3 px-4 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100/50">
                                                                             <div>
-                                                                                <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-0.5">Punguzo (Discount)</p>
+                                                                                <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-0.5">{copy('Discount', 'Punguzo')}</p>
                                                                                 <p className="text-lg font-black text-amber-900 dark:text-amber-100">- TZS {Number(msg.payload?.amount || 0).toLocaleString()}</p>
                                                                             </div>
                                                                             <Tag className="h-6 w-6 text-amber-400 opacity-50" />
@@ -2851,7 +2867,7 @@ export default function Chat({
                                                                     {actionType === 'shipping_cost' && (
                                                                         <div className="flex items-center justify-between py-3 px-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100/50">
                                                                             <div>
-                                                                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">Gharama ya Usafiri</p>
+                                                                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">{copy('Shipping cost', 'Gharama ya usafiri')}</p>
                                                                                 <p className="text-lg font-black text-emerald-900 dark:text-emerald-100">TZS {Number(msg.payload?.amount || 0).toLocaleString()}</p>
                                                                             </div>
                                                                             <Truck className="h-6 w-6 text-emerald-400 opacity-50" />
@@ -2861,7 +2877,7 @@ export default function Chat({
                                                                     {actionType === 'quantity' && (
                                                                         <div className="flex items-center justify-between py-3 px-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/50">
                                                                             <div>
-                                                                                <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-0.5">Idadi ya Vitu</p>
+                                                                                <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-0.5">{copy('Item quantity', 'Idadi ya vitu')}</p>
                                                                                 <p className="text-lg font-black text-blue-900 dark:text-blue-100">{msg.payload?.quantity} Items</p>
                                                                             </div>
                                                                             <ShoppingBag className="h-6 w-6 text-blue-400 opacity-50" />
@@ -2873,13 +2889,13 @@ export default function Chat({
                                                                             <div className="p-4 rounded-2xl bg-red-50/50 dark:bg-red-950/20 border border-red-100/50">
                                                                                 <div className="flex items-center gap-2 mb-2">
                                                                                     <AlertTriangle className="h-4 w-4 text-red-500" />
-                                                                                    <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">Maelezo ya Malalamiko</p>
+                                                                                    <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">{copy('Complaint details', 'Maelezo ya malalamiko')}</p>
                                                                                 </div>
                                                                                 <p className="text-sm font-bold text-red-900 dark:text-red-100 italic leading-relaxed">"{msg.payload?.reason}"</p>
                                                                             </div>
                                                                             <div className="flex items-center gap-2 px-1">
                                                                                 <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-                                                                                <span className="text-[9px] font-black text-red-600 uppercase tracking-tighter">Inasubiri Utatuzi kutoka kwa Muuzaji</span>
+                                                                                <span className="text-[9px] font-black text-red-600 uppercase tracking-tighter">{copy('Waiting for merchant resolution', 'Inasubiri utatuzi kutoka kwa muuzaji')}</span>
                                                                             </div>
                                                                         </div>
                                                                     )}
@@ -2892,11 +2908,11 @@ export default function Chat({
                                                                                         <CheckCircle2 className="h-6 w-6" />
                                                                                     </div>
                                                                                     <div>
-                                                                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Malalamiko Yamefungwa</p>
-                                                                                        <h4 className="text-xl font-black tracking-tight">YAMETATULIWA</h4>
+                                                                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-80">{copy('Complaint closed', 'Malalamiko yamefungwa')}</p>
+                                                                                        <h4 className="text-xl font-black tracking-tight">{copy('RESOLVED', 'YAMETATULIWA')}</h4>
                                                                                     </div>
                                                                                 </div>
-                                                                                <p className="text-xs font-bold leading-relaxed opacity-90">Muuzaji amemark malalamiko haya kama yaliyotatuliwa baada ya kukubaliana na mteja.</p>
+                                                                                <p className="text-xs font-bold leading-relaxed opacity-90">{copy('The merchant marked this complaint resolved after reaching an agreement with the buyer.', 'Muuzaji amemark malalamiko haya kama yaliyotatuliwa baada ya kukubaliana na mteja.')}</p>
                                                                             </div>
                                                                             <div className="absolute -bottom-6 -right-6 opacity-10"><CheckCircle2 className="h-32 w-32" /></div>
                                                                         </div>
@@ -2910,11 +2926,11 @@ export default function Chat({
                                                                                         <ShieldCheck className="h-6 w-6" />
                                                                                     </div>
                                                                                     <div>
-                                                                                        <p className="text-[10px] font-black uppercase tracking-widest text-red-400">Escalated to Admin</p>
-                                                                                        <h4 className="text-xl font-black tracking-tight">RUFAA (APPEAL)</h4>
+                                                                                        <p className="text-[10px] font-black uppercase tracking-widest text-red-400">{copy('Escalated to admin', 'Imefikishwa kwa admin')}</p>
+                                                                                        <h4 className="text-xl font-black tracking-tight">{copy('APPEAL', 'RUFAA')}</h4>
                                                                                     </div>
                                                                                 </div>
-                                                                                <p className="text-xs font-bold leading-relaxed text-slate-300">Muuzaji amekata rufaa. Timu ya Takeer itapitia malalamiko haya na kutoa uamuzi wa mwisho ndani ya saa 24.</p>
+                                                                                <p className="text-xs font-bold leading-relaxed text-slate-300">{copy('The merchant appealed. Takeer will review the complaint and issue a final decision within 24 hours.', 'Muuzaji amekata rufaa. Timu ya Takeer itapitia malalamiko haya na kutoa uamuzi wa mwisho ndani ya saa 24.')}</p>
                                                                             </div>
                                                                             <div className="absolute -bottom-6 -right-6 opacity-10"><ShieldCheck className="h-32 w-32" /></div>
                                                                         </div>
@@ -2928,15 +2944,15 @@ export default function Chat({
                                                                                         <Video className="h-4 w-4" />
                                                                                     </div>
                                                                                     <div>
-                                                                                        <p className="text-[10px] font-black uppercase text-indigo-600 tracking-widest">Video ya Unboxing</p>
-                                                                                        <p className="text-xs font-bold text-indigo-900 dark:text-indigo-100">Ushahidi wa kupokea mzigo</p>
+                                                                                        <p className="text-[10px] font-black uppercase text-indigo-600 tracking-widest">{copy('Unboxing video', 'Video ya unboxing')}</p>
+                                                                                        <p className="text-xs font-bold text-indigo-900 dark:text-indigo-100">{copy('Proof of receiving the package', 'Ushahidi wa kupokea mzigo')}</p>
                                                                                     </div>
                                                                                 </div>
                                                                                 <MediaDisplay url={msg.payload?.mediaUrl || msg.media_url} className="aspect-video rounded-xl shadow-sm" />
                                                                             </div>
                                                                             <div className="flex items-center gap-2 px-1">
                                                                                 <ShieldCheck className="h-3 w-3 text-indigo-500" />
-                                                                                <span className="text-[9px] font-black text-indigo-600 uppercase tracking-tighter">Uthibitisho wa mteja umewasilishwa</span>
+                                                                                <span className="text-[9px] font-black text-indigo-600 uppercase tracking-tighter">{copy('Customer proof submitted', 'Uthibitisho wa mteja umewasilishwa')}</span>
                                                                             </div>
                                                                         </div>
                                                                     )}
@@ -2948,19 +2964,19 @@ export default function Chat({
                                                                                     {msg.payload?.dispatch_mode === 'intercity' ? (
                                                                                         <>
                                                                                             <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Bus Company</span>
-                                                                                                <span className="font-bold text-slate-700 dark:text-slate-300">{msg.payload?.bus_company || 'N/A'}</span>
+                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">{copy('Bus company', 'Kampuni ya basi')}</span>
+                                                                                                <span className="font-bold text-slate-700 dark:text-slate-300">{msg.payload?.bus_company || copy('N/A', 'Haipo')}</span>
                                                                                             </div>
                                                                                             <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Tracking No.</span>
-                                                                                                <span className="font-bold text-slate-700 dark:text-slate-300">{msg.payload?.waybill_tracking_number || 'N/A'}</span>
+                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">{copy('Tracking no.', 'Namba ya ufuatiliaji')}</span>
+                                                                                                <span className="font-bold text-slate-700 dark:text-slate-300">{msg.payload?.waybill_tracking_number || copy('N/A', 'Haipo')}</span>
                                                                                             </div>
                                                                                         </>
                                                                                     ) : (
                                                                                         <div className="col-span-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                                                                                            <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Delivery Contact</span>
+                                                                                            <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">{copy('Delivery contact', 'Mawasiliano ya delivery')}</span>
                                                                                             <span className="font-bold text-slate-700 dark:text-slate-300">
-                                                                                                {[msg.payload?.delivery_person_name, msg.payload?.boda_phone].filter(Boolean).join(' · ') || 'N/A'}
+                                                                                                {[msg.payload?.delivery_person_name, msg.payload?.boda_phone].filter(Boolean).join(' · ') || copy('N/A', 'Haipo')}
                                                                                             </span>
                                                                                         </div>
                                                                                     )}
@@ -2970,13 +2986,13 @@ export default function Chat({
                                                                                     <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
                                                                                         {msg.payload?.mediaUrl || msg.media_url ? (
                                                                                             <div className="space-y-1">
-                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest text-center">Packing Proof</span>
+                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest text-center">{copy('Packing proof', 'Ushahidi wa kufunga')}</span>
                                                                                                 <MediaDisplay url={msg.payload?.mediaUrl || msg.media_url} className="aspect-[4/3] rounded-xl" />
                                                                                             </div>
                                                                                         ) : null}
                                                                                         {msg.payload?.receiptUrl ? (
                                                                                             <div className="space-y-1">
-                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest text-center">Waybill / Risiti</span>
+                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest text-center">{copy('Waybill / receipt', 'Waybill / risiti')}</span>
                                                                                                 <MediaDisplay url={msg.payload.receiptUrl} className="aspect-[4/3] rounded-xl" />
                                                                                             </div>
                                                                                         ) : null}
@@ -2985,7 +3001,7 @@ export default function Chat({
                                                                             </div>
 
                                                                             <p className="text-[10px] font-bold text-slate-400 px-1 uppercase tracking-tight flex items-center gap-2 italic">
-                                                                                <Info className="h-3 w-3" /> Ushahidi wa upakiaji na waybill umehifadhiwa.
+                                                                                <Info className="h-3 w-3" /> {copy('Upload and waybill proof has been saved.', 'Ushahidi wa upakiaji na waybill umehifadhiwa.')}
                                                                             </p>
                                                                         </div>
                                                                     )}
@@ -2998,11 +3014,11 @@ export default function Chat({
                                                                                         <Truck className="h-5 w-5" />
                                                                                     </div>
                                                                                     <div>
-                                                                                        <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">Delivery update</p>
+                                                                                        <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">{copy('Delivery update', 'Sasisho la delivery')}</p>
                                                                                         <h4 className="text-base font-black text-sky-950">
                                                                                             {isForwarderOrder && msg.payload?.status === 'ready_at_terminal'
-                                                                                                ? 'Received by forwarder'
-                                                                                                : deliveryStatusText(msg.payload?.status)}
+                                                                                                ? copy('Received by forwarder', 'Imepokelewa na forwarder')
+                                                                                                : (locale === 'sw' ? deliveryStatusTextSw(msg.payload?.status) : deliveryStatusText(msg.payload?.status))}
                                                                                         </h4>
                                                                                     </div>
                                                                                 </div>
@@ -3013,26 +3029,26 @@ export default function Chat({
                                                                                     <div className="mt-3 grid gap-2 rounded-2xl border border-sky-100 bg-white/80 p-3 sm:grid-cols-2">
                                                                                         {msg.payload?.forwarder_evidence_type && (
                                                                                             <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
-                                                                                                Evidence
+                                                                                                {copy('Evidence', 'Ushahidi')}
                                                                                                 <span className="mt-1 block text-sm font-bold normal-case tracking-normal text-slate-800">{String(msg.payload.forwarder_evidence_type).replaceAll('_', ' ')}</span>
                                                                                             </p>
                                                                                         )}
                                                                                         {(msg.payload?.courier_company || msg.payload?.bus_company) && (
                                                                                             <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
-                                                                                                Carrier/Forwarder
+                                                                                                {copy('Carrier/forwarder', 'Carrier/forwarder')}
                                                                                                 <span className="mt-1 block text-sm font-bold normal-case tracking-normal text-slate-800">{msg.payload.courier_company || msg.payload.bus_company}</span>
                                                                                             </p>
                                                                                         )}
                                                                                         {msg.payload?.waybill_tracking_number && (
                                                                                             <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
-                                                                                                Receipt/Tracking
+                                                                                                {copy('Receipt/tracking', 'Risiti/ufuatiliaji')}
                                                                                                 <span className="mt-1 block text-sm font-bold normal-case tracking-normal text-slate-800">{msg.payload.waybill_tracking_number}</span>
                                                                                             </p>
                                                                                         )}
                                                                                         {msg.payload?.tracking_link && (
                                                                                             <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
-                                                                                                Tracking link
-                                                                                                <a href={msg.payload.tracking_link} target="_blank" rel="noreferrer" className="mt-1 block text-sm font-bold normal-case tracking-normal text-sky-700 underline">Open tracking</a>
+                                                                                                {copy('Tracking link', 'Kiungo cha ufuatiliaji')}
+                                                                                                <a href={msg.payload.tracking_link} target="_blank" rel="noreferrer" className="mt-1 block text-sm font-bold normal-case tracking-normal text-sky-700 underline">{copy('Open tracking', 'Fungua ufuatiliaji')}</a>
                                                                                             </p>
                                                                                         )}
                                                                                     </div>
@@ -3043,17 +3059,17 @@ export default function Chat({
                                                                                         : ((msg.payload?.proof_url || msg.media_url) ? [{ url: msg.payload?.proof_url || msg.media_url }] : [])
                                                                                     ).map((proof, proofIndex, proofs) => (
                                                                                         <a key={`${proof.url}-${proofIndex}`} href={proof.url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-[10px] font-black uppercase tracking-widest text-sky-700 underline">
-                                                                                            {proofs.length > 1 ? `Proof ${proofIndex + 1}` : 'Proof added'}
+                                                                                            {proofs.length > 1 ? `${copy('Proof', 'Ushahidi')} ${proofIndex + 1}` : copy('Proof added', 'Ushahidi umeongezwa')}
                                                                                         </a>
                                                                                     ))}
                                                                                     {msg.payload?.route_url && (
                                                                                         <a href={msg.payload.route_url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-xl bg-sky-700 px-3 text-[10px] font-black uppercase tracking-widest text-white">
-                                                                                            Directions
+                                                                                            {copy('Directions', 'Maelekezo')}
                                                                                         </a>
                                                                                     )}
                                                                                     {msg.payload?.boda_phone && (
                                                                                         <a href={`tel:${msg.payload.boda_phone}`} className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-[10px] font-black uppercase tracking-widest text-sky-700">
-                                                                                            Delivery phone
+                                                                                            {copy('Delivery phone', 'Namba ya delivery')}
                                                                                         </a>
                                                                                     )}
                                                                                     {msg.payload?.delivery_person_name && (
@@ -3158,6 +3174,7 @@ export default function Chat({
                             <div className="mx-auto max-w-3xl">
                                 <DeliveryFlowTimeline
                                     delivery={order.delivery}
+                                    swahili={locale === 'sw'}
                                     compact
                                     className="shadow-sm"
                                 />
@@ -3170,7 +3187,7 @@ export default function Chat({
                                     )}
                                     {!isForwarderOrder && order.delivery.boda_phone && (
                                         <a href={`tel:${order.delivery.boda_phone}`} className="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-sky-700">
-                                            Delivery phone
+                                            {copy('Delivery phone', 'Namba ya delivery')}
                                         </a>
                                     )}
                                 </div>
@@ -3193,7 +3210,7 @@ export default function Chat({
                                 </div>
                             )}
 
-                            {['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'local_boda' && order?.delivery?.buyer_release_pin && (
+                            {['pending_fulfillment', 'release_eligible', 'payout_processing'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'local_boda' && order?.delivery?.buyer_release_pin && (
                                 <div className="mx-auto flex w-full max-w-lg flex-col">
                                     <ReleasePinCard
                                         releasePin={order?.delivery?.buyer_release_pin}
@@ -3203,7 +3220,7 @@ export default function Chat({
                                 </div>
                             )}
 
-                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && pickupReadyForRelease && order?.delivery?.pickup_pin && (
+                    {['pending_fulfillment', 'release_eligible'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && pickupReadyForRelease && order?.delivery?.pickup_pin && (
                                 <div className="mx-auto flex w-full max-w-lg flex-col">
                                     <PickupPinCard
                                         pickupPin={order?.delivery?.pickup_pin}
@@ -3212,7 +3229,7 @@ export default function Chat({
                                         className="max-w-none"
                                     />
                                     <Button variant="ghost" onClick={openComplaintCenter} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
-                                        RIPOTI TATIZO
+                                        {copy('REPORT ISSUE', 'RIPOTI TATIZO')}
                                     </Button>
                                 </div>
                             )}
@@ -3222,7 +3239,7 @@ export default function Chat({
                     {actingAs === 'merchant' && order?.delivery && order?.delivery?.delivery_type !== 'self_pickup' && (
                         <div className="px-4 pb-2 animate-in slide-in-from-bottom-4 duration-500">
                             <div className="mx-auto max-w-3xl">
-                                <DeliveryFlowTimeline delivery={order.delivery} compact className="shadow-sm" />
+                                <DeliveryFlowTimeline delivery={order.delivery} compact swahili={locale === 'sw'} className="shadow-sm" />
                                 <div className="mt-2 flex flex-wrap gap-2">
                                     {!isDeliveryCompleted && <DeliveryDirectionsButton routeUrl={deliveryRouteUrl} />}
                                     {order.delivery.delivery_person_name && (
@@ -3232,7 +3249,7 @@ export default function Chat({
                                     )}
                                     {order.delivery.boda_phone && (
                                         <a href={`tel:${order.delivery.boda_phone}`} className="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-sky-700">
-                                            Delivery phone
+                                            {copy('Delivery phone', 'Simu ya delivery')}
                                         </a>
                                     )}
                                 </div>
@@ -3241,14 +3258,14 @@ export default function Chat({
                     )}
 
                     {/* Buyer Review Panel */}
-                    {actingAs === 'buyer' && order?.payment_status === 'resolved_merchant_paid' && !completedReview && (
+                    {actingAs === 'buyer' && order?.payment_status === 'paid_out' && !completedReview && (
                         <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
                             <div className="p-4 rounded-[2rem] bg-amber-50/80 border border-amber-200 shadow-sm">
                                 <div className="flex items-center gap-2 mb-3">
                                     <Star className="h-5 w-5 text-amber-600 fill-amber-600" />
-                                    <h4 className="font-black text-amber-900 uppercase tracking-tight text-sm">Toa Review Yako</h4>
+                                    <h4 className="font-black text-amber-900 uppercase tracking-tight text-sm">{copy('Leave your review', 'Toa review yako')}</h4>
                                 </div>
-                                <p className="text-xs text-amber-800/80 mb-4 font-medium">Asante kwa kununua! Toa maoni yako kuhusu bidhaa na huduma ya muuzaji.</p>
+                                <p className="text-xs text-amber-800/80 mb-4 font-medium">{copy('Thanks for buying! Share your feedback about the product and merchant service.', 'Asante kwa kununua! Toa maoni yako kuhusu bidhaa na huduma ya muuzaji.')}</p>
 
                                 <div className="flex justify-center gap-3 mb-4">
                                     {[1, 2, 3, 4, 5].map((star) => (
@@ -3265,7 +3282,7 @@ export default function Chat({
                                 <textarea
                                     value={reviewComment}
                                     onChange={e => setReviewComment(e.target.value)}
-                                    placeholder="Andika maoni yako hapa..."
+                                    placeholder={copy('Write your review here...', 'Andika maoni yako hapa...')}
                                     className="w-full rounded-xl border border-amber-200 bg-white p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 mb-3"
                                     rows={2}
                                 />
@@ -3275,7 +3292,7 @@ export default function Chat({
                                     disabled={isSubmittingReview || !reviewComment.trim()}
                                     className="w-full h-12 rounded-xl bg-amber-600 hover:bg-amber-700 font-black text-white uppercase tracking-widest text-[10px]"
                                 >
-                                    {isSubmittingReview ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'TUMA REVIEW'}
+                                    {isSubmittingReview ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : copy('SUBMIT REVIEW', 'TUMA REVIEW')}
                                 </Button>
                             </div>
                         </div>
@@ -3286,7 +3303,7 @@ export default function Chat({
                             <div className="mx-auto max-w-3xl rounded-[2rem] border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-900">Review ya mteja</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-900">{copy('Customer review', 'Review ya mteja')}</p>
                                         <div className="mt-2 flex gap-1 text-amber-500">
                                             {[1, 2, 3, 4, 5].map((star) => (
                                                 <Star
@@ -3320,13 +3337,13 @@ export default function Chat({
                                     <div className="flex items-center gap-2 mb-2">
                                         <CheckCircle2 className="h-5 w-5 text-emerald-600" />
                                         <h4 className="font-black text-emerald-900 uppercase tracking-tight text-sm">
-                                            {canMerchantConfirmPaidPickup ? 'Confirm Pickup Availability' : 'Confirm Availability'}
+                                            {canMerchantConfirmPaidPickup ? copy('Confirm pickup availability', 'Thibitisha pickup ipo') : copy('Confirm availability', 'Thibitisha upatikanaji')}
                                         </h4>
                                     </div>
                                     <p className="text-xs text-emerald-900/80 mb-3 font-medium">
                                         {canMerchantConfirmPaidPickup
-                                            ? 'Mteja amelipa. Thibitisha stock/uwezo wa kutimiza ili pickup PIN na muda wa pickup uanze kufanya kazi.'
-                                            : 'Mteja hawezi kulipa mpaka uthibitishe kuwa order ipo na unaweza kuitimiza.'}
+                                            ? copy('The buyer has paid. Confirm stock/capacity so the pickup PIN and pickup time can become active.', 'Mteja amelipa. Thibitisha stock/uwezo wa kutimiza ili pickup PIN na muda wa pickup uanze kufanya kazi.')
+                                            : copy('The buyer cannot pay until you confirm that the order is available and can be fulfilled.', 'Mteja hawezi kulipa mpaka uthibitishe kuwa order ipo na unaweza kuitimiza.')}
                                     </p>
                                     <Button
                                         type="button"
@@ -3335,7 +3352,7 @@ export default function Chat({
                                         className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-bold uppercase text-[10px] tracking-widest"
                                     >
                                         {confirmingAvailability ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                                        {canMerchantConfirmPaidPickup ? 'THIBITISHA PICKUP IPO' : 'THIBITISHA ORDER IPO'}
+                                        {canMerchantConfirmPaidPickup ? copy('CONFIRM PICKUP IS AVAILABLE', 'THIBITISHA PICKUP IPO') : copy('CONFIRM ORDER IS AVAILABLE', 'THIBITISHA ORDER IPO')}
                                     </Button>
                                 </div>
                             )}
@@ -3349,15 +3366,15 @@ export default function Chat({
                                     <div className="flex items-center gap-2 mb-3">
                                         {physicalOrder ? <Truck className="h-5 w-5 text-brand-600" /> : <IntentIcon className="h-5 w-5 text-brand-600" />}
                                         <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">
-                                            {serviceOrder ? 'Service Offer Enquiry' : (digitalOrder ? 'Digital Work Enquiry' : (isForwarderOrder ? 'Forwarder Drop-off Quote' : 'Shipping Quote Inquiry'))}
+                                            {serviceOrder ? copy('Service offer enquiry', 'Ombi la ofa ya huduma') : (digitalOrder ? copy('Digital work enquiry', 'Ombi la kazi ya digitali') : (isForwarderOrder ? copy('Forwarder drop-off quote', 'Quote ya kupeleka kwa forwarder') : copy('Shipping quote enquiry', 'Ombi la quote ya usafiri')))}
                                         </h4>
                                     </div>
                                     {physicalOrder && (
                                         <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">
-                                                {isForwarderOrder ? 'Forwarder warehouse:' : 'Customer Address:'}
+                                                {isForwarderOrder ? copy('Forwarder warehouse:', 'Ghala la forwarder:') : copy('Customer address:', 'Anwani ya mteja:')}
                                             </p>
-                                            <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
+                                            <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || copy('Address not provided', 'Anwani haikuwekwa')}</p>
 
                                             {!isForwarderOrder && closestLocation && (
                                                 <div className="mt-3 p-2 rounded-xl bg-brand-50/50 border border-brand-100 flex items-center justify-between">
@@ -3366,8 +3383,8 @@ export default function Chat({
                                                             <Store className="h-4 w-4" />
                                                         </div>
                                                         <div>
-                                                            <p className="text-[9px] font-black uppercase text-brand-700 tracking-tight">Kutoka: {closestLocation.name}</p>
-                                                            <p className="text-[10px] font-black text-brand-900 tracking-tight">Umbali: {closestLocation.distance.toFixed(1)} km</p>
+                                                            <p className="text-[9px] font-black uppercase text-brand-700 tracking-tight">{copy('From:', 'Kutoka:')} {closestLocation.name}</p>
+                                                            <p className="text-[10px] font-black text-brand-900 tracking-tight">{copy('Distance:', 'Umbali:')} {closestLocation.distance.toFixed(1)} km</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -3375,7 +3392,7 @@ export default function Chat({
 
                                             {isForwarderOrder && (
                                                 <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-900">
-                                                    Use domestic courier, cargo, or warehouse drop-off details. After payment, update status to Dispatched to forwarder and attach courier/waybill details there.
+                                                    {copy('Use domestic courier, cargo, or warehouse drop-off details. After payment, update status to Dispatched to forwarder and attach courier/waybill details there.', 'Tumia courier wa ndani, cargo, au maelezo ya ghala. Baada ya malipo, sasisha hali kuwa imetumwa kwa forwarder na ambatisha maelezo ya courier/waybill hapo.')}
                                                 </div>
                                             )}
 
@@ -3386,7 +3403,7 @@ export default function Chat({
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-brand-600 hover:text-brand-700 underline"
                                                 >
-                                                    <MapPin className="h-3 w-3" /> FUNGUA KWENYE RAMANI
+                                                    <MapPin className="h-3 w-3" /> {copy('OPEN IN MAPS', 'FUNGUA KWENYE RAMANI')}
                                                 </a>
                                             )}
                                         </div>
@@ -3394,17 +3411,17 @@ export default function Chat({
                                     {!physicalOrder && (
                                         <div className="mb-3 rounded-2xl border border-brand-100 bg-white/80 p-3">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">
-                                                {serviceOrder ? 'Makubaliano ya huduma' : 'Makubaliano ya digital order'}
+                                                {serviceOrder ? copy('Service agreement', 'Makubaliano ya huduma') : copy('Digital order agreement', 'Makubaliano ya digital order')}
                                             </p>
                                             <p className="text-sm font-bold leading-5 text-brand-900">
-                                                Tumia chat kukubaliana scope, deliverables, deadline, revisions, na bei kabla ya mteja kulipa.
+                                                {copy('Use chat to agree on scope, deliverables, deadline, revisions, and price before the buyer pays.', 'Tumia chat kukubaliana scope, deliverables, deadline, revisions, na bei kabla ya mteja kulipa.')}
                                             </p>
                                         </div>
                                     )}
                                     <form onSubmit={submitQuote} className="flex gap-2">
                                         <Input
                                             type="number"
-                                            placeholder={serviceOrder ? 'Weka Offer ya Huduma (TZS)' : (digitalOrder ? 'Weka Offer ya Digital Work (TZS)' : (isForwarderOrder ? 'Gharama ya kupeleka kwa forwarder (TZS)' : 'Weka Gharama (TZS)'))}
+                                            placeholder={serviceOrder ? copy('Enter service offer (TZS)', 'Weka offer ya huduma (TZS)') : (digitalOrder ? copy('Enter digital work offer (TZS)', 'Weka offer ya digital work (TZS)') : (isForwarderOrder ? copy('Forwarder drop-off cost (TZS)', 'Gharama ya kupeleka kwa forwarder (TZS)') : copy('Enter cost (TZS)', 'Weka gharama (TZS)')))}
                                             value={shippingFeeInput}
                                             onChange={e => setShippingFeeInput(e.target.value)}
                                             className={cn(
@@ -3414,17 +3431,17 @@ export default function Chat({
                                             required
                                         />
                                         <Button type="submit" disabled={quoteSubmitting || !shippingFeeInput} className="h-12 rounded-xl px-6 bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
-                                            {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />} TUMA
+                                            {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />} {copy('SEND', 'TUMA')}
                                         </Button>
                                     </form>
                                 </div>
                             )}
 
-                            {order?.product?.type === 'physical' && order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type !== 'self_pickup' && !isForwarderOrder && (
+                    {order?.product?.type === 'physical' && order?.payment_status === 'pending_fulfillment' && order?.delivery?.delivery_type !== 'self_pickup' && !isForwarderOrder && (
                                 <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
                                     <div className="flex items-center gap-2 mb-3">
                                         <Truck className="h-5 w-5 text-brand-600" />
-                                        <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Dispatch Evidence</h4>
+                                        <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">{copy('Dispatch Evidence', 'Ushahidi wa dispatch')}</h4>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 mb-3">
                                         <button type="button" onClick={() => setDispatchMode('intercity')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'intercity' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>{isForwarderOrder ? 'Courier to forwarder' : 'Intercity Bus'}</button>
@@ -3434,49 +3451,49 @@ export default function Chat({
                                         <div className="grid grid-cols-2 gap-2">
                                             <button type="button" onClick={() => { const el = document.getElementById('dispatch-video-input'); if (el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
                                                 <Camera className={cn("h-5 w-5 mb-1", dispatchVideo ? "text-emerald-500" : "text-brand-500")} />
-                                                <span className="text-[10px] font-black uppercase text-slate-500">Packing Proof</span>
+                                                <span className="text-[10px] font-black uppercase text-slate-500">{copy('Packing proof', 'Ushahidi wa kufunga')}</span>
                                                 <input id="dispatch-video-input" type="file" accept="image/*,video/*" className="hidden" onChange={e => setDispatchVideo(e.target.files?.[0])} />
                                             </button>
                                             {dispatchMode === 'intercity' ? (
                                                 <button type="button" onClick={() => { const el = document.getElementById('dispatch-receipt-input'); if (el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
                                                     <ImageIcon className={cn("h-5 w-5 mb-1", transportReceipt ? "text-emerald-500" : "text-brand-500")} />
-                                                    <span className="text-[10px] font-black uppercase text-slate-500">Waybill</span>
+                                                    <span className="text-[10px] font-black uppercase text-slate-500">{copy('Waybill', 'Waybill')}</span>
                                                     <input id="dispatch-receipt-input" type="file" accept="image/*" className="hidden" onChange={e => setTransportReceipt(e.target.files?.[0])} />
                                                 </button>
                                             ) : (
-                                                <Input type="text" placeholder="Boda Phone..." value={bodaPhone} onChange={e => setBodaPhone(e.target.value)} className="h-20 rounded-xl bg-white border-slate-200 text-center font-bold" />
+                                                <Input type="text" placeholder={copy('Boda phone...', 'Namba ya boda...')} value={bodaPhone} onChange={e => setBodaPhone(e.target.value)} className="h-20 rounded-xl bg-white border-slate-200 text-center font-bold" />
                                             )}
                                         </div>
                                         <Input
                                             type="text"
-                                            placeholder="Delivery person name (optional)"
+                                            placeholder={copy('Delivery person name (optional)', 'Jina la anayefikisha (hiari)')}
                                             value={deliveryPersonName}
                                             onChange={e => setDeliveryPersonName(e.target.value)}
                                             className="h-10 rounded-xl bg-white"
                                         />
                                         {dispatchMode === 'intercity' && (
                                             <div className="grid grid-cols-2 gap-2">
-                                                <Input type="text" placeholder="Bus Company..." value={busCompany} onChange={e => setBusCompany(e.target.value)} className="h-10 rounded-xl bg-white" />
-                                                <Input type="text" placeholder="Tracking #..." value={waybillTrackingNumber} onChange={e => setWaybillTrackingNumber(e.target.value)} className="h-10 rounded-xl bg-white" />
+                                                <Input type="text" placeholder={copy('Bus company...', 'Kampuni ya basi...')} value={busCompany} onChange={e => setBusCompany(e.target.value)} className="h-10 rounded-xl bg-white" />
+                                                <Input type="text" placeholder={copy('Tracking #...', 'Namba ya ufuatiliaji...')} value={waybillTrackingNumber} onChange={e => setWaybillTrackingNumber(e.target.value)} className="h-10 rounded-xl bg-white" />
                                             </div>
                                         )}
                                         <Button type="submit" disabled={dispatchSubmitting || !dispatchVideo || (dispatchMode === 'intercity' && !transportReceipt)} className="w-full h-12 rounded-xl bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
-                                            {dispatchSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} THIBITISHA DISPATCH
+                                            {dispatchSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} {copy('CONFIRM DISPATCH', 'THIBITISHA DISPATCH')}
                                         </Button>
                                     </form>
                                 </div>
                             )}
 
-                            {order?.payment_status === 'escrow_locked' && order?.delivery?.delivery_type === 'local_boda' && (
+                            {order?.payment_status === 'release_eligible' && order?.delivery?.delivery_type === 'local_boda' && (
                                 <div className="rounded-[2rem] border border-brand-100 bg-white p-5 shadow-xl shadow-brand-100/50">
                                     <div className="mb-4 flex items-start gap-3">
                                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
                                             <Truck className="h-5 w-5" />
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">Delivery Verification</p>
-                                            <h4 className="mt-1 text-lg font-black leading-tight text-slate-950">Confirm & release</h4>
-                                            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">Ask the rider for the 4-digit Release PIN after the customer has inspected and accepted the package.</p>
+                                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">{copy('Delivery verification', 'Uthibitisho wa delivery')}</p>
+                                            <h4 className="mt-1 text-lg font-black leading-tight text-slate-950">{copy('Confirm & release', 'Thibitisha na toa')}</h4>
+                                            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{copy('Ask the rider for the 4-digit Release PIN after the customer has inspected and accepted the package.', 'Omba rider PIN ya Release yenye tarakimu 4 baada ya mteja kukagua na kukubali mzigo.')}</p>
                                         </div>
                                     </div>
                                     <form onSubmit={verifyDeliveryPin} className="space-y-3">
@@ -3491,22 +3508,22 @@ export default function Chat({
                                         />
                                         <Button type="submit" disabled={pinVerifying || releasePinInput.length !== 4} className="h-14 w-full rounded-2xl bg-brand-600 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-brand-600/25 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400">
                                             {pinVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                                            Thibitisha Delivery
+                                            {copy('Confirm delivery', 'Thibitisha delivery')}
                                         </Button>
                                     </form>
                                 </div>
                             )}
 
-                            {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && pickupReadyForRelease && (
+                            {order?.payment_status === 'pending_fulfillment' && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && pickupReadyForRelease && (
                                 <div className="rounded-[2rem] border border-brand-100 bg-white p-5 shadow-xl shadow-brand-100/50">
                                     <div className="mb-4 flex items-start gap-3">
                                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
                                             <Store className="h-5 w-5" />
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">Pickup Verification</p>
-                                            <h4 className="mt-1 text-lg font-black leading-tight text-slate-950">Confirm & release</h4>
-                                            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">Ask the customer for the 4-digit PIN shown in their chat, then release the order.</p>
+                                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">{copy('Pickup verification', 'Uthibitisho wa pickup')}</p>
+                                            <h4 className="mt-1 text-lg font-black leading-tight text-slate-950">{copy('Confirm & release', 'Thibitisha na toa')}</h4>
+                                            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{copy('Ask the customer for the 4-digit PIN shown in their chat, then release the order.', 'Omba mteja PIN ya tarakimu 4 iliyo kwenye chat yake, kisha toa order.')}</p>
                                         </div>
                                     </div>
                                     <form onSubmit={verifyPickupPin} className="space-y-3">
@@ -3521,7 +3538,7 @@ export default function Chat({
                                         />
                                         <Button type="submit" disabled={pinVerifying || pickupPinInput.length !== 4} className="h-14 w-full rounded-2xl bg-brand-600 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-brand-600/25 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400">
                                             {pinVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                                            Kabidhi Mzigo
+                                            {copy('Confirm pickup', 'Thibitisha pickup')}
                                         </Button>
                                     </form>
                                 </div>
@@ -3537,24 +3554,24 @@ export default function Chat({
                         <div className="mx-auto w-full max-w-lg p-5">
                             <DrawerHeader className="px-0 text-left">
                                 <DrawerTitle className="text-xl font-black tracking-tight text-slate-950">
-                                    {pickupActionForm === 'extension_request' && 'Request Pickup Time'}
-                                    {pickupActionForm === 'extra_charge_payment' && 'Accept & Pay Extra Cost'}
-                                    {pickupActionForm === 'delivery_conversion_request' && 'Request Delivery'}
-                                    {pickupActionForm === 'delivery_conversion_quote' && 'Quote Delivery'}
-                                    {pickupActionForm === 'delivery_conversion_payment' && 'Accept & Pay Delivery'}
+                                    {pickupActionForm === 'extension_request' && copy('Request pickup time', 'Omba muda wa pickup')}
+                                    {pickupActionForm === 'extra_charge_payment' && copy('Accept & pay extra cost', 'Kubali na lipa gharama ya ziada')}
+                                    {pickupActionForm === 'delivery_conversion_request' && copy('Request delivery', 'Omba delivery')}
+                                    {pickupActionForm === 'delivery_conversion_quote' && copy('Quote delivery', 'Nukuu delivery')}
+                                    {pickupActionForm === 'delivery_conversion_payment' && copy('Accept & pay delivery', 'Kubali na lipa delivery')}
                                 </DrawerTitle>
                                 <DrawerDescription className="text-xs font-bold text-slate-500">
-                                    This action is recorded in order chat as part of the agreement trail.
+                                    {copy('This action is recorded in order chat as part of the agreement trail.', 'Kitendo hiki kinarekodiwa kwenye chat ya order kama sehemu ya historia ya makubaliano.')}
                                 </DrawerDescription>
                             </DrawerHeader>
 
                             {pickupActionForm === 'extension_request' && (
                                 <form onSubmit={requestPickupExtension} className="space-y-3">
                                     <Input type="datetime-local" value={pickupExtensionDeadline} onChange={(event) => setPickupExtensionDeadline(event.target.value)} className="h-12 rounded-xl font-bold" required />
-                                    <textarea value={pickupExtensionReason} onChange={(event) => setPickupExtensionReason(event.target.value)} rows={3} placeholder="Reason or note..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+                                    <textarea value={pickupExtensionReason} onChange={(event) => setPickupExtensionReason(event.target.value)} rows={3} placeholder={copy('Reason or note...', 'Sababu au ujumbe...')} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
                                     <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-sky-700 font-black uppercase tracking-widest text-white hover:bg-sky-800">
                                         {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />}
-                                        Send Request
+                                        {copy('Send request', 'Tuma ombi')}
                                     </Button>
                                 </form>
                             )}
@@ -3562,36 +3579,36 @@ export default function Chat({
                             {pickupActionForm === 'extra_charge_payment' && (
                                 <form onSubmit={acceptExtraCharge} className="space-y-3">
                                     <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Extra agreed cost</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">{copy('Extra agreed cost', 'Gharama ya ziada iliyokubaliwa')}</p>
                                         <p className="mt-1 text-2xl font-black text-amber-950">TZS {Number(activeExtraCharge?.amount || 0).toLocaleString()}</p>
-                                        <p className="mt-1 text-xs font-bold text-amber-800/80">Payment will be held in escrow and released to the merchant only when pickup or delivery is completed.</p>
+                                        <p className="mt-1 text-xs font-bold text-amber-800/80">{copy('The PSP controls payment settlement; seller payout follows verified pickup or delivery completion.', 'PSP inadhibiti settlement ya malipo; payout ya muuzaji hufuata pickup au delivery iliyothibitishwa.')}</p>
                                     </div>
-                                    <Input value={extraChargePaymentNumber} onChange={(event) => setExtraChargePaymentNumber(event.target.value)} placeholder="Payment phone number" className="h-12 rounded-xl font-bold" required />
+                                    <Input value={extraChargePaymentNumber} onChange={(event) => setExtraChargePaymentNumber(event.target.value)} placeholder={copy('Payment phone number', 'Namba ya simu ya malipo')} className="h-12 rounded-xl font-bold" required />
                                     <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-emerald-600 font-black uppercase tracking-widest text-white hover:bg-emerald-700">
                                         {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                                        Accept & Pay
+                                        {copy('Accept & pay', 'Kubali na lipa')}
                                     </Button>
                                 </form>
                             )}
 
                             {pickupActionForm === 'delivery_conversion_request' && (
                                 <form onSubmit={requestDeliveryConversion} className="space-y-3">
-                                    <textarea value={conversionAddress} onChange={(event) => setConversionAddress(event.target.value)} rows={3} placeholder="Delivery address..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" required />
-                                    <textarea value={conversionNote} onChange={(event) => setConversionNote(event.target.value)} rows={2} placeholder="Note for merchant..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+                                    <textarea value={conversionAddress} onChange={(event) => setConversionAddress(event.target.value)} rows={3} placeholder={copy('Delivery address...', 'Anwani ya delivery...')} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" required />
+                                    <textarea value={conversionNote} onChange={(event) => setConversionNote(event.target.value)} rows={2} placeholder={copy('Note for merchant...', 'Ujumbe kwa muuzaji...')} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
                                     <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-emerald-600 font-black uppercase tracking-widest text-white hover:bg-emerald-700">
                                         {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
-                                        Send Delivery Request
+                                        {copy('Send delivery request', 'Tuma ombi la delivery')}
                                     </Button>
                                 </form>
                             )}
 
                             {pickupActionForm === 'delivery_conversion_quote' && (
                                 <form onSubmit={quoteDeliveryConversion} className="space-y-3">
-                                    <Input type="number" min="1" value={conversionQuoteFee} onChange={(event) => setConversionQuoteFee(event.target.value)} placeholder="Delivery fee (TZS)" className="h-12 rounded-xl font-bold" required />
-                                    <textarea value={conversionQuoteNote} onChange={(event) => setConversionQuoteNote(event.target.value)} rows={2} placeholder="Note for buyer..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+                                    <Input type="number" min="1" value={conversionQuoteFee} onChange={(event) => setConversionQuoteFee(event.target.value)} placeholder={copy('Delivery fee (TZS)', 'Gharama ya delivery (TZS)')} className="h-12 rounded-xl font-bold" required />
+                                    <textarea value={conversionQuoteNote} onChange={(event) => setConversionQuoteNote(event.target.value)} rows={2} placeholder={copy('Note for buyer...', 'Ujumbe kwa mteja...')} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
                                     <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-sky-700 font-black uppercase tracking-widest text-white hover:bg-sky-800">
                                         {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
-                                        Send Quote
+                                        {copy('Send quote', 'Tuma nukuu')}
                                     </Button>
                                 </form>
                             )}
@@ -3599,14 +3616,14 @@ export default function Chat({
                             {pickupActionForm === 'delivery_conversion_payment' && (
                                 <form onSubmit={acceptDeliveryConversion} className="space-y-3">
                                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Delivery Fee</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">{copy('Delivery fee', 'Gharama ya delivery')}</p>
                                         <p className="mt-1 text-2xl font-black text-emerald-950">TZS {Number(deliveryConversion?.shipping_fee || 0).toLocaleString()}</p>
-                                        <p className="mt-1 text-xs font-bold text-emerald-800/80">Payment will be held in escrow until delivery is completed.</p>
+                                        <p className="mt-1 text-xs font-bold text-emerald-800/80">{copy('The PSP controls settlement until delivery is completed and Takeer can request the order payout.', 'PSP inadhibiti settlement hadi delivery ikamilike na Takeer iweze kuomba payout ya order.')}</p>
                                     </div>
-                                    <Input value={conversionPaymentNumber} onChange={(event) => setConversionPaymentNumber(event.target.value)} placeholder="Payment phone number" className="h-12 rounded-xl font-bold" required />
+                                    <Input value={conversionPaymentNumber} onChange={(event) => setConversionPaymentNumber(event.target.value)} placeholder={copy('Payment phone number', 'Namba ya simu ya malipo')} className="h-12 rounded-xl font-bold" required />
                                     <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-emerald-600 font-black uppercase tracking-widest text-white hover:bg-emerald-700">
                                         {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                                        Accept & Pay
+                                        {copy('Accept & pay', 'Kubali na lipa')}
                                     </Button>
                                 </form>
                             )}
@@ -3616,11 +3633,11 @@ export default function Chat({
 
                 {/* Input Area */}
                 <div className="shrink-0 bg-white dark:bg-slate-950 border-t border-brand-100 dark:border-brand-900/40 p-4">
-                    {(order?.payment_status === 'resolved_merchant_paid' || order?.payment_status === 'failed') ? (
+                    {(order?.payment_status === 'paid_out' || order?.payment_status === 'failed') ? (
                         <div className="flex items-center justify-center p-4 bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-500">
                             <Lock className="h-4 w-4 text-slate-400 mr-2" />
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                {order?.payment_status === 'failed' ? 'Oda imesitishwa. Chat imefungwa.' : 'Oda imekamilika. Chat imefungwa.'}
+                                {order?.payment_status === 'failed' ? copy('Order failed. Chat is closed.', 'Oda imesitishwa. Chat imefungwa.') : copy('Order completed. Chat is closed.', 'Oda imekamilika. Chat imefungwa.')}
                             </p>
                         </div>
                     ) : (
@@ -3638,8 +3655,8 @@ export default function Chat({
                                                 <DrawerHeader className="text-left pb-2 pt-6 shrink-0">
                                                     <div className="flex items-center justify-between">
                                                         <div>
-                                                            <DrawerTitle className="text-2xl font-black tracking-tight text-brand-900">Njia Za Mkato</DrawerTitle>
-                                                            <DrawerDescription className="font-bold text-brand-600/60 uppercase text-[10px] tracking-widest mt-0.5">Salama & Haraka kwa Oda #{publicId?.substring(0, 8)}</DrawerDescription>
+                                                            <DrawerTitle className="text-2xl font-black tracking-tight text-brand-900">{copy('Quick actions', 'Njia za mkato')}</DrawerTitle>
+                                                            <DrawerDescription className="font-bold text-brand-600/60 uppercase text-[10px] tracking-widest mt-0.5">{copy('Safe & fast for order', 'Salama na haraka kwa oda')} #{publicId?.substring(0, 8)}</DrawerDescription>
                                                         </div>
                                                         <DrawerClose asChild>
                                                             <Button variant="ghost" size="icon" className="rounded-full h-10 w-10 bg-accent/50"><X className="h-5 w-5 text-muted-foreground" /></Button>
@@ -3693,7 +3710,7 @@ export default function Chat({
                                                             >
                                                                 {isDisabled && (
                                                                     <div className="absolute inset-0 bg-slate-50/40 flex items-center justify-center backdrop-blur-[1px]">
-                                                                        <span className="bg-slate-900 text-white text-[8px] font-black px-2 py-1 rounded-lg uppercase">{action.disabledReason || 'LOCKED'}</span>
+                                                                        <span className="bg-slate-900 text-white text-[8px] font-black px-2 py-1 rounded-lg uppercase">{action.disabledReason || copy('LOCKED', 'IMEFUNGWA')}</span>
                                                                     </div>
                                                                 )}
                                                                 <div className={cn("p-3 rounded-2xl mb-3 transition-transform group-hover:scale-110", action.color)}><Icon className="h-6 w-6" /></div>
@@ -3728,7 +3745,7 @@ export default function Chat({
                                                                     )}
                                                                 >
                                                                     <Store className={cn("h-8 w-8", isSelfPickupChoice ? "text-brand-600" : "text-slate-400")} />
-                                                                    <span className={cn("font-black text-[10px] uppercase tracking-widest", isSelfPickupChoice ? "text-brand-600" : "text-slate-500")}>Kuchukua</span>
+                                                                    <span className={cn("font-black text-[10px] uppercase tracking-widest", isSelfPickupChoice ? "text-brand-600" : "text-slate-500")}>{copy('Pickup', 'Kuchukua')}</span>
                                                                 </button>
                                                                 <button
                                                                     onClick={() => setIsSelfPickupChoice(false)}
@@ -3738,7 +3755,7 @@ export default function Chat({
                                                                     )}
                                                                 >
                                                                     <Truck className={cn("h-8 w-8", !isSelfPickupChoice ? "text-brand-600" : "text-slate-400")} />
-                                                                    <span className={cn("font-black text-[10px] uppercase tracking-widest", !isSelfPickupChoice ? "text-brand-600" : "text-slate-500")}>Kuletewa</span>
+                                                                    <span className={cn("font-black text-[10px] uppercase tracking-widest", !isSelfPickupChoice ? "text-brand-600" : "text-slate-500")}>{copy('Delivery', 'Kuletewa')}</span>
                                                                 </button>
                                                             </div>
 
@@ -3749,8 +3766,8 @@ export default function Chat({
                                                                             <MapPin className="h-5 w-5" />
                                                                         </div>
                                                                         <div>
-                                                                            <h4 className="font-black text-indigo-900 uppercase text-[11px] tracking-widest">Maeneo ya Kuchukua</h4>
-                                                                            <p className="text-[10px] font-bold text-indigo-600/70">Oda yako itachukuliwa dukan mwa muuzaji</p>
+                                                                            <h4 className="font-black text-indigo-900 uppercase text-[11px] tracking-widest">{copy('Pickup locations', 'Maeneo ya kuchukua')}</h4>
+                                                                            <p className="text-[10px] font-bold text-indigo-600/70">{copy('Your order will be collected at the merchant shop.', 'Oda yako itachukuliwa dukani mwa muuzaji')}</p>
                                                                         </div>
                                                                     </div>
                                                                     <Button
@@ -3758,7 +3775,7 @@ export default function Chat({
                                                                         variant="outline"
                                                                         className="w-full h-12 rounded-2xl border-indigo-200 text-indigo-700 font-bold text-[11px] uppercase tracking-widest bg-white hover:bg-indigo-50"
                                                                     >
-                                                                        Ona Maduka ya Muuzaji
+                                                                        {copy('View merchant shops', 'Ona maduka ya muuzaji')}
                                                                     </Button>
                                                                 </div>
                                                             ) : (
@@ -3769,8 +3786,8 @@ export default function Chat({
                                                                                 <Navigation className="h-5 w-5" />
                                                                             </div>
                                                                             <div>
-                                                                                <h4 className="font-black text-emerald-900 uppercase text-[11px] tracking-widest">Eneo la Kufikisha</h4>
-                                                                                <p className="text-[10px] font-bold text-emerald-600/70">Chagua eneo ili tujuwe gharama ya usafiri</p>
+                                                                                <h4 className="font-black text-emerald-900 uppercase text-[11px] tracking-widest">{copy('Delivery location', 'Eneo la kufikisha')}</h4>
+                                                                                <p className="text-[10px] font-bold text-emerald-600/70">{copy('Choose a location so we can calculate shipping cost.', 'Chagua eneo ili tujue gharama ya usafiri')}</p>
                                                                             </div>
                                                                         </div>
 
@@ -3785,28 +3802,28 @@ export default function Chat({
                                                                                 </div>
                                                                             ) : (
                                                                                 <div className="flex items-center justify-between">
-                                                                                    <span className="text-xs font-bold text-emerald-600/50 uppercase tracking-widest">Chagua kwenye Ramani (Zone Matching)</span>
+                                                                                    <span className="text-xs font-bold text-emerald-600/50 uppercase tracking-widest">{copy('Choose on map (zone matching)', 'Chagua kwenye ramani (zone matching)')}</span>
                                                                                     <ChevronRight className="h-4 w-4 text-emerald-300 group-hover:translate-x-1 transition-transform" />
                                                                                 </div>
                                                                             )}
                                                                         </button>
 
                                                                         <div className="space-y-2">
-                                                                            <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 ml-1">Address ya Kufikisha (Manual)</label>
+                                                                            <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 ml-1">{copy('Delivery address (manual)', 'Anwani ya kufikisha (manual)')}</label>
                                                                             <textarea
                                                                                 value={physicalAddress || order?.delivery?.physical_address || ''}
                                                                                 onChange={e => setPhysicalAddress(e.target.value)}
-                                                                                placeholder="Mfano: Mtaa wa Uhuru, Jengo la China Plaza, Room 402..."
+                                                                                placeholder={copy('Example: Uhuru Street, China Plaza Building, Room 402...', 'Mfano: Mtaa wa Uhuru, Jengo la China Plaza, Room 402...')}
                                                                                 className="w-full min-h-[80px] p-4 rounded-2xl bg-white border border-emerald-100 focus:border-emerald-400 outline-none text-xs font-bold text-emerald-900 resize-none transition-colors"
                                                                             />
                                                                             <p className="text-[9px] font-bold text-emerald-600/60 leading-relaxed italic px-1">
-                                                                                * Tumia sehemu hii kuweka maelezo ya ziada au address ya wakala (freight agent).
+                                                                                * {copy('Use this field for extra details or the freight agent address.', 'Tumia sehemu hii kuweka maelezo ya ziada au address ya wakala (freight agent).')}
                                                                             </p>
                                                                         </div>
 
                                                                         {selectedZoneId && (
                                                                             <div className="pt-2 flex items-center justify-between border-t border-emerald-100">
-                                                                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Gharama ya Usafiri</span>
+                                                                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">{copy('Shipping cost', 'Gharama ya usafiri')}</span>
                                                                                 <span className="text-sm font-black text-emerald-900">
                                                                                     {(() => {
                                                                                         const selectedZone = shippingZones.find(z => String(z.id) === String(selectedZoneId));
@@ -3840,14 +3857,14 @@ export default function Chat({
                                                                 disabled={!isSelfPickupChoice && !selectedZoneId && !physicalAddress && !order?.delivery?.physical_address}
                                                                 className="w-full h-16 rounded-[2rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-[0.2em] text-xs shadow-xl shadow-brand-600/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
                                                             >
-                                                                Thibitisha Usafirishaji
+                                                                {copy('Confirm shipping', 'Thibitisha usafirishaji')}
                                                             </Button>
                                                         </div>
                                                     )}
 
                                                     {activeAction === 'shipping_cost' && actingAs === 'merchant' && (
                                                         <div className="p-4 rounded-2xl bg-brand-50 border border-brand-100 space-y-3">
-                                                            <p className="text-[10px] font-black uppercase text-brand-600 tracking-widest flex items-center gap-2"><MapPin className="h-3 w-3" /> Taarifa za Usafirishaji</p>
+                                                            <p className="text-[10px] font-black uppercase text-brand-600 tracking-widest flex items-center gap-2"><MapPin className="h-3 w-3" /> {copy('Shipping information', 'Taarifa za usafirishaji')}</p>
                                                             <div className="space-y-1">
                                                                 <p className="text-xs font-black text-brand-900">{order?.delivery?.physical_address || (order?.delivery?.latitude ? `${order.delivery.latitude}, ${order.delivery.longitude}` : 'Address Haijawekwa')}</p>
                                                                 {!isForwarderOrder && (() => {
@@ -3862,11 +3879,11 @@ export default function Chat({
                                                             </div>
                                                             {isForwarderOrder && (
                                                                 <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-900">
-                                                                    Forwarder drop-off uses courier/waybill evidence, not a Takeer driver route.
+                                                                    {copy('Forwarder drop-off uses courier/waybill evidence, not a Takeer driver route.', 'Kupeleka kwa forwarder hutumia ushahidi wa courier/waybill, si route ya dereva wa Takeer.')}
                                                                 </div>
                                                             )}
                                                             {!isForwarderOrder && order?.delivery?.latitude && (
-                                                                <a href={`https://www.google.com/maps/search/?api=1&query=${order.delivery.latitude},${order.delivery.longitude}`} target="_blank" className="block text-center py-2 bg-white rounded-xl border border-brand-200 text-[10px] font-black text-brand-700 hover:bg-brand-50 transition-colors">FUNGUA RAMANI (MAPS)</a>
+                                                                <a href={`https://www.google.com/maps/search/?api=1&query=${order.delivery.latitude},${order.delivery.longitude}`} target="_blank" className="block text-center py-2 bg-white rounded-xl border border-brand-200 text-[10px] font-black text-brand-700 hover:bg-brand-50 transition-colors">{copy('OPEN MAP', 'FUNGUA RAMANI')}</a>
                                                             )}
                                                         </div>
                                                     )}
@@ -3875,13 +3892,13 @@ export default function Chat({
                                                         <div className="space-y-6">
                                                             {Number(order.discount_amount) > 0 && (
                                                                 <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                                                                    <p className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-2 tracking-widest">Punguzo la Sasa</p>
+                                                                    <p className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-2 tracking-widest">{copy('Current discount', 'Punguzo la sasa')}</p>
                                                                     {showDiscountResetConfirm ? (
                                                                         <div className="p-4 rounded-2xl bg-red-50 border-2 border-red-100 flex items-center justify-between gap-4 animate-in zoom-in-95 duration-200">
-                                                                            <p className="text-[10px] font-black text-red-900 uppercase">Futa punguzo hili?</p>
+                                                                            <p className="text-[10px] font-black text-red-900 uppercase">{copy('Remove this discount?', 'Futa punguzo hili?')}</p>
                                                                             <div className="flex gap-2">
-                                                                                <Button onClick={() => { submitAction('discount', { mode: 'reset', title: 'FUTA PUNGUZO' }); setShowDiscountResetConfirm(false); }} className="h-8 px-4 rounded-xl bg-red-600 text-white font-black text-[10px] uppercase">NDIYO</Button>
-                                                                                <Button onClick={() => setShowDiscountResetConfirm(false)} variant="ghost" className="h-8 px-4 rounded-xl font-black text-[10px] uppercase">RUDI</Button>
+                                                                                <Button onClick={() => { submitAction('discount', { mode: 'reset', title: copy('REMOVE DISCOUNT', 'FUTA PUNGUZO') }); setShowDiscountResetConfirm(false); }} className="h-8 px-4 rounded-xl bg-red-600 text-white font-black text-[10px] uppercase">{copy('YES', 'NDIYO')}</Button>
+                                                                                <Button onClick={() => setShowDiscountResetConfirm(false)} variant="ghost" className="h-8 px-4 rounded-xl font-black text-[10px] uppercase">{copy('BACK', 'RUDI')}</Button>
                                                                             </div>
                                                                         </div>
                                                                     ) : (
@@ -3901,7 +3918,7 @@ export default function Chat({
                                                             )}
 
                                                             <div className="space-y-3">
-                                                                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Ongeza Punguzo</label>
+                                                                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">{copy('Add discount', 'Ongeza punguzo')}</label>
                                                                 <div className="relative group">
                                                                     <Input
                                                                         type="number"
@@ -3923,7 +3940,7 @@ export default function Chat({
                                                                     disabled={!actionPayload.amount || actionPayload.amount <= 0}
                                                                     className="w-full h-16 rounded-[2rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-widest text-sm shadow-xl shadow-brand-600/30 transition-all active:scale-[0.98]"
                                                                 >
-                                                                    WEKA PUNGUZO
+                                                                        {copy('ADD DISCOUNT', 'WEKA PUNGUZO')}
                                                                 </Button>
                                                             </div>
                                                         </div>
@@ -3931,7 +3948,7 @@ export default function Chat({
 
                                                     {activeAction === 'shipping_cost' && (
                                                         <div className="space-y-2">
-                                                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Ushaji wa TZS Gani?</label>
+                                                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">{copy('What TZS charge?', 'Ushaji wa TZS gani?')}</label>
                                                             <div className="relative group">
                                                                 <Input type="number" value={actionPayload.amount} onChange={e => setActionPayload(p => ({ ...p, amount: Number(e.target.value) }))} className="h-16 rounded-2xl text-2xl font-black bg-slate-50 border-2 border-transparent transition-all focus:bg-white focus:border-brand-200 outline-none pl-6 shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" placeholder="0.00" />
                                                                 <div className="absolute right-6 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-brand-200 transition-colors">TZS</div>
@@ -3942,15 +3959,15 @@ export default function Chat({
                                                     {activeAction === 'extra_charge' && actingAs === 'merchant' && (
                                                         <form onSubmit={proposeExtraCharge} className="space-y-5">
                                                             <div className="rounded-2xl border border-orange-100 bg-orange-50/50 px-4 py-3 text-xs font-bold leading-relaxed text-orange-900">
-                                                                This action is recorded in order chat as part of the agreement trail.
+                                                                {copy('This action is recorded in order chat as part of the agreement trail.', 'Kitendo hiki kinarekodiwa kwenye chat ya order kama sehemu ya historia ya makubaliano.')}
                                                             </div>
                                                             {activeExtraCharge?.status === 'proposed' && (
                                                                 <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs font-bold leading-relaxed text-amber-900">
-                                                                    Kuna extra charge inayosubiri jibu la mteja. Ukisave hapa, amount/note itabadilishwa kwenye proposal hiyo hiyo.
+                                                                    {copy('An extra charge is awaiting the buyer response. Saving here updates that same proposal.', 'Kuna extra charge inayosubiri jibu la mteja. Ukisave hapa, amount/note itabadilishwa kwenye proposal hiyo hiyo.')}
                                                                 </div>
                                                             )}
                                                             <div className="space-y-2">
-                                                                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Gharama ya ziada</label>
+                                                                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">{copy('Extra cost', 'Gharama ya ziada')}</label>
                                                                 <div className="relative group">
                                                                     <Input
                                                                         type="number"
@@ -3964,11 +3981,11 @@ export default function Chat({
                                                                 </div>
                                                             </div>
                                                             <div className="space-y-2">
-                                                                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Maelezo kwa mteja</label>
+                                                                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">{copy('Note for buyer', 'Maelezo kwa mteja')}</label>
                                                                 <textarea
                                                                     value={extraChargeNote}
                                                                     onChange={e => setExtraChargeNote(e.target.value)}
-                                                                    placeholder="Mfano: Gharama ya ziada mliyokubaliana kwenye chat..."
+                                                                    placeholder={copy('Example: Extra cost agreed in chat...', 'Mfano: Gharama ya ziada mliyokubaliana kwenye chat...')}
                                                                     className="w-full min-h-[110px] rounded-2xl bg-slate-50 border-2 border-transparent p-4 text-sm font-bold placeholder:opacity-50 resize-none outline-none focus:bg-white focus:border-orange-200 focus:ring-4 ring-orange-500/5 transition-all"
                                                                 />
                                                             </div>
@@ -3982,7 +3999,7 @@ export default function Chat({
                                                                         className="h-14 rounded-2xl border-red-100 text-[11px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
                                                                     >
                                                                         <X className="mr-2 h-4 w-4" />
-                                                                        Remove
+                                                                        {copy('Remove', 'Ondoa')}
                                                                     </Button>
                                                                 )}
                                                                 <Button
@@ -4003,14 +4020,14 @@ export default function Chat({
                                                     {activeAction === 'quantity' && (
                                                         <div className="space-y-4">
                                                             <div className="p-6 rounded-3xl bg-blue-50/50 border border-blue-100 flex flex-col items-center gap-4">
-                                                                <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Idadi ya {order?.product?.title || 'Bidhaa'}</p>
+                                                                <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">{copy('Quantity of', 'Idadi ya')} {order?.product?.title || copy('Product', 'Bidhaa')}</p>
                                                                 <div className="flex items-center gap-6">
                                                                     <button onClick={() => setActionPayload(p => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))} className="h-12 w-12 rounded-2xl bg-white border-2 border-blue-100 text-blue-600 flex items-center justify-center text-2xl font-black active:scale-90 transition-transform shadow-sm">-</button>
                                                                     <span className="text-4xl font-black text-brand-900">{actionPayload.quantity}</span>
                                                                     <button onClick={() => setActionPayload(p => ({ ...p, quantity: p.quantity + 1 }))} className="h-12 w-12 rounded-2xl bg-white border-2 border-blue-100 text-blue-600 flex items-center justify-center text-2xl font-black active:scale-90 transition-transform shadow-sm">+</button>
                                                                 </div>
                                                             </div>
-                                                            <p className="text-[10px] font-bold text-center text-slate-400 px-4 italic leading-relaxed">Unapobadilisha idadi, jumla ya gharama ya oda itabadilika kulingana na bei ya bidhaa hii.</p>
+                                                            <p className="text-[10px] font-bold text-center text-slate-400 px-4 italic leading-relaxed">{copy('Changing the quantity updates the order total based on this product price.', 'Unapobadilisha idadi, jumla ya gharama ya oda itabadilika kulingana na bei ya bidhaa hii.')}</p>
                                                         </div>
                                                     )}
 
@@ -4024,20 +4041,20 @@ export default function Chat({
                                                                                 <AlertTriangle className="h-6 w-6" />
                                                                             </div>
                                                                             <div>
-                                                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Hali ya Malalamiko</p>
-                                                                                <h4 className="text-lg font-black text-brand-900 dark:text-brand-100 uppercase tracking-tight">INAPELELEZWA</h4>
+                                                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Complaint status', 'Hali ya malalamiko')}</p>
+                                                                                <h4 className="text-lg font-black text-brand-900 dark:text-brand-100 uppercase tracking-tight">{copy('ESCALATED', 'INAPELELEZWA')}</h4>
                                                                             </div>
                                                                         </div>
 
                                                                         <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-brand-50 dark:border-brand-900/40">
-                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Maelezo Yako</p>
+                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{copy('Your details', 'Maelezo yako')}</p>
                                                                             <p className="text-sm font-bold text-brand-900 dark:text-brand-100 leading-relaxed italic">"{getActiveComplaint().payload?.reason}"</p>
                                                                         </div>
 
                                                                         {actingAs === 'merchant' && (
                                                                             <div className="grid grid-cols-2 gap-3 mt-6">
-                                                                                <Button onClick={() => submitAction('complaint_resolved', { title: 'MALALAMIKO YAMETATULIWA' })} className="h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-[10px] shadow-lg shadow-emerald-600/20">SETI RESOLVED</Button>
-                                                                                <Button onClick={() => submitAction('complaint_appealed', { title: 'RUFAA IMEKATWA (APPEAL)' })} variant="outline" className="h-14 rounded-2xl border-red-200 text-red-600 hover:bg-red-50 font-black uppercase tracking-widest text-[10px]">KATA RUFAA</Button>
+                                                                                <Button onClick={() => submitAction('complaint_resolved', { title: copy('COMPLAINT RESOLVED', 'MALALAMIKO YAMETATULIWA') })} className="h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-[10px] shadow-lg shadow-emerald-600/20">{copy('MARK RESOLVED', 'WEKA IMETATULIWA')}</Button>
+                                                                                <Button onClick={() => submitAction('complaint_appealed', { title: copy('APPEAL SUBMITTED', 'RUFAA IMEKATWA') })} variant="outline" className="h-14 rounded-2xl border-red-200 text-red-600 hover:bg-red-50 font-black uppercase tracking-widest text-[10px]">{copy('APPEAL', 'KATA RUFAA')}</Button>
                                                                             </div>
                                                                         )}
                                                                     </div>
@@ -4052,13 +4069,13 @@ export default function Chat({
                                                                 actingAs === 'buyer' ? (
                                                                     <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
                                                                         <div className="p-4 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs font-bold leading-relaxed space-y-2">
-                                                                            <p className="font-black uppercase text-[10px] tracking-widest text-red-600 flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> TANBIHI MUHIMU</p>
-                                                                            <p>Malalamiko yatatumwa moja kwa moja kwenye platform ya Takeer kwa ajili ya utatuzi.</p>
-                                                                            <p className="italic underline">Tuma malalamiko ikiwa bidhaa uliyopokea sio yenyewe au kuna dalili zozote za utapeli.</p>
+                                                                            <p className="font-black uppercase text-[10px] tracking-widest text-red-600 flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> {copy('IMPORTANT NOTICE', 'TANBIHI MUHIMU')}</p>
+                                                                            <p>{copy('Complaints are sent directly to the Takeer platform for resolution.', 'Malalamiko yatatumwa moja kwa moja kwenye platform ya Takeer kwa ajili ya utatuzi.')}</p>
+                                                                            <p className="italic underline">{copy('Report an issue if the product is not what you ordered or shows signs of fraud.', 'Tuma malalamiko ikiwa bidhaa uliyopokea sio yenyewe au kuna dalili zozote za utapeli.')}</p>
                                                                         </div>
                                                                         <div className="space-y-2">
-                                                                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Maelezo Kamili</label>
-                                                                            <textarea className="w-full h-32 rounded-2xl bg-slate-50 border-2 border-transparent p-4 text-sm font-bold placeholder:opacity-50 resize-none outline-none focus:bg-white focus:border-red-200 focus:ring-4 ring-red-500/5 transition-all" placeholder="Elezea kwa kifupi kilichotokea..." onChange={e => setActionPayload(p => ({ ...p, reason: e.target.value }))} />
+                                                                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">{copy('Full details', 'Maelezo kamili')}</label>
+                                                                            <textarea className="w-full h-32 rounded-2xl bg-slate-50 border-2 border-transparent p-4 text-sm font-bold placeholder:opacity-50 resize-none outline-none focus:bg-white focus:border-red-200 focus:ring-4 ring-red-500/5 transition-all" placeholder={copy('Briefly explain what happened...', 'Elezea kwa kifupi kilichotokea...')} onChange={e => setActionPayload(p => ({ ...p, reason: e.target.value }))} />
                                                                         </div>
                                                                     </div>
                                                                 ) : (
@@ -4067,8 +4084,8 @@ export default function Chat({
                                                                             <ShieldCheck className="h-10 w-10 text-slate-200" />
                                                                         </div>
                                                                         <div>
-                                                                            <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">Hakuna Malalamiko</h4>
-                                                                            <p className="text-[11px] font-bold text-slate-300 mt-1 uppercase">Mteja hajafungua mgogoro wowote kuhusu oda hii.</p>
+                                                                            <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">{copy('No complaints', 'Hakuna malalamiko')}</h4>
+                                                                            <p className="text-[11px] font-bold text-slate-300 mt-1 uppercase">{copy('The buyer has not opened a dispute about this order.', 'Mteja hajafungua mgogoro wowote kuhusu oda hii.')}</p>
                                                                         </div>
                                                                     </div>
                                                                 )
@@ -4081,7 +4098,7 @@ export default function Chat({
                                                             <div className="relative group mx-4">
                                                                 <Input
                                                                     type="text"
-                                                                    placeholder="Tafuta bidhaa za duka hili..."
+                                                                    placeholder={copy('Search this shop...', 'Tafuta bidhaa za duka hili...')}
                                                                     className="h-14 rounded-[1.25rem] pl-12 bg-white border-2 border-slate-100 focus:border-brand-300 outline-none transition-all shadow-sm font-bold"
                                                                     value={searchQuery}
                                                                     onChange={(e) => handleSearchProducts(e.target.value)}
@@ -4116,7 +4133,7 @@ export default function Chat({
                                                                 )) : searchQuery && !isSearching ? (
                                                                     <div className="w-full py-12 flex flex-col items-center justify-center opacity-40">
                                                                         <Search className="h-12 w-12 mb-4" />
-                                                                        <p className="font-black uppercase text-xs tracking-widest">Hakuna matokeo</p>
+                                                                        <p className="font-black uppercase text-xs tracking-widest">{copy('No results', 'Hakuna matokeo')}</p>
                                                                     </div>
                                                                 ) : null}
                                                             </div>
@@ -4137,10 +4154,10 @@ export default function Chat({
                                                                 <div className="text-center">
                                                                     {showCancelConfirm ? (
                                                                         <div className="p-6 rounded-[2rem] bg-red-50 border-2 border-red-100 animate-in zoom-in-95 duration-200">
-                                                                            <p className="text-xs font-black text-red-900 mb-4">Je, una uhakika unataka kughairi oda hii? Haiwezi kufunguliwa tena.</p>
+                                                                            <p className="text-xs font-black text-red-900 mb-4">{copy('Are you sure you want to cancel this order? It cannot be reopened.', 'Je, una uhakika unataka kughairi oda hii? Haiwezi kufunguliwa tena.')}</p>
                                                                             <div className="grid grid-cols-2 gap-3">
-                                                                                <Button onClick={() => submitAction('cancel_order', { title: 'GHAIRI ODA' })} variant="destructive" className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px]">NDIYO, GHAIRI</Button>
-                                                                                <Button onClick={() => setShowCancelConfirm(false)} variant="ghost" className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px]">HAPANA, RUDI</Button>
+                                                                                <Button onClick={() => submitAction('cancel_order', { title: copy('CANCEL ORDER', 'GHAIRI ODA') })} variant="destructive" className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px]">{copy('YES, CANCEL', 'NDIYO, GHAIRI')}</Button>
+                                                                                <Button onClick={() => setShowCancelConfirm(false)} variant="ghost" className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px]">{copy('NO, GO BACK', 'HAPANA, RUDI')}</Button>
                                                                             </div>
                                                                         </div>
                                                                     ) : (
@@ -4148,7 +4165,7 @@ export default function Chat({
                                                                             onClick={() => setShowCancelConfirm(true)}
                                                                             className="text-[10px] font-black uppercase tracking-widest text-red-400 hover:text-red-600 transition-colors underline underline-offset-4"
                                                                         >
-                                                                            GHAIRI ODA HII
+                                                                            {copy('CANCEL THIS ORDER', 'GHAIRI ODA HII')}
                                                                         </button>
                                                                     )}
                                                                 </div>
@@ -4161,13 +4178,13 @@ export default function Chat({
                                                             {orderStatus !== 'delivered' && orderStatus !== 'completed' ? (
                                                                 <div className="p-8 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center text-center">
                                                                     <X className="h-10 w-10 text-slate-300 mb-4" />
-                                                                    <p className="text-sm font-black text-slate-500 uppercase tracking-tight mb-2">Hauwezi kutoa maoni sasa</p>
-                                                                    <p className="text-[10px] font-bold text-slate-400 leading-relaxed uppercase">Tafadhali subiri mpaka upokee bidhaa yako ndipo utoe maoni kuhusu huduma hii.</p>
+                                                                    <p className="text-sm font-black text-slate-500 uppercase tracking-tight mb-2">{copy('You cannot review yet', 'Hauwezi kutoa maoni sasa')}</p>
+                                                                    <p className="text-[10px] font-bold text-slate-400 leading-relaxed uppercase">{copy('Please wait until you receive your product before reviewing this service.', 'Tafadhali subiri mpaka upokee bidhaa yako ndipo utoe maoni kuhusu huduma hii.')}</p>
                                                                 </div>
                                                             ) : (
                                                                 <>
                                                                     <div className="flex flex-col items-center justify-center p-6 bg-amber-50/50 rounded-3xl border border-amber-100 group">
-                                                                        <p className="text-[10px] font-black uppercase text-amber-600 mb-4 tracking-widest">Gusa nyota ili upige kura</p>
+                                                                        <p className="text-[10px] font-black uppercase text-amber-600 mb-4 tracking-widest">{copy('Tap a star to rate', 'Gusa nyota ili upige kura')}</p>
                                                                         <div className="flex items-center gap-2">
                                                                             {[1, 2, 3, 4, 5].map(s => (
                                                                                 <button key={s} onClick={() => setActionPayload(p => ({ ...p, stars: s }))} className="p-1 transition-transform hover:scale-125 active:scale-90"><Star className={cn("h-10 w-10 transition-colors", s <= (actionPayload.stars || 5) ? "fill-amber-500 text-amber-500" : "text-amber-200")} /></button>
@@ -4175,8 +4192,8 @@ export default function Chat({
                                                                         </div>
                                                                     </div>
                                                                     <div className="space-y-2">
-                                                                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Maoni Yako</label>
-                                                                        <textarea className="w-full h-24 rounded-2xl bg-slate-50 border-2 border-transparent p-4 text-sm font-bold placeholder:opacity-50 resize-none outline-none focus:bg-white focus:border-amber-200 focus:ring-4 ring-amber-500/5 transition-all" placeholder="Toa maoni yako hapa..." onChange={e => setActionPayload(p => ({ ...p, comment: e.target.value }))} />
+                                                                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">{copy('Your review', 'Maoni yako')}</label>
+                                                                        <textarea className="w-full h-24 rounded-2xl bg-slate-50 border-2 border-transparent p-4 text-sm font-bold placeholder:opacity-50 resize-none outline-none focus:bg-white focus:border-amber-200 focus:ring-4 ring-amber-500/5 transition-all" placeholder={copy('Write your review here...', 'Toa maoni yako hapa...')} onChange={e => setActionPayload(p => ({ ...p, comment: e.target.value }))} />
                                                                     </div>
                                                                 </>
                                                             )}
@@ -4185,38 +4202,38 @@ export default function Chat({
 
                                                     {activeAction === 'shipping_proof' && (
                                                         <div className="space-y-4">
-                                                            <p className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Vitu vya Kupakia</p>
+                                                            <p className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">{copy('Files to upload', 'Vitu vya kupakia')}</p>
                                                             <div className="grid grid-cols-2 gap-3">
                                                                 <button
                                                                     onClick={() => mediaRef.current?.click()}
                                                                     className="group flex flex-col items-center justify-center gap-3 h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
                                                                 >
                                                                     <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 group-hover:scale-110 transition-transform"><ImageIcon className="h-6 w-6" /></div>
-                                                                    <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Waybill Receipt</span>
+                                                                    <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">{copy('Waybill receipt', 'Risiti ya waybill')}</span>
                                                                 </button>
                                                                 <button
                                                                     onClick={() => mediaRef.current?.click()}
                                                                     className="group flex flex-col items-center justify-center gap-3 h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
                                                                 >
                                                                     <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 group-hover:scale-110 transition-transform"><Video className="h-6 w-6" /></div>
-                                                                    <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Packing Proof</span>
+                                                                    <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">{copy('Packing proof', 'Ushahidi wa kufunga')}</span>
                                                                 </button>
                                                             </div>
-                                                            <p className="text-[9px] font-bold text-center text-slate-400 uppercase">Picha au video hii itasaidia kama mteja akifungua mgogoro (Dispute)</p>
+                                                            <p className="text-[9px] font-bold text-center text-slate-400 uppercase">{copy('This photo or video helps if the buyer opens a dispute.', 'Picha au video hii itasaidia kama mteja akifungua mgogoro (dispute)')}</p>
                                                         </div>
                                                     )}
 
                                                     {activeAction === 'unboxing_video' && (
                                                         <div className="space-y-4">
-                                                            <p className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Video ya Unboxing</p>
+                                                            <p className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">{copy('Unboxing video', 'Video ya unboxing')}</p>
                                                             <button
                                                                 onClick={() => mediaRef.current?.click()}
                                                                 className="group flex flex-col items-center justify-center gap-3 w-full h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
                                                             >
                                                                 <div className="p-3 rounded-2xl bg-indigo-50 text-indigo-600 group-hover:scale-110 transition-transform"><Video className="h-6 w-6" /></div>
-                                                                <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Pakia Video ya Unboxing</span>
+                                                                <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">{copy('Upload unboxing video', 'Pakia video ya unboxing')}</span>
                                                             </button>
-                                                            <p className="text-[9px] font-bold text-center text-slate-400 uppercase leading-relaxed px-6">Hii video ni muhimu kama utahitaji kurejeshewa pesa endapo bidhaa imekuja na tatizo au imevunjika.</p>
+                                                            <p className="text-[9px] font-bold text-center text-slate-400 uppercase leading-relaxed px-6">{copy('This video is important if you need a refund because the product arrived damaged or faulty.', 'Hii video ni muhimu kama utahitaji kurejeshewa pesa endapo bidhaa imekuja na tatizo au imevunjika.')}</p>
                                                         </div>
                                                     )}
                                                 </div>
@@ -4242,7 +4259,7 @@ export default function Chat({
                             </Drawer>
 
                             <div className="relative flex-1">
-                                <Input type="text" placeholder="Andika ujumbe wako hapa..." value={input} onChange={(e) => setInput(e.target.value)} className="h-12 pl-4 pr-10 rounded-full border-brand-100 focus-visible:ring-brand-500 shadow-sm" />
+                                <Input type="text" placeholder={copy('Write your message here...', 'Andika ujumbe wako hapa...')} value={input} onChange={(e) => setInput(e.target.value)} className="h-12 pl-4 pr-10 rounded-full border-brand-100 focus-visible:ring-brand-500 shadow-sm" />
                                 <input
                                     type="file"
                                     ref={mediaRef}
@@ -4256,7 +4273,7 @@ export default function Chat({
                                     size="icon"
                                     onClick={() => mediaRef.current?.click()}
                                     disabled={isUploading}
-                                    title="Ambatanisha picha au video"
+                                    title={copy('Attach photo or video', 'Ambatanisha picha au video')}
                                     className="absolute right-1 top-1 h-10 w-10 text-brand-400 hover:text-brand-600 hover:bg-transparent"
                                 >
                                     {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-5 w-5" />}
@@ -4292,10 +4309,10 @@ export default function Chat({
                             <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
                                 <div>
                                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                        {actingAs === 'merchant' ? 'Pendekeza bidhaa' : 'Ongeza kwenye oda'}
+                                        {actingAs === 'merchant' ? copy('Recommend a product', 'Pendekeza bidhaa') : copy('Add to order', 'Ongeza kwenye oda')}
                                     </p>
                                     <h3 className="mt-0.5 text-base font-black text-slate-950 dark:text-slate-100">
-                                        Hakiki bidhaa kabla ya kutuma
+                                        {copy('Review the product before sending', 'Hakiki bidhaa kabla ya kutuma')}
                                     </h3>
                                 </div>
                                 <Button
@@ -4313,7 +4330,7 @@ export default function Chat({
                                 <div className="flex gap-4">
                                     <div className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
                                         {selectedProduct?.image_url || selectedProduct?.url ? (
-                                            <img src={selectedProduct.image_url || selectedProduct.url} className="h-full w-full object-cover" alt={selectedProduct?.title || 'Bidhaa'} />
+                                            <img src={selectedProduct.image_url || selectedProduct.url} className="h-full w-full object-cover" alt={selectedProduct?.title || copy('Product', 'Bidhaa')} />
                                         ) : (
                                             <ProductFallbackIcon type={selectedProduct?.type} className="text-slate-300" />
                                         )}
@@ -4335,7 +4352,7 @@ export default function Chat({
 
                                 {selectedProduct?.has_variants && selectedProduct?.variants?.length > 0 && (
                                     <div className="mt-5 space-y-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Chagua aina</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Choose type', 'Chagua aina')}</p>
                                         <div className="grid grid-cols-2 gap-2">
                                             {selectedProduct.variants.map(v => (
                                                 <button
@@ -4385,9 +4402,9 @@ export default function Chat({
                                     className="h-14 w-full rounded-2xl bg-brand-600 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-brand-600/20 hover:bg-brand-700"
                                 >
                                     {actingAs === 'merchant' ? (
-                                        <><Plus className="mr-2 h-5 w-5" /> Pendekeza kwa mteja</>
+                                        <><Plus className="mr-2 h-5 w-5" /> {copy('Suggest to buyer', 'Pendekeza kwa mteja')}</>
                                     ) : (
-                                        <><ShoppingBag className="mr-2 h-5 w-5" /> Ongeza kwenye oda</>
+                                        <><ShoppingBag className="mr-2 h-5 w-5" /> {copy('Add to order', 'Ongeza kwenye oda')}</>
                                     )}
                                 </Button>
                             </div>
@@ -4403,10 +4420,10 @@ export default function Chat({
                                 <div className="h-20 w-20 rounded-3xl bg-white/20 backdrop-blur-xl flex items-center justify-center mb-4 border border-white/30 shadow-lg">
                                     <Zap className="h-10 w-10 fill-white" />
                                 </div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-1">Mchakato wa Malipo</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-1">{copy('Payment process', 'Mchakato wa malipo')}</p>
                                 <h2 className="text-4xl font-black tracking-tight mb-2">TZS {orderDisplayTotal.toLocaleString()}</h2>
                                 <div className="px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
-                                    <ShieldCheck className="h-3 w-3" /> Malipo Salama (Escrow)
+                                    <ShieldCheck className="h-3 w-3" /> {copy('Secure payment through PSP', 'Malipo salama kupitia PSP')}
                                 </div>
                             </div>
                         </div>
@@ -4422,7 +4439,7 @@ export default function Chat({
                                     )}
                                 >
                                     <Zap className={cn("h-4 w-4", paymentMethod === 'mobile' ? "fill-brand-600" : "fill-slate-400")} />
-                                    Lipa kwa Simu
+                                    {copy('Pay by mobile', 'Lipa kwa simu')}
                                 </button>
                                 <button
                                     onClick={() => setPaymentMethod('card')}
@@ -4432,7 +4449,7 @@ export default function Chat({
                                     )}
                                 >
                                     <CreditCard className="h-4 w-4" />
-                                    Lipa kwa Kadi
+                                    {copy('Pay by card', 'Lipa kwa kadi')}
                                 </button>
                             </div>
 
@@ -4440,7 +4457,7 @@ export default function Chat({
                                 {paymentMethod === 'mobile' ? (
                                     <div className="space-y-4">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Namba ya Simu ya Malipo</label>
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{copy('Payment phone number', 'Namba ya simu ya malipo')}</label>
                                             <div className="relative group">
                                                 <Input
                                                     value={paymentPhone}
@@ -4448,11 +4465,11 @@ export default function Chat({
                                                     className="h-20 rounded-3xl text-3xl font-black bg-slate-50 border-2 border-transparent focus:border-brand-300 outline-none pl-8 shadow-inner"
                                                     placeholder="0XXX XXXXXX"
                                                 />
-                                                <div className="absolute right-8 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-brand-300 transition-colors uppercase tracking-widest text-xs">Simu</div>
+                                                <div className="absolute right-8 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-brand-300 transition-colors uppercase tracking-widest text-xs">{copy('Phone', 'Simu')}</div>
                                             </div>
                                         </div>
                                         <p className="text-[10px] font-bold text-slate-400 leading-relaxed italic px-2">
-                                            Hakikisha simu iko karibu. Utapokea ombi la kuweka PIN ili kukamilisha malipo.
+                                            {copy('Keep your phone nearby. You will receive a PIN prompt to complete payment.', 'Hakikisha simu iko karibu. Utapokea ombi la kuweka PIN ili kukamilisha malipo.')}
                                         </p>
                                     </div>
                                 ) : (
@@ -4461,8 +4478,8 @@ export default function Chat({
                                             <CreditCard className="h-8 w-8" />
                                         </div>
                                         <div className="space-y-1">
-                                            <h4 className="font-black text-slate-400 uppercase tracking-widest text-sm">Card Payments Coming Soon</h4>
-                                            <p className="text-[10px] font-bold text-slate-400 leading-relaxed max-w-[200px]">Tunakamilisha ushirikiano na benki ili kukuwezesha kulipa kwa kadi.</p>
+                                            <h4 className="font-black text-slate-400 uppercase tracking-widest text-sm">{copy('Card payments coming soon', 'Malipo ya kadi yanakuja hivi karibuni')}</h4>
+                                            <p className="text-[10px] font-bold text-slate-400 leading-relaxed max-w-[200px]">{copy('We are finalizing bank integrations to enable card payments.', 'Tunakamilisha ushirikiano na benki ili kukuwezesha kulipa kwa kadi.')}</p>
                                         </div>
                                     </div>
                                 )}
@@ -4471,14 +4488,14 @@ export default function Chat({
                             <Button
                                 onClick={async () => {
                                     if (paymentMethod === 'card') {
-                                        toast.info('Tafadhali tumia malipo ya simu kwa sasa.');
+                    toast.info(copy('Please use mobile money payment for now.', 'Tafadhali tumia malipo ya simu kwa sasa.'));
                                         return;
                                     }
                                     setIsPaying(true);
                                     try {
                                         const paymentResult = await submitAction('initiate_payment', {
                                             payment_number: paymentPhone,
-                                            title: `Malipo yameanzishwa — TZS ${orderDisplayTotal.toLocaleString()}`
+                                            title: copy(`Payment started — TZS ${orderDisplayTotal.toLocaleString()}`, `Malipo yameanzishwa — TZS ${orderDisplayTotal.toLocaleString()}`)
                                         });
 
                                         const freshOrder = paymentResult?.order;
@@ -4488,7 +4505,7 @@ export default function Chat({
 
                                         setOrder(freshOrder);
                                         setIsPaymentDrawerOpen(false);
-                                        toast.success(`Malipo ya TZS ${Number(freshOrder.order_total_with_additions || freshOrder.total_paid || orderDisplayTotal).toLocaleString()} yamekamilika!`);
+                                        toast.success(copy(`Payment of TZS ${Number(freshOrder.order_total_with_additions || freshOrder.total_paid || orderDisplayTotal).toLocaleString()} completed!`, `Malipo ya TZS ${Number(freshOrder.order_total_with_additions || freshOrder.total_paid || orderDisplayTotal).toLocaleString()} yamekamilika!`));
                                     } finally {
                                         setIsPaying(false);
                                     }
@@ -4501,7 +4518,7 @@ export default function Chat({
                                 ) : (
                                     <>
                                         <ShieldCheck className="h-5 w-5" />
-                                        Kamilisha Malipo
+                                        {copy('Complete payment', 'Kamilisha malipo')}
                                     </>
                                 )}
                             </Button>
@@ -4513,21 +4530,21 @@ export default function Chat({
                 <Drawer open={isDisputeDrawerOpen} onOpenChange={setIsDisputeDrawerOpen}>
                     <DrawerContent className="rounded-t-[2rem] bg-white dark:bg-slate-950">
                         <DrawerHeader>
-                            <DrawerTitle className="text-xl font-black text-red-600 uppercase tracking-tight">Ripoti Tatizo (Dispute)</DrawerTitle>
-                            <DrawerDescription className="text-xs font-bold text-slate-500">Pesa imeshikiliwa kwenye Escrow. Tueleze tatizo na weka ushahidi wa video (Unboxing Video).</DrawerDescription>
+                            <DrawerTitle className="text-xl font-black text-red-600 uppercase tracking-tight">{copy('Report an issue (Dispute)', 'Ripoti tatizo (mgogoro)')}</DrawerTitle>
+                            <DrawerDescription className="text-xs font-bold text-slate-500">{copy('Provider settlement is not complete. Explain the issue and add video evidence (unboxing video).', 'Provider settlement haijakamilika. Tueleze tatizo na weka ushahidi wa video (unboxing video).')}</DrawerDescription>
                         </DrawerHeader>
                         <div className="p-4 space-y-4 pb-10">
                             <textarea
                                 value={disputeReason}
                                 onChange={e => setDisputeReason(e.target.value)}
                                 className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-red-500/20 transition-all"
-                                placeholder="Eleza tatizo kwa kina..."
+                                placeholder={copy('Explain the issue in detail...', 'Eleza tatizo kwa kina...')}
                                 rows={4}
                             />
                             <button type="button" onClick={() => { const el = document.getElementById('dispute-video-input'); if (el) el.click(); }} className={cn("w-full flex flex-col items-center justify-center p-6 rounded-xl border border-dashed transition-colors", disputeVideo ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20" : "border-slate-300 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800")}>
                                 <Video className={cn("h-8 w-8 mb-3", disputeVideo ? "text-emerald-500" : "text-slate-400")} />
                                 <span className={cn("text-[10px] font-black uppercase tracking-widest", disputeVideo ? "text-emerald-600" : "text-slate-500")}>
-                                    {disputeVideo ? 'Video Imechaguliwa' : 'Weka Unboxing Video (MP4/MOV)'}
+                                    {disputeVideo ? copy('Video selected', 'Video imechaguliwa') : copy('Add unboxing video (MP4/MOV)', 'Weka unboxing video (MP4/MOV)')}
                                 </span>
                                 <input id="dispute-video-input" type="file" accept="image/*,video/*" className="hidden" onChange={e => setDisputeVideo(e.target.files?.[0])} />
                             </button>

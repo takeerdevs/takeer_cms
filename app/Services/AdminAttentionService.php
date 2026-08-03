@@ -10,11 +10,12 @@ use App\Models\MerchantServiceCredential;
 use App\Models\MerchantTrustSafetyReview;
 use App\Models\NotificationLog;
 use App\Models\Product;
+use App\Models\ProviderPayout;
+use App\Models\ProviderReconciliationBreak;
 use App\Models\RefundRequest;
 use App\Models\ServiceCategory;
 use App\Models\ServiceRequest;
 use App\Models\TrackedLink;
-use App\Models\WithdrawalRequest;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -25,7 +26,8 @@ class AdminAttentionService
         $items = collect()
             ->merge($this->openDisputes())
             ->merge($this->pendingRefunds())
-            ->merge($this->pendingWithdrawals())
+            ->merge($this->pendingProviderPayouts())
+            ->merge($this->openReconciliationBreaks())
             ->merge($this->pendingMerchantKyc())
             ->merge($this->pendingForwarders())
             ->merge($this->pendingTrustSafetyReviews())
@@ -84,24 +86,43 @@ class AdminAttentionService
             ));
     }
 
-    private function pendingWithdrawals(): Collection
+    private function pendingProviderPayouts(): Collection
     {
-        return WithdrawalRequest::query()
-            ->with(['user:id,name,phone_number', 'merchant.currency:id,code'])
-            ->where('status', 'pending')
+        return ProviderPayout::query()
+            ->with(['merchant:id,display_name,username'])
+            ->whereIn('state', ['created', 'submitted', 'processing'])
             ->latest()
             ->limit(20)
-            ->get()
-            ->map(fn (WithdrawalRequest $withdrawal) => $this->item(
-                id: "withdrawal:{$withdrawal->id}",
+            ->get()->map(fn (ProviderPayout $payout) => $this->item(
+                id: "provider-payout:{$payout->id}",
                 category: 'payments',
-                source: 'Withdrawals',
+                source: 'Provider payouts',
                 severity: 'high',
-                title: 'Merchant withdrawal waiting approval',
-                body: trim(($withdrawal->user?->name ?: 'Merchant') . ' requested ' . $this->withdrawalAmountLabel($withdrawal)),
-                href: '/admin/withdrawals',
-                action: 'Review payout',
-                occurredAt: $withdrawal->created_at?->toISOString(),
+                title: 'Provider payout requires operations review',
+                body: trim(($payout->merchant?->display_name ?: 'Merchant') . ' · ' . $payout->currency . ' ' . number_format($payout->amount_minor / 100, 2)),
+                href: '/admin/payment-operations',
+                action: 'Review provider payout',
+                occurredAt: $payout->created_at?->toISOString(),
+            ));
+    }
+
+    private function openReconciliationBreaks(): Collection
+    {
+        return ProviderReconciliationBreak::query()
+            ->with(['order.merchant:id,display_name,username'])
+            ->whereIn('status', ['open', 'investigating'])
+            ->latest()
+            ->limit(20)
+            ->get()->map(fn (ProviderReconciliationBreak $break) => $this->item(
+                id: "reconciliation-break:{$break->id}",
+                category: 'payments',
+                source: 'Provider reconciliation',
+                severity: $break->severity === 'critical' ? 'critical' : 'high',
+                title: 'Provider reconciliation break requires review',
+                body: trim(($break->break_type ?: 'Provider mismatch') . ($break->order?->public_id ? ' for order #' . $break->order->public_id : '')),
+                href: '/admin/payment-operations',
+                action: 'Review reconciliation break',
+                occurredAt: $break->created_at?->toISOString(),
             ));
     }
 
@@ -124,19 +145,6 @@ class AdminAttentionService
                 action: 'Review refund',
                 occurredAt: $refund->created_at?->toISOString(),
             ));
-    }
-
-    private function withdrawalAmountLabel(WithdrawalRequest $withdrawal): string
-    {
-        $merchantCurrency = $withdrawal->merchant_currency_code ?: $withdrawal->merchant?->currency?->code ?: 'TZS';
-        $merchantAmount = $withdrawal->merchant_amount !== null ? (float) $withdrawal->merchant_amount : (float) $withdrawal->amount;
-        $label = $merchantCurrency . ' ' . number_format($merchantAmount, 2);
-
-        if ($withdrawal->payout_currency_code && $withdrawal->payout_currency_code !== $merchantCurrency) {
-            $label .= ' payout ' . $withdrawal->payout_currency_code . ' ' . number_format((float) ($withdrawal->payout_amount ?? $withdrawal->amount), 2);
-        }
-
-        return $label;
     }
 
     private function pendingMerchantKyc(): Collection

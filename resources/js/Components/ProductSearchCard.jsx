@@ -2,12 +2,14 @@ import React, { useMemo } from 'react';
 import { Link } from '@inertiajs/react';
 import { BadgeCheck, CalendarClock, DownloadCloud, Image, Lock, Music, PenLine, Play, ShoppingBag, Store } from 'lucide-react';
 import { productCardPriceLabel, productUnitLabel } from '@/lib/productUnits';
+import { useLocale } from '@/lib/i18n';
 
 export default function ProductSearchCard({ product, variant = 'list' }) {
+    const { copy } = useLocale();
     if (!product) return null;
 
     const href = `/product/${product.slug || product.id}`;
-    const label = productLabel(product);
+    const label = productLabel(product, copy);
     const Icon = productIcon(product);
     const merchant = product.merchant || {};
     const unitLabel = product.type === 'physical' ? productUnitLabel(product) : '';
@@ -36,7 +38,7 @@ export default function ProductSearchCard({ product, variant = 'list' }) {
                 <div className="relative aspect-square bg-slate-50">
                     {discountPercent > 0 && (
                         <div className="absolute left-2 top-0 z-10 rounded-b-md bg-blue-600 px-1.5 py-1 text-center text-[9px] font-black uppercase leading-none text-white">
-                            {discountPercent}%<br />OFF
+                            {discountPercent}%<br />{copy('OFF', 'PUNGUZO')}
                         </div>
                     )}
                     {imageUrl ? (
@@ -88,7 +90,7 @@ export default function ProductSearchCard({ product, variant = 'list' }) {
                         {merchant.is_verified && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-bold">
                                 <BadgeCheck className="h-3 w-3" />
-                                Verified
+                                {copy('Verified', 'Imethibitishwa')}
                             </span>
                         )}
                     </div>
@@ -97,7 +99,7 @@ export default function ProductSearchCard({ product, variant = 'list' }) {
                         <p className="mt-1 text-xs font-bold text-slate-500 truncate">{unitLabel}</p>
                     )}
                     <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                        By {merchant.display_name || merchant.name || 'Creator'}
+                        {copy('By', 'Na')} {merchant.display_name || merchant.name || copy('Creator', 'Creator')}
                     </p>
                     <div className="mt-2 flex items-center justify-between gap-3">
                         <span className="text-sm font-black text-brand-600">
@@ -105,7 +107,7 @@ export default function ProductSearchCard({ product, variant = 'list' }) {
                         </span>
                         <span className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 text-white px-3 py-1.5 text-xs font-black">
                             <ShoppingBag className="h-3.5 w-3.5" />
-                            View
+                            {copy('View', 'Angalia')}
                         </span>
                     </div>
                 </div>
@@ -114,27 +116,27 @@ export default function ProductSearchCard({ product, variant = 'list' }) {
     );
 }
 
-function productLabel(product) {
-    if (product.type === 'service') return 'Service';
-    if (product.type !== 'digital') return 'Product';
+function productLabel(product, copy = (english) => english) {
+    if (product.type === 'service') return copy('Service', 'Huduma');
+    if (product.type !== 'digital') return copy('Product', 'Bidhaa');
 
     const map = {
-        video_stream: 'Premium video',
-        audio_stream: 'Premium audio',
-        gallery_pack: 'Gallery pack',
-        live_event: 'Live event',
-        custom_delivery: 'Custom work',
-        external_link: 'External access',
+        video_stream: copy('Premium video', 'Video ya premium'),
+        audio_stream: copy('Premium audio', 'Audio ya premium'),
+        gallery_pack: copy('Gallery pack', 'Gallery pack'),
+        live_event: copy('Live event', 'Tukio la live'),
+        custom_delivery: copy('Custom work', 'Kazi maalum'),
+        external_link: copy('External access', 'Access ya nje'),
         file: product.digital_content_type === 'software'
-            ? 'Software'
+            ? copy('Software', 'Software')
             : product.digital_content_type === 'document'
-                ? 'Document'
+                ? copy('Document', 'Document')
                 : product.digital_content_type === 'ebook'
-                    ? 'E-book'
-                    : 'Download',
+                    ? copy('E-book', 'E-book')
+                    : copy('Download', 'Download'),
     };
 
-    return map[product.digital_delivery_type] || 'Download';
+    return map[product.digital_delivery_type] || copy('Download', 'Download');
 }
 
 function productIcon(product) {

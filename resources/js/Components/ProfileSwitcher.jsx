@@ -3,8 +3,10 @@ import { usePage, Link, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Store, User, Plus, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLocale } from '@/lib/i18n';
 
 export default function ProfileSwitcher({ className, onCreateBusiness, variant = 'compact' }) {
+    const { t } = useLocale();
     const { auth, activeMerchant: sharedActiveMerchant } = usePage().props;
     const merchants = auth?.user?.merchant_profiles ?? [];
     const [isOpen, setIsOpen] = useState(false);
@@ -13,10 +15,10 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
     // Find active merchant from URL if possible, or fallback to default
     const pathParts = window.location.pathname.split('/');
     const merchantFromUrl = pathParts[1] === 'merchant' ? pathParts[2] : null;
-    
-    const activeMerchant = sharedActiveMerchant 
-        || merchants.find(m => m.username === merchantFromUrl) 
-        || merchants.find(m => m.is_default) 
+
+    const activeMerchant = sharedActiveMerchant
+        || merchants.find(m => m.username === merchantFromUrl)
+        || merchants.find(m => m.is_default)
         || merchants[0];
 
     if (!auth?.user?.is_merchant || merchants.length === 0) return null;
@@ -49,7 +51,7 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                         {activeMerchant?.display_name}
                     </span>
                     <span className={cn("text-muted-foreground truncate uppercase tracking-widest font-bold", isHero ? "text-[11px]" : "text-[9px]")}>
-                        {activeMerchant?.type || 'Business'}
+                        {activeMerchant?.type || t('components.business')}
                     </span>
                 </div>
                 <ChevronDown className={cn("shrink-0 text-muted-foreground transition-transform duration-300", isHero ? "h-4 w-4" : "h-4 w-4", isOpen && "rotate-180")} />
@@ -70,14 +72,14 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
                             className={cn(
-                                "fixed left-4 right-4 top-28 bg-card/95 backdrop-blur-xl border border-border/50 rounded-[2rem] shadow-2xl overflow-hidden p-2 sm:absolute sm:top-full sm:mt-2 sm:w-72",
+                                "fixed left-4 right-4 top-28 bg-card/95 backdrop-blur-xl border border-border/50 rounded-[4px] shadow-2xl overflow-hidden p-2 sm:absolute sm:top-full sm:mt-2 sm:w-72",
                                 isHero ? "sm:left-0 sm:right-auto" : "sm:left-auto sm:right-0"
                             )}
                         >
                             <div className="p-3 border-b border-border/50">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-2">Badili Akaunti</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-2">{t('components.switchAccount')}</p>
                             </div>
-                            
+
                             <div className="max-h-[350px] overflow-y-auto no-scrollbar py-2 space-y-1">
                                 {merchants.map((merchant) => {
                                     const isActive = activeMerchant?.id === merchant.id;
@@ -108,8 +110,8 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                                                 <p className={cn("font-bold text-sm truncate", isActive ? "text-brand-600" : "text-foreground")}>
                                                     {merchant.display_name}
                                                 </p>
-                                                <p className="text-[10px] text-muted-foreground truncate">
-                                                    @{merchant.username} · {merchant.access_type === 'staff' ? (merchant.job_title || merchant.role || 'Team') : 'Owner'}
+                                                    <p className="text-[10px] text-muted-foreground truncate">
+                                                    @{merchant.username} · {merchant.access_type === 'staff' ? (merchant.job_title || merchant.role || t('components.team')) : t('components.owner')}
                                                 </p>
                                             </div>
                                             {isActive && (
@@ -129,7 +131,7 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                                         && m.type === 'personal'
                                         && (m.is_verified || ['approved', 'verified'].includes(String(m.kyc_status || '').toLowerCase()) || ['approved', 'verified'].includes(String(m.kyc?.status || '').toLowerCase()))
                                     ));
-                                    
+
                                     if (!hasVerifiedProfile) {
                                         return (
                                             <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-start gap-3 opacity-80">
@@ -137,8 +139,8 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                                                     <Plus className="h-5 w-5" />
                                                 </div>
                                                 <div className="flex-1">
-                                                    <p className="font-bold text-xs text-slate-600">Ongeza Biashara Mpya</p>
-                                                    <p className="text-[10px] text-slate-400 leading-tight mt-0.5">Tafadhali hakiki kitambulisho chako kwanza ili kuongeza biashara.</p>
+                                                    <p className="font-bold text-xs text-slate-600">{t('components.addBusiness')}</p>
+                                                    <p className="text-[10px] text-slate-400 leading-tight mt-0.5">{t('components.verifyIdentityFirst')}</p>
                                                 </div>
                                             </div>
                                         );
@@ -152,7 +154,7 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                                             <div className="h-10 w-10 rounded-full bg-brand-600 flex items-center justify-center shrink-0 text-white shadow-lg shadow-brand-600/20">
                                                 <Plus className="h-5 w-5" />
                                             </div>
-                                            <span className="font-bold text-sm">Ongeza Biashara Mpya</span>
+                                            <span className="font-bold text-sm">{t('components.addBusiness')}</span>
                                         </button>
                                     ) : (
                                         <Link
@@ -163,7 +165,7 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                                             <div className="h-10 w-10 rounded-full bg-muted/50 flex items-center justify-center shrink-0">
                                                 <Plus className="h-5 w-5" />
                                             </div>
-                                            <span className="font-bold text-sm">Ongeza Biashara Mpya</span>
+                                            <span className="font-bold text-sm">{t('components.addBusiness')}</span>
                                         </Link>
                                     );
                                 })()}

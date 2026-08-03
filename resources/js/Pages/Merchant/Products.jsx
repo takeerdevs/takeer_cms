@@ -14,8 +14,10 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { productPriceLabel, productStockLabel } from '@/lib/productUnits';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
+import { useLocale } from '@/lib/i18n';
 
 export default function MerchantProducts({ merchantUsername, typeScope = 'all', moduleScope = null, merchantTimezone = 'Africa/Dar_es_Salaam' }) {
+    const { copy } = useLocale();
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, published, draft, archived
@@ -54,13 +56,13 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     const canDelete = canAny([`${resourceForScope}.delete`, 'products.delete', 'digital_products.delete', 'services.delete']);
     const canSchedule = can('services.schedule');
     const weekdayOptions = [
-        { value: 1, short: 'Mon', label: 'Monday' },
-        { value: 2, short: 'Tue', label: 'Tuesday' },
-        { value: 3, short: 'Wed', label: 'Wednesday' },
-        { value: 4, short: 'Thu', label: 'Thursday' },
-        { value: 5, short: 'Fri', label: 'Friday' },
-        { value: 6, short: 'Sat', label: 'Saturday' },
-        { value: 7, short: 'Sun', label: 'Sunday' },
+        { value: 1, short: copy('Mon', 'Jt'), label: copy('Monday', 'Jumatatu') },
+        { value: 2, short: copy('Tue', 'Jnn'), label: copy('Tuesday', 'Jumanne') },
+        { value: 3, short: copy('Wed', 'Jtn'), label: copy('Wednesday', 'Jumatano') },
+        { value: 4, short: copy('Thu', 'Alh'), label: copy('Thursday', 'Alhamisi') },
+        { value: 5, short: copy('Fri', 'Iju'), label: copy('Friday', 'Ijumaa') },
+        { value: 6, short: copy('Sat', 'Jmo'), label: copy('Saturday', 'Jumamosi') },
+        { value: 7, short: copy('Sun', 'Jpi'), label: copy('Sunday', 'Jumapili') },
     ];
     const selectedAvailabilityProduct = products.find((product) => String(product.id) === String(availabilityProductId));
     const availabilityMode = selectedAvailabilityProduct?.service_scheduling_type || 'recurring';
@@ -119,15 +121,15 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
         if (deletingProductId) return;
         const confirmed = window.confirm(
             product.status === 'draft'
-                ? 'Unataka kufuta draft hii kabisa?'
-                : 'Unataka kufuta bidhaa hii? Bidhaa yenye oda haiwezi kufutwa.'
+                ? copy('Delete this draft permanently?', 'Unataka kufuta draft hii kabisa?')
+                : copy('Delete this product? A product with orders cannot be deleted.', 'Unataka kufuta bidhaa hii? Bidhaa yenye oda haiwezi kufutwa.')
         );
         if (!confirmed) return;
 
         setDeletingProductId(product.id);
         try {
             const response = await axios.delete(`/merchant/${merchantUsername}/products/${product.id}`);
-            toast.success(response.data?.message || 'Bidhaa imeondolewa.');
+            toast.success(response.data?.message || copy('Product removed.', 'Bidhaa imeondolewa.'));
             setProducts((prev) => prev.filter((item) => item.id !== product.id));
             setMeta((prev) => ({ ...prev, total: Math.max(0, Number(prev.total || 0) - 1) }));
             if (products.length === 1 && page > 1) {
@@ -136,7 +138,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                 fetchProducts();
             }
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kufuta bidhaa.');
+            toast.error(error?.response?.data?.message || copy('Unable to delete product.', 'Imeshindwa kufuta bidhaa.'));
         } finally {
             setDeletingProductId(null);
         }
@@ -271,7 +273,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                 }));
 
             if (cleanedRules.length === 0) {
-                toast.error('Add at least one valid availability rule.');
+                toast.error(copy('Add at least one valid availability rule.', 'Ongeza angalau kanuni moja sahihi ya upatikanaji.'));
                 return;
             }
 
@@ -280,10 +282,10 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                 timezone: availabilityTimezone,
                 rules: cleanedRules,
             });
-            toast.success(response.data?.message || 'Scheduling settings saved.');
+                toast.success(response.data?.message || copy('Scheduling settings saved.', 'Mipangilio ya ratiba imehifadhiwa.'));
             applySchedulingResponse(response.data || null);
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to save scheduling settings.');
+                toast.error(error?.response?.data?.message || copy('Failed to save scheduling settings.', 'Imeshindikana kuhifadhi mipangilio ya ratiba.'));
         } finally {
             setSchedulingSaving(false);
         }
@@ -382,7 +384,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                 }));
 
             if (sessions.length === 0) {
-                toast.error('Add at least one session with a start date.');
+                toast.error(copy('Add at least one session with a start date.', 'Ongeza angalau session moja yenye tarehe ya kuanza.'));
                 return;
             }
 
@@ -390,10 +392,10 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                 product_id: Number(availabilityProductId),
                 sessions,
             });
-            toast.success(response.data?.message || 'Service sessions saved.');
+                toast.success(response.data?.message || copy('Service sessions saved.', 'Sessions za huduma zimehifadhiwa.'));
             setServiceSessions(normalizeSessions(response.data?.sessions || []));
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to save sessions.');
+                toast.error(error?.response?.data?.message || copy('Failed to save sessions.', 'Imeshindikana kuhifadhi sessions.'));
         } finally {
             setSchedulingSaving(false);
         }
@@ -441,12 +443,12 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                 `/merchant/${merchantUsername}/service-requests/${selectedServiceRequest.id}/status`,
                 payload
             );
-            toast.success(response.data?.message || 'Request updated.');
+            toast.success(response.data?.message || copy('Request updated.', 'Ombi limesasishwa.'));
             setSelectedServiceRequest(response.data?.data || null);
             await fetchServiceRequests();
             await fetchCalendarRequests();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to update service request.');
+            toast.error(error?.response?.data?.message || copy('Failed to update service request.', 'Imeshindwa kusasisha ombi la huduma.'));
         } finally {
             setRequestUpdating(false);
         }
@@ -459,12 +461,12 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             const response = await axios.post(
                 `/merchant/${merchantUsername}/service-requests/${selectedServiceRequest.id}/mark-delivered`
             );
-            toast.success(response.data?.message || 'Service marked delivered.');
+            toast.success(response.data?.message || copy('Service marked delivered.', 'Huduma imewekwa kuwa imewasilishwa.'));
             setSelectedServiceRequest(response.data?.data || selectedServiceRequest);
             await fetchServiceRequests();
             await fetchCalendarRequests();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to mark service delivered.');
+            toast.error(error?.response?.data?.message || copy('Failed to mark service delivered.', 'Imeshindwa kuweka huduma kuwa imewasilishwa.'));
         } finally {
             setRequestUpdating(false);
         }
@@ -493,12 +495,12 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                     fields: fulfillmentAction.fields || {},
                 }
             );
-            toast.success(response.data?.message || 'Fulfillment updated.');
+            toast.success(response.data?.message || copy('Fulfillment updated.', 'Utimizaji wa order umesasishwa.'));
             setSelectedServiceRequest(response.data?.data || selectedServiceRequest);
             await fetchServiceRequests();
             await fetchCalendarRequests();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to update fulfillment.');
+            toast.error(error?.response?.data?.message || copy('Failed to update fulfillment.', 'Imeshindwa kusasisha utimizaji wa order.'));
         } finally {
             setFulfillmentUpdating(false);
         }
@@ -507,18 +509,18 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     const copyPaymentLink = async (url) => {
         try {
             await navigator.clipboard.writeText(url);
-            toast.success('Payment link copied.');
+            toast.success(copy('Payment link copied.', 'Payment link imenakiliwa.'));
         } catch (error) {
-            toast.error('Could not copy payment link.');
+            toast.error(copy('Could not copy payment link.', 'Imeshindwa kunakili payment link.'));
         }
     };
 
     const copyPreparedMessage = async (message) => {
         try {
             await navigator.clipboard.writeText(message);
-            toast.success('Message copied.');
+            toast.success(copy('Message copied.', 'Ujumbe umenakiliwa.'));
         } catch (error) {
-            toast.error('Could not copy message.');
+            toast.error(copy('Could not copy message.', 'Imeshindwa kunakili ujumbe.'));
         }
     };
 
@@ -530,11 +532,11 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                 `/merchant/${merchantUsername}/service-requests/${selectedServiceRequest.id}/prepare-notification`,
                 { channels }
             );
-            toast.success(response.data?.message || 'Notification payloads are ready.');
+            toast.success(response.data?.message || copy('Notification payloads are ready.', 'Taarifa za notification ziko tayari.'));
             setSelectedServiceRequest(response.data?.service_request || selectedServiceRequest);
             await fetchServiceRequests();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to prepare notifications.');
+            toast.error(error?.response?.data?.message || copy('Failed to prepare notifications.', 'Imeshindwa kuandaa notifications.'));
         } finally {
             setNotificationPreparing(false);
         }
@@ -547,11 +549,11 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             const response = await axios.post(
                 `/merchant/${merchantUsername}/service-requests/${selectedServiceRequest.id}/prepare-calendar-event`
             );
-            toast.success(response.data?.message || 'Calendar event payload is ready.');
+            toast.success(response.data?.message || copy('Calendar event payload is ready.', 'Taarifa za tukio la kalenda ziko tayari.'));
             setSelectedServiceRequest(response.data?.data || selectedServiceRequest);
             await fetchServiceRequests();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to prepare calendar event.');
+            toast.error(error?.response?.data?.message || copy('Failed to prepare calendar event.', 'Imeshindwa kuandaa tukio la kalenda.'));
         } finally {
             setRequestUpdating(false);
         }
@@ -560,11 +562,11 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     const statusBadge = (status) => {
         switch (status) {
             case 'published':
-                return <span className="flex items-center gap-1 text-[10px] font-bold bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full"><CheckCircle2 className="h-3 w-3" /> IMEWEKWA</span>;
+                return <span className="flex items-center gap-1 text-[10px] font-bold bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full"><CheckCircle2 className="h-3 w-3" /> {copy('PUBLISHED', 'IMEWEKWA')}</span>;
             case 'draft':
-                return <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-500/10 text-amber-600 px-2 py-0.5 rounded-full"><Clock className="h-3 w-3" /> RASIMU</span>;
+                return <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-500/10 text-amber-600 px-2 py-0.5 rounded-full"><Clock className="h-3 w-3" /> {copy('DRAFT', 'RASIMU')}</span>;
             case 'archived':
-                return <span className="flex items-center gap-1 text-[10px] font-bold bg-red-500/10 text-red-600 px-2 py-0.5 rounded-full"><Archive className="h-3 w-3" /> IMEZUIWA</span>;
+                return <span className="flex items-center gap-1 text-[10px] font-bold bg-red-500/10 text-red-600 px-2 py-0.5 rounded-full"><Archive className="h-3 w-3" /> {copy('ARCHIVED', 'IMEZUIWA')}</span>;
             default:
                 return null;
         }
@@ -590,42 +592,42 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
         return '-';
     };
     const serviceModeLabel = (product) => ({
-        showcase_only: 'Showcase',
-        request_quote: 'Request quote',
-        book_appointment: product.service_scheduling_type === 'fixed_sessions' ? 'Fixed sessions' : 'Appointment',
-        pay_now: 'Pay / reserve',
-        external_booking: 'External link',
-    }[product.service_mode] || 'Service');
+        showcase_only: copy('Showcase', 'Onyesha tu'),
+        request_quote: copy('Request quote', 'Omba bei'),
+        book_appointment: product.service_scheduling_type === 'fixed_sessions' ? copy('Fixed sessions', 'Vipindi maalum') : copy('Appointment', 'Miadi'),
+        pay_now: copy('Pay / reserve', 'Lipa / hifadhi'),
+        external_booking: copy('External link', 'Link ya nje'),
+    }[product.service_mode] || copy('Service', 'Huduma'));
     const priceLabel = (product) => {
         if (product.type !== 'service') return productPriceLabel(product);
-        if (product.service_price_display === 'hidden') return 'No public price';
-        if (product.service_price_display === 'quote_only' || product.service_mode === 'request_quote') return 'Quote only';
-        if (product.service_price_display === 'starts_from') return `From TZS ${parseFloat(product.price).toLocaleString()}`;
-        if (product.service_price_display === 'hourly') return `TZS ${parseFloat(product.price).toLocaleString()}/hr`;
-        if (product.service_price_display === 'daily') return `TZS ${parseFloat(product.price).toLocaleString()}/day`;
-        if (product.service_price_display === 'nightly') return `TZS ${parseFloat(product.price).toLocaleString()}/night`;
-        if (product.service_price_display === 'weekly') return `TZS ${parseFloat(product.price).toLocaleString()}/week`;
-        if (product.service_price_display === 'monthly') return `TZS ${parseFloat(product.price).toLocaleString()}/month`;
-        if (product.service_price_display === 'yearly') return `TZS ${parseFloat(product.price).toLocaleString()}/year`;
-        if (product.service_price_display === 'per_person') return `TZS ${parseFloat(product.price).toLocaleString()}/person`;
-        if (product.service_price_display === 'per_visit') return `TZS ${parseFloat(product.price).toLocaleString()}/visit`;
-        if (product.service_price_display === 'per_session') return `TZS ${parseFloat(product.price).toLocaleString()}/session`;
-        if (product.service_price_display === 'per_project') return `TZS ${parseFloat(product.price).toLocaleString()}/project`;
-        if (product.service_price_display === 'package') return `TZS ${parseFloat(product.price).toLocaleString()} package`;
+        if (product.service_price_display === 'hidden') return copy('No public price', 'Hakuna bei ya umma');
+        if (product.service_price_display === 'quote_only' || product.service_mode === 'request_quote') return copy('Quote only', 'Bei kwa makubaliano');
+        if (product.service_price_display === 'starts_from') return `${copy('From', 'Kuanzia')} TZS ${parseFloat(product.price).toLocaleString()}`;
+        const units = {
+            hourly: ['per hour', 'kwa saa'], daily: ['per day', 'kwa siku'], nightly: ['per night', 'kwa usiku'],
+            weekly: ['per week', 'kwa wiki'], monthly: ['per month', 'kwa mwezi'], yearly: ['per year', 'kwa mwaka'],
+            per_person: ['per person', 'kwa mtu'], per_visit: ['per visit', 'kwa ziara'], per_session: ['per session', 'kwa kikao'],
+            per_project: ['per project', 'kwa mradi'], package: ['package', 'kifurushi'],
+        };
+        if (units[product.service_price_display]) {
+            const [english, swahili] = units[product.service_price_display];
+            return `TZS ${parseFloat(product.price).toLocaleString()} ${copy(english, swahili)}`;
+        }
         return `TZS ${parseFloat(product.price).toLocaleString()}`;
     };
     const serviceRequestTypeLabel = (type) => ({
-        quote_request: 'Quote request',
-        appointment_request: 'Appointment',
-        room_booking_request: 'Room booking',
-        tour_booking_request: 'Tour booking',
-        workshop_enrollment_request: 'Workshop enrollment',
-        reservation_request: 'Reservation',
-        rental_request: 'Rental',
-        custom_order_request: 'Custom order',
-        contact_request: 'Contact',
-    }[type] || 'Request');
-    const moduleFulfillmentConfig = (moduleKey) => ({
+        quote_request: copy('Quote request', 'Ombi la bei'),
+        appointment_request: copy('Appointment', 'Miadi'),
+        room_booking_request: copy('Room booking', 'Uhifadhi wa chumba'),
+        tour_booking_request: copy('Tour booking', 'Uhifadhi wa ziara'),
+        workshop_enrollment_request: copy('Workshop enrollment', 'Usajili wa warsha'),
+        reservation_request: copy('Reservation', 'Uhifadhi'),
+        rental_request: copy('Rental', 'Ukodishaji'),
+        custom_order_request: copy('Custom order', 'Oda maalum'),
+        contact_request: copy('Contact', 'Mawasiliano'),
+    }[type] || copy('Request', 'Ombi'));
+    const moduleFulfillmentConfig = (moduleKey) => {
+        const config = ({
         rooms: {
             title: 'Stay fulfillment',
             hint: 'Assign room, track check-in, check-out, and no-show handling.',
@@ -698,7 +700,36 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                 { key: 'due_at', label: 'Due date', type: 'datetime-local' },
             ],
         },
-    }[moduleKey] || null);
+        }[moduleKey] || null);
+        if (!config) return null;
+        const labels = {
+            'Stay fulfillment': 'Utimilishaji wa malazi',
+            'Tour fulfillment': 'Utimilishaji wa ziara',
+            'Enrollment fulfillment': 'Utimilishaji wa usajili',
+            'Appointment fulfillment': 'Utimilishaji wa miadi',
+            'Reservation fulfillment': 'Utimilishaji wa uhifadhi',
+            'Rental fulfillment': 'Utimilishaji wa ukodishaji',
+            'Custom order fulfillment': 'Utimilishaji wa oda maalum',
+            'Assign room, track check-in, check-out, and no-show handling.': 'Weka chumba, fuatilia check-in, check-out na mteja asiyetokea.',
+            'Track manifest, pickup, departure, guide assignment, and completion.': 'Fuatilia orodha, pickup, kuondoka, mwongozo na kukamilika.',
+            'Confirm seats, attendance, and certificate readiness.': 'Thibitisha nafasi, mahudhurio na utayari wa cheti.',
+            'Track check-in, practitioner assignment, and completion.': 'Fuatilia check-in, mtaalamu na kukamilika.',
+            'Assign table or space and track arrival through completion.': 'Weka meza au nafasi na fuatilia kuwasili hadi kukamilika.',
+            'Assign unit, capture pickup, return due date, and deposit state.': 'Weka kitengo, rekodi pickup, tarehe ya kurudisha na hali ya amana.',
+            'Move the job through production, ready, delivery, or cancellation.': 'Sogeza kazi kwenye uzalishaji, utayari, delivery au kughairi.',
+            'Room number': 'Namba ya chumba', 'Unit / floor': 'Kitengo / ghorofa', Guests: 'Wageni', 'Check-in': 'Kuingia', 'Check-out': 'Kutoka',
+            'Pickup point': 'Eneo la pickup', Departure: 'Kuondoka', Guide: 'Mwongoza ziara', Attendees: 'Washiriki', 'Session / cohort': 'Kipindi / kundi', Certificate: 'Cheti',
+            Practitioner: 'Mtaalamu', 'Room / desk': 'Chumba / dawati', People: 'Watu', 'Table / space': 'Meza / nafasi', 'Party size': 'Idadi ya kundi',
+            'Unit / asset': 'Kitengo / mali', Pickup: 'Pickup', 'Return due': 'Tarehe ya kurudisha', Deposit: 'Amana', 'Job reference': 'Rejea ya kazi', 'Due date': 'Tarehe ya mwisho',
+        };
+        const translateLabel = (value) => copy(value, labels[value] || value);
+        return {
+            ...config,
+            title: translateLabel(config.title),
+            hint: translateLabel(config.hint),
+            fields: config.fields.map((field) => ({ ...field, label: translateLabel(field.label) })),
+        };
+    };
     const formatFulfillmentValue = (value) => {
         if (!value) return '';
         if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
@@ -732,7 +763,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     };
     const formatMonth = (date) => date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     const formatTimeRange = (request) => {
-        if (!request.scheduled_at) return 'Unscheduled';
+        if (!request.scheduled_at) return copy('Unscheduled', 'Bila ratiba');
         const start = new Date(request.scheduled_at);
         const end = request.scheduled_ends_at ? new Date(request.scheduled_ends_at) : null;
         const startLabel = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -792,9 +823,9 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
         return first.localeCompare(second);
     });
     const serviceManagerTabs = [
-        { key: 'inbox', label: 'Inbox', icon: ListChecks },
-        { key: 'calendar', label: 'Calendar', icon: CalendarDays },
-        { key: 'availability', label: 'Availability', icon: Settings2 },
+        { key: 'inbox', label: copy('Inbox', 'Kikasha'), icon: ListChecks },
+        { key: 'calendar', label: copy('Calendar', 'Kalenda'), icon: CalendarDays },
+        { key: 'availability', label: copy('Availability', 'Upatikanaji'), icon: Settings2 },
     ].filter((tab) => tab.key !== 'availability' || canSchedule);
 
     const filteredProducts = products.filter(p =>
@@ -810,8 +841,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
         if (normalizedTypeScope === 'digital') {
             return {
                 title: 'Digital Downloads',
-                subtitle: 'Simamia faili za kidigitali na link za kupakua.',
-                createLabel: 'Ongeza Download',
+                subtitle: copy('Manage digital files and download links.', 'Simamia faili za kidigitali na link za kupakua.'),
+                createLabel: copy('Add download', 'Ongeza download'),
                 createType: 'digital',
                 icon: FileText,
             };
@@ -820,8 +851,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             if (normalizedModuleScope === 'rooms') {
                 return {
                     title: 'Rooms & Stays',
-                    subtitle: 'Manage room types, nightly pricing, capacity, availability, and booking readiness.',
-                    createLabel: 'Add Room / Stay',
+                    subtitle: copy('Manage room types, nightly pricing, capacity, availability, and booking readiness.', 'Simamia aina za vyumba, bei za usiku, uwezo, upatikanaji na utayari wa booking.'),
+                    createLabel: copy('Add room / stay', 'Ongeza chumba / kukaa'),
                     createType: 'service',
                     createModule: 'rooms',
                     icon: BedDouble,
@@ -830,8 +861,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             if (normalizedModuleScope === 'tour_departures') {
                 return {
                     title: 'Tours & Departures',
-                    subtitle: 'Manage itineraries, destinations, pickup points, seats, and tour booking readiness.',
-                    createLabel: 'Add Tour',
+                    subtitle: copy('Manage itineraries, destinations, pickup points, seats, and tour booking readiness.', 'Simamia ratiba, destinations, pickup points, viti na utayari wa booking za tour.'),
+                    createLabel: copy('Add tour', 'Ongeza tour'),
                     createType: 'service',
                     createModule: 'tour_departures',
                     icon: Map,
@@ -840,8 +871,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             if (normalizedModuleScope === 'custom_orders') {
                 return {
                     title: 'Custom Orders & Quotes',
-                    subtitle: 'Manage made-to-order services, customer requirements, quote-first pricing, and fulfillment notes.',
-                    createLabel: 'Add Custom Order',
+                    subtitle: copy('Manage made-to-order services, customer requirements, quote-first pricing, and fulfillment notes.', 'Simamia huduma za oda maalum, mahitaji ya wateja, bei za quote na maelezo ya utimizaji.'),
+                    createLabel: copy('Add custom order', 'Ongeza oda maalum'),
                     createType: 'service',
                     createModule: 'custom_orders',
                     icon: MessageSquare,
@@ -850,8 +881,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             if (normalizedModuleScope === 'appointments') {
                 return {
                     title: 'Appointments',
-                    subtitle: 'Manage appointment services, slot duration, booking policy, capacity, and availability.',
-                    createLabel: 'Add Appointment',
+                    subtitle: copy('Manage appointment services, slot duration, booking policy, capacity, and availability.', 'Simamia huduma za appointment, muda wa slot, sera ya booking, uwezo na upatikanaji.'),
+                    createLabel: copy('Add appointment', 'Ongeza appointment'),
                     createType: 'service',
                     createModule: 'appointments',
                     icon: Calendar,
@@ -860,8 +891,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             if (normalizedModuleScope === 'reservations') {
                 return {
                     title: 'Reservations',
-                    subtitle: 'Manage table, venue, visit, activity, and space reservation offers.',
-                    createLabel: 'Add Reservation',
+                    subtitle: copy('Manage table, venue, visit, activity, and space reservation offers.', 'Simamia offers za reservation za meza, venue, ziara, shughuli na maeneo.'),
+                    createLabel: copy('Add reservation', 'Ongeza reservation'),
                     createType: 'service',
                     createModule: 'reservations',
                     icon: CalendarDays,
@@ -870,8 +901,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             if (normalizedModuleScope === 'rentals') {
                 return {
                     title: 'Rentals & Hire',
-                    subtitle: 'Manage rentable equipment, vehicles, event gear, spaces, deposits, and pickup/return terms.',
-                    createLabel: 'Add Rental',
+                    subtitle: copy('Manage rentable equipment, vehicles, event gear, spaces, deposits, and pickup/return terms.', 'Simamia vifaa, magari, vifaa vya matukio, maeneo, deposits na masharti ya pickup/return.'),
+                    createLabel: copy('Add rental', 'Ongeza rental'),
                     createType: 'service',
                     createModule: 'rentals',
                     icon: Package,
@@ -880,8 +911,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             if (normalizedModuleScope === 'workshops') {
                 return {
                     title: 'Workshops & Sessions',
-                    subtitle: 'Manage short courses, seminars, webinars, bootcamps, capacity, and session enrollment.',
-                    createLabel: 'Add Workshop',
+                    subtitle: copy('Manage short courses, seminars, webinars, bootcamps, capacity, and session enrollment.', 'Simamia kozi fupi, semina, webinars, bootcamps, uwezo na usajili wa session.'),
+                    createLabel: copy('Add workshop', 'Ongeza workshop'),
                     createType: 'service',
                     createModule: 'workshops',
                     icon: CalendarDays,
@@ -890,8 +921,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
             return {
                 title: 'Services & Bookings',
-                subtitle: 'Simamia huduma, namba za mawasiliano, na booking links.',
-                createLabel: 'Ongeza Service',
+                subtitle: copy('Manage services, contact details, and booking links.', 'Simamia huduma, namba za mawasiliano na booking links.'),
+                createLabel: copy('Add service', 'Ongeza huduma'),
                 createType: 'service',
                 icon: Calendar,
             };
@@ -900,8 +931,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             if (normalizedModuleScope === 'menu') {
                 return {
                     title: 'Menu',
-                    subtitle: 'Manage food, drinks, add-ons, and menu pricing for this business.',
-                    createLabel: 'Add Menu Item',
+                    subtitle: copy('Manage food, drinks, add-ons, and menu pricing for this business.', 'Simamia chakula, vinywaji, add-ons na bei za menu kwa biashara hii.'),
+                    createLabel: copy('Add menu item', 'Ongeza item ya menu'),
                     createType: 'physical',
                     createModule: 'menu',
                     icon: ShoppingBag,
@@ -910,16 +941,16 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
             return {
                 title: 'Physical Products',
-                subtitle: 'Simamia bidhaa za stoo na mauzo ya usafirishaji.',
-                createLabel: 'Ongeza Product',
+                subtitle: copy('Manage stock products and delivery sales.', 'Simamia bidhaa za stoo na mauzo ya usafirishaji.'),
+                createLabel: copy('Add product', 'Ongeza bidhaa'),
                 createType: 'physical',
                 icon: ShoppingBag,
             };
         }
         return {
-            title: 'Bidhaa Zangu',
-            subtitle: 'Simamia hesabu na maelezo ya bidhaa zako zote.',
-            createLabel: 'Ongeza Bidhaa',
+            title: copy('My Products', 'Bidhaa zangu'),
+            subtitle: copy('Manage inventory and details for all your products.', 'Simamia hesabu na maelezo ya bidhaa zako zote.'),
+            createLabel: copy('Add product', 'Ongeza bidhaa'),
             createType: null,
             icon: Package,
         };
@@ -979,9 +1010,9 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                             <div>
                                 <h2 className="font-black flex items-center gap-2">
-                                    <MessageSquare className="h-4 w-4 text-amber-600" /> Service Request Inbox
+                                    <MessageSquare className="h-4 w-4 text-amber-600" /> {copy('Service request inbox', 'Kikasha cha maombi ya huduma')}
                                 </h2>
-                                <p className="text-xs text-amber-800/80 mt-0.5">Quote, appointment, and contact requests from buyers.</p>
+                                <p className="text-xs text-amber-800/80 mt-0.5">{copy('Quote, appointment, and contact requests from buyers.', 'Maombi ya quote, appointment na mawasiliano kutoka kwa wanunuzi.')}</p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <select
@@ -989,24 +1020,24 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                     value={serviceRequestStatus}
                                     onChange={(e) => setServiceRequestStatus(e.target.value)}
                                 >
-                                    <option value="pending">Pending</option>
-                                    <option value="contacted">Contacted</option>
-                                    <option value="quoted">Quoted</option>
-                                    <option value="confirmed">Confirmed</option>
-                                    <option value="completed">Completed</option>
-                                    <option value="cancelled">Cancelled</option>
-                                    <option value="all">All</option>
+                                    <option value="pending">{copy('Pending', 'Inasubiri')}</option>
+                                    <option value="contacted">{copy('Contacted', 'Amefikiwa')}</option>
+                                    <option value="quoted">{copy('Quoted', 'Amepewa bei')}</option>
+                                    <option value="confirmed">{copy('Confirmed', 'Imethibitishwa')}</option>
+                                    <option value="completed">{copy('Completed', 'Imekamilika')}</option>
+                                    <option value="cancelled">{copy('Cancelled', 'Imeghairiwa')}</option>
+                                    <option value="all">{copy('All', 'Zote')}</option>
                                 </select>
                                 <Button variant="outline" size="sm" className="rounded-xl" onClick={fetchServiceRequests}>
-                                    Refresh
+                                    {copy('Refresh', 'Onyesha upya')}
                                 </Button>
                             </div>
                         </div>
 
                         {serviceRequestsLoading ? (
-                            <p className="text-sm font-semibold text-amber-800">Loading requests...</p>
+                            <p className="text-sm font-semibold text-amber-800">{copy('Loading requests...', 'Inapakia maombi...')}</p>
                         ) : serviceRequests.length === 0 ? (
-                            <p className="text-sm font-semibold text-amber-800">No pending service requests yet.</p>
+                            <p className="text-sm font-semibold text-amber-800">{copy('No pending service requests yet.', 'Hakuna maombi ya huduma yanayosubiri bado.')}</p>
                         ) : (
                             <div className="grid gap-2">
                                 {serviceRequests.map((request) => (
@@ -1017,7 +1048,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                         className="rounded-xl border border-amber-100 bg-white px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-left hover:border-amber-300 transition-colors"
                                     >
                                         <div className="min-w-0">
-                                            <p className="text-sm font-black truncate">{request.product?.title || 'Service request'}</p>
+                                            <p className="text-sm font-black truncate">{request.product?.title || copy('Service request', 'Ombi la huduma')}</p>
                                             <p className="text-xs text-muted-foreground truncate">
                                                 {request.customer_name} {request.customer_phone ? `• ${request.customer_phone}` : ''} {request.preferred_date ? `• ${request.preferred_date}` : ''}
                                             </p>
@@ -1043,10 +1074,10 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                             <div>
                                 <h2 className="font-black flex items-center gap-2">
-                                    <CalendarDays className="h-4 w-4 text-brand-600" /> Takeer Booking Calendar
+                                    <CalendarDays className="h-4 w-4 text-brand-600" /> {copy('Takeer Booking Calendar', 'Kalenda ya booking ya Takeer')}
                                 </h2>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    Confirmed or scheduled Takeer bookings for this month. Connect <Link href="/merchant/settings" className="font-bold text-brand-600">Google Calendar</Link> to sync on top of this.
+                                    {copy('Confirmed or scheduled Takeer bookings for this month. Connect', 'Booking za Takeer zilizothibitishwa au zilizopangwa kwa mwezi huu. Unganisha')} <Link href="/merchant/settings" className="font-bold text-brand-600">Google Calendar</Link> {copy('to sync on top of this.', 'ili kusawazisha ratiba zaidi.')}
                                 </p>
                             </div>
                             <div className="grid grid-cols-[auto_1fr_auto] sm:flex items-center gap-2">
@@ -1076,7 +1107,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
                         {calendarRequestsLoading ? (
                             <div className="py-12 flex items-center justify-center gap-2 text-sm font-semibold text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin" /> Loading booking calendar...
+                                <Loader2 className="h-4 w-4 animate-spin" /> {copy('Loading booking calendar...', 'Inapakia kalenda ya booking...')}
                             </div>
                         ) : (
                             <>
@@ -1112,7 +1143,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                 ))}
                                                 {day.requests.length > 2 && (
                                                     <div className="text-[10px] font-black text-muted-foreground px-1">
-                                                        +{day.requests.length - 2} more
+                                                        +{day.requests.length - 2} {copy('more', 'zaidi')}
                                                     </div>
                                                 )}
                                             </div>
@@ -1122,13 +1153,13 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
                                 <div className="rounded-2xl border bg-muted/20 p-3">
                                     <div className="flex items-center justify-between gap-3 mb-3">
-                                        <h3 className="text-sm font-black">Upcoming bookings</h3>
+                                        <h3 className="text-sm font-black">{copy('Upcoming bookings', 'Booking zijazo')}</h3>
                                         <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={fetchCalendarRequests}>
                                             Refresh
                                         </Button>
                                     </div>
                                     {nextCalendarBookings.length === 0 ? (
-                                        <p className="text-sm text-muted-foreground">No scheduled bookings in this month yet.</p>
+                                            <p className="text-sm text-muted-foreground">{copy('No scheduled bookings in this month yet.', 'Hakuna booking zilizopangwa mwezi huu bado.')}</p>
                                     ) : (
                                         <div className="grid gap-2">
                                             {nextCalendarBookings.map((request) => (
@@ -1140,7 +1171,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                 >
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div className="min-w-0">
-                                                            <p className="text-sm font-black truncate">{request.product?.title || 'Service booking'}</p>
+                                                            <p className="text-sm font-black truncate">{request.product?.title || copy('Service booking', 'Booking ya huduma')}</p>
                                                             <p className="text-xs text-muted-foreground mt-0.5">
                                                                 {new Date(request.scheduled_at).toLocaleDateString()} · {formatTimeRange(request)} · {request.customer_name}
                                                             </p>
@@ -1164,16 +1195,16 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                             <div>
                                 <h2 className="font-black flex items-center gap-2">
-                                    <Calendar className="h-4 w-4 text-brand-600" /> Availability & Scheduling
+                                    <Calendar className="h-4 w-4 text-brand-600" /> {copy('Availability & scheduling', 'Upatikanaji na ratiba')}
                                 </h2>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    Google Calendar is {scheduling?.integration?.status || 'pending'}. These slots are already used by Takeer booking requests.
+                                    {copy('Google Calendar is', 'Google Calendar iko')} {scheduling?.integration?.status || copy('pending', 'inasubiri')}. {copy('These slots are already used by Takeer booking requests.', 'Nafasi hizi tayari zinatumika na maombi ya booking ya Takeer.')}
                                 </p>
                                 <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-                                    <p><span className="font-bold text-foreground">Slot</span> is how long each booking window is.</p>
-                                    <p><span className="font-bold text-foreground">Buffer</span> is rest/travel time after each booking.</p>
-                                    <p><span className="font-bold text-foreground">Limit</span> controls whether bookings are capped.</p>
-                                    <p><span className="font-bold text-foreground">Capacity</span> is how many bookings can share one slot.</p>
+                                    <p><span className="font-bold text-foreground">{copy('Slot', 'Nafasi')}</span> {copy('is how long each booking window is.', 'ni muda wa kila dirisha la booking.')}</p>
+                                    <p><span className="font-bold text-foreground">{copy('Buffer', 'Muda wa mapumziko')}</span> {copy('is rest/travel time after each booking.', 'ni muda wa mapumziko/safari baada ya booking.')}</p>
+                                    <p><span className="font-bold text-foreground">{copy('Limit', 'Kikomo')}</span> {copy('controls whether bookings are capped.', 'hudhibiti kama booking zina kikomo.')}</p>
+                                    <p><span className="font-bold text-foreground">{copy('Capacity', 'Uwezo')}</span> {copy('is how many bookings can share one slot.', 'ni idadi ya booking zinazoweza kutumia nafasi moja.')}</p>
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
@@ -1202,13 +1233,13 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
                         <div className="mt-4 space-y-4">
                             <label className="block space-y-1.5">
-                                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service</span>
+                                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Service', 'Huduma')}</span>
                                 <select
                                     className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
                                     value={availabilityProductId}
                                     onChange={(e) => setAvailabilityProductId(e.target.value)}
                                 >
-                                    <option value="">Default for services without their own schedule</option>
+                                    <option value="">{copy('Default for services without their own schedule', 'Msingi kwa huduma zisizo na ratiba yao')}</option>
                                     {products.filter((product) => product.type === 'service').map((product) => (
                                         <option key={product.id} value={String(product.id)}>
                                             {product.title} - {product.service_scheduling_type === 'fixed_sessions' ? 'Fixed sessions' : product.service_scheduling_type === 'external' ? 'External booking' : product.service_scheduling_type === 'none' ? 'No scheduling' : 'Recurring appointments'}
@@ -1227,11 +1258,11 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between gap-3">
                                         <div>
-                                            <p className="text-sm font-black">Fixed sessions / events</p>
-                                            <p className="text-xs text-muted-foreground">Use this for trainings, workshops, cohorts, webinars, or one-off service dates.</p>
+                                        <p className="text-sm font-black">{copy('Fixed sessions / events', 'Vipindi / matukio maalum')}</p>
+                                        <p className="text-xs text-muted-foreground">{copy('Use this for trainings, workshops, cohorts, webinars, or one-off service dates.', 'Tumia hii kwa mafunzo, workshops, cohorts, webinars au tarehe za huduma za mara moja.')}</p>
                                         </div>
                                         <Button type="button" variant="outline" size="sm" className="rounded-xl min-h-10" onClick={addServiceSession}>
-                                            <Plus className="h-4 w-4 mr-1" /> Add session
+                                            <Plus className="h-4 w-4 mr-1" /> {copy('Add session', 'Ongeza kipindi')}
                                         </Button>
                                     </div>
 
@@ -1242,48 +1273,48 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                     ) : serviceSessions.map((session, index) => (
                                         <div key={session.local_id || index} className="rounded-2xl border p-3 space-y-3 bg-muted/10">
                                             <div className="flex items-center justify-between gap-3">
-                                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Session {index + 1}</p>
-                                                <button type="button" onClick={() => removeServiceSession(index)} className="h-10 w-10 rounded-xl border bg-background text-muted-foreground hover:text-red-600" aria-label="Remove session">
+                                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">{copy('Session', 'Kipindi')} {index + 1}</p>
+                                                <button type="button" onClick={() => removeServiceSession(index)} className="h-10 w-10 rounded-xl border bg-background text-muted-foreground hover:text-red-600" aria-label={copy('Remove session', 'Ondoa kipindi')}>
                                                     <X className="h-4 w-4 mx-auto" />
                                                 </button>
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Title</span>
-                                                    <input className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.title} onChange={(e) => updateServiceSession(index, { title: e.target.value })} placeholder="Saturday cohort, Webinar, Workshop" />
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Title', 'Kichwa')}</span>
+                                                    <input className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.title} onChange={(e) => updateServiceSession(index, { title: e.target.value })} placeholder={copy('Saturday cohort, Webinar, Workshop', 'Kundi la Jumamosi, Webinar, Warsha')} />
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Status', 'Hali')}</span>
                                                     <select className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.status} onChange={(e) => updateServiceSession(index, { status: e.target.value })}>
-                                                        <option value="open">Open</option>
-                                                        <option value="draft">Draft</option>
-                                                        <option value="full">Full</option>
-                                                        <option value="closed">Closed</option>
-                                                        <option value="cancelled">Cancelled</option>
+                                                        <option value="open">{copy('Open', 'Wazi')}</option>
+                                                        <option value="draft">{copy('Draft', 'Draft')}</option>
+                                                        <option value="full">{copy('Full', 'Imejaa')}</option>
+                                                        <option value="closed">{copy('Closed', 'Imefungwa')}</option>
+                                                        <option value="cancelled">{copy('Cancelled', 'Imeghairiwa')}</option>
                                                     </select>
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Starts</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Starts', 'Inaanza')}</span>
                                                     <input type="datetime-local" className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.starts_at} onChange={(e) => updateServiceSession(index, { starts_at: e.target.value })} />
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Ends</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Ends', 'Inaisha')}</span>
                                                     <input type="datetime-local" className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.ends_at} onChange={(e) => updateServiceSession(index, { ends_at: e.target.value })} />
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Seats</span>
-                                                    <input type="number" min="1" className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.capacity} onChange={(e) => updateServiceSession(index, { capacity: e.target.value })} placeholder="Blank = unlimited" />
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Seats', 'Viti')}</span>
+                                                    <input type="number" min="1" className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.capacity} onChange={(e) => updateServiceSession(index, { capacity: e.target.value })} placeholder={copy('Blank = unlimited', 'Acha wazi = bila kikomo')} />
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Price override</span>
-                                                    <input type="number" min="0" className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.price_override} onChange={(e) => updateServiceSession(index, { price_override: e.target.value })} placeholder="Optional" />
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Price override', 'Badilisha bei')}</span>
+                                                    <input type="number" min="0" className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.price_override} onChange={(e) => updateServiceSession(index, { price_override: e.target.value })} placeholder={copy('Optional', 'Si lazima')} />
                                                 </label>
                                                 <label className="space-y-1.5 sm:col-span-2">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Location / online link</span>
-                                                    <input className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.location_text} onChange={(e) => updateServiceSession(index, { location_text: e.target.value })} placeholder="Venue, Zoom link, Google Meet, or address" />
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Location / online link', 'Mahali / kiungo cha mtandaoni')}</span>
+                                                    <input className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.location_text} onChange={(e) => updateServiceSession(index, { location_text: e.target.value })} placeholder={copy('Venue, Zoom link, Google Meet, or address', 'Ukumbi, kiungo cha Zoom, Google Meet, au anwani')} />
                                                 </label>
                                                 <label className="space-y-1.5 sm:col-span-2">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Registration deadline</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Registration deadline', 'Mwisho wa usajili')}</span>
                                                     <input type="datetime-local" className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={session.registration_deadline} onChange={(e) => updateServiceSession(index, { registration_deadline: e.target.value })} />
                                                 </label>
                                             </div>
@@ -1309,14 +1340,14 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                     {rule.is_active ? 'Open' : 'Closed'}
                                                 </button>
                                                 <div className="min-w-0 flex-1 text-center">
-                                                    <p className="text-sm font-black">{day?.label || 'Day'}</p>
+                                                <p className="text-sm font-black">{day?.label || copy('Day', 'Siku')}</p>
                                                     <p className="text-xs text-muted-foreground">{rule.start_time} - {rule.end_time}</p>
                                                 </div>
                                                 <button
                                                     type="button"
                                                     onClick={() => removeAvailabilityRule(index)}
                                                     className="h-10 w-10 rounded-xl border bg-background text-muted-foreground hover:text-red-600"
-                                                    aria-label="Remove availability rule"
+                                                    aria-label={copy('Remove availability rule', 'Ondoa kanuni ya upatikanaji')}
                                                 >
                                                     <X className="h-4 w-4 mx-auto" />
                                                 </button>
@@ -1324,7 +1355,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
                                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Day</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Day', 'Siku')}</span>
                                                     <select
                                                         className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
                                                         value={rule.weekday}
@@ -1336,7 +1367,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                     </select>
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Start</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Start', 'Anza')}</span>
                                                     <input
                                                         type="time"
                                                         className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
@@ -1345,7 +1376,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                     />
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">End</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('End', 'Mwisho')}</span>
                                                     <input
                                                         type="time"
                                                         className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
@@ -1357,7 +1388,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                                 <label className="space-y-1.5">
-                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Slot</span>
+                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Slot', 'Nafasi')}</span>
                                                     <select
                                                         className="w-full h-11 rounded-xl border border-input bg-background px-2 text-sm font-semibold"
                                                         value={rule.slot_interval_minutes}
@@ -1369,7 +1400,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                     </select>
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Buffer</span>
+                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Buffer', 'Muda wa mapumziko')}</span>
                                                     <select
                                                         className="w-full h-11 rounded-xl border border-input bg-background px-2 text-sm font-semibold"
                                                         value={rule.buffer_minutes}
@@ -1381,18 +1412,18 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                     </select>
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Limit</span>
+                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Limit', 'Kikomo')}</span>
                                                     <select
                                                         className="w-full h-11 rounded-xl border border-input bg-background px-2 text-sm font-semibold"
                                                         value={rule.capacity_type || 'limited'}
                                                         onChange={(e) => updateAvailabilityRule(index, { capacity_type: e.target.value })}
                                                     >
-                                                        <option value="limited">Limited</option>
-                                                        <option value="unlimited">Unlimited</option>
+                                                        <option value="limited">{copy('Limited', 'Yenye kikomo')}</option>
+                                                        <option value="unlimited">{copy('Unlimited', 'Bila kikomo')}</option>
                                                     </select>
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Capacity</span>
+                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{copy('Capacity', 'Uwezo')}</span>
                                                     <input
                                                         type="number"
                                                         min="1"
@@ -1406,7 +1437,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                             </div>
 
                                             {invalidTime && (
-                                                <p className="text-xs font-semibold text-red-600">End time must be after start time.</p>
+                                                <p className="text-xs font-semibold text-red-600">{copy('End time must be after start time.', 'Muda wa mwisho lazima uwe baada ya muda wa kuanza.')}</p>
                                             )}
                                         </div>
                                     );
@@ -1421,7 +1452,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                     onClick={() => availabilityMode === 'fixed_sessions' ? saveServiceSessions() : saveScheduling()}
                                     disabled={schedulingSaving || (availabilityProductId && ['none', 'external'].includes(availabilityMode))}
                                 >
-                                    {schedulingSaving ? 'Saving availability...' : availabilityMode === 'fixed_sessions' ? 'Save Sessions' : 'Save Availability'}
+                                    {schedulingSaving ? copy('Saving availability...', 'Inahifadhi upatikanaji...') : availabilityMode === 'fixed_sessions' ? copy('Save Sessions', 'Hifadhi vipindi') : copy('Save Availability', 'Hifadhi upatikanaji')}
                                 </Button>
                             </div>
                         </div>
@@ -1447,7 +1478,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <input
                             type="text"
-                            placeholder="Tafuta bidhaa..."
+                            placeholder={copy('Search products...', 'Tafuta bidhaa...')}
                             className="w-full pl-10 pr-4 h-11 bg-muted/30 border-none rounded-xl text-sm focus:ring-2 focus:ring-brand-500/20 outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -1459,16 +1490,16 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                 {loading ? (
                     <div className="py-20 flex flex-col items-center justify-center text-muted-foreground space-y-3">
                         <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
-                        <p className="text-sm font-medium">Inapakia bidhaa...</p>
+                        <p className="text-sm font-medium">{copy('Loading products...', 'Inapakia bidhaa...')}</p>
                     </div>
                 ) : filteredProducts.length === 0 ? (
                     <div className="py-20 text-center bg-card/40 rounded-3xl border border-dashed border-border flex flex-col items-center">
                         <div className="p-4 bg-muted/50 rounded-full mb-4">
                             <ShoppingBag className="h-8 w-8 text-muted-foreground" />
                         </div>
-                        <h3 className="text-lg font-bold">Hakuna {pageMeta.title}</h3>
+                        <h3 className="text-lg font-bold">{copy('No', 'Hakuna')} {pageMeta.title}</h3>
                         <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
-                            Hujampandisha bidhaa yoyote bado au utafutaji wako hauna matokeo.
+                            {copy('You have not published any products yet, or your search returned no results.', 'Hujampandisha bidhaa yoyote bado au utafutaji wako hauna matokeo.')}
                         </p>
                     </div>
                 ) : (
@@ -1538,7 +1569,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                             </p>
                                             {product.status === 'draft' && (
                                                 <p className="mt-1 text-[11px] font-semibold text-amber-700">
-                                                    Endelea kuikamilisha kwenye upload editor.
+                                                    {copy('Continue completing it in the upload editor.', 'Endelea kuikamilisha kwenye upload editor.')}
                                                 </p>
                                             )}
                                             <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground flex-wrap">
@@ -1553,7 +1584,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                 )}
                                                 {product.module_key === 'menu' && product.module_details?.prep_time_minutes !== null && product.module_details?.prep_time_minutes !== undefined && (
                                                     <span className="flex items-center gap-1">
-                                                        <Clock className="h-3 w-3" /> {product.module_details.prep_time_minutes} min
+                                                        <Clock className="h-3 w-3" /> {product.module_details.prep_time_minutes} {copy('min', 'dak')}
                                                     </span>
                                                 )}
                                                 {product.module_key === 'rooms' && product.module_details?.max_guests && (
@@ -1573,7 +1604,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                 )}
                                                 {product.module_key === 'tour_departures' && product.module_details?.group_size && (
                                                     <span className="flex items-center gap-1">
-                                                        <Users className="h-3 w-3" /> {product.module_details.group_size} seats
+                                                        <Users className="h-3 w-3" /> {product.module_details.group_size} {copy('seats', 'nafasi')}
                                                     </span>
                                                 )}
                                                 {product.module_key === 'custom_orders' && product.module_details?.lead_time && (
@@ -1583,12 +1614,12 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                 )}
                                                 {product.module_key === 'custom_orders' && product.module_details?.minimum_order && (
                                                     <span className="flex items-center gap-1">
-                                                        <Package className="h-3 w-3" /> min {product.module_details.minimum_order}
+                                                        <Package className="h-3 w-3" /> {copy('min', 'kiwango cha chini')} {product.module_details.minimum_order}
                                                     </span>
                                                 )}
                                                 {product.module_key === 'appointments' && product.module_details?.appointment_duration_minutes && (
                                                     <span className="flex items-center gap-1">
-                                                        <Clock className="h-3 w-3" /> {product.module_details.appointment_duration_minutes} min
+                                                        <Clock className="h-3 w-3" /> {product.module_details.appointment_duration_minutes} {copy('min', 'dak')}
                                                     </span>
                                                 )}
                                                 {product.module_key === 'appointments' && product.module_details?.capacity && (
@@ -1598,7 +1629,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                 )}
                                                 {product.module_key === 'reservations' && product.module_details?.reservation_duration_minutes && (
                                                     <span className="flex items-center gap-1">
-                                                        <Clock className="h-3 w-3" /> {product.module_details.reservation_duration_minutes} min
+                                                        <Clock className="h-3 w-3" /> {product.module_details.reservation_duration_minutes} {copy('min', 'dak')}
                                                     </span>
                                                 )}
                                                 {product.module_key === 'reservations' && product.module_details?.party_size_limit && (
@@ -1608,22 +1639,22 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                 )}
                                                 {product.module_key === 'rentals' && product.module_details?.rental_duration_minutes && (
                                                     <span className="flex items-center gap-1">
-                                                        <Clock className="h-3 w-3" /> {product.module_details.rental_duration_minutes} min
+                                                        <Clock className="h-3 w-3" /> {product.module_details.rental_duration_minutes} {copy('min', 'dak')}
                                                     </span>
                                                 )}
                                                 {product.module_key === 'rentals' && product.module_details?.available_units && (
                                                     <span className="flex items-center gap-1">
-                                                        <Package className="h-3 w-3" /> {product.module_details.available_units} unit{Number(product.module_details.available_units) === 1 ? '' : 's'}
+                                                        <Package className="h-3 w-3" /> {product.module_details.available_units} {copy(Number(product.module_details.available_units) === 1 ? 'unit' : 'units', 'vitengo')}
                                                     </span>
                                                 )}
                                                 {product.module_key === 'workshops' && product.module_details?.workshop_duration_minutes && (
                                                     <span className="flex items-center gap-1">
-                                                        <Clock className="h-3 w-3" /> {product.module_details.workshop_duration_minutes} min
+                                                        <Clock className="h-3 w-3" /> {product.module_details.workshop_duration_minutes} {copy('min', 'dak')}
                                                     </span>
                                                 )}
                                                 {product.module_key === 'workshops' && product.module_details?.workshop_capacity && (
                                                     <span className="flex items-center gap-1">
-                                                        <Users className="h-3 w-3" /> {product.module_details.workshop_capacity} seats
+                                                        <Users className="h-3 w-3" /> {product.module_details.workshop_capacity} {copy('seats', 'nafasi')}
                                                     </span>
                                                 )}
                                                 {product.type === 'service' && (
@@ -1736,7 +1767,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                 {(product.category_attribute_values || [])
                                                     .slice(0, 2)
                                                     .map((entry) => {
-                                                        const label = entry?.attribute?.label || entry?.attribute?.key || 'Facet';
+                                                        const label = entry?.attribute?.label || entry?.attribute?.key || copy('Facet', 'Sifa');
                                                         const value = facetValue(entry);
                                                         return (
                                                             <span key={`${product.id}-${entry.category_attribute_id}`} className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-[10px] text-slate-700">
@@ -1784,10 +1815,10 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                         <div className="w-full max-w-3xl rounded-2xl bg-background border shadow-2xl max-h-[90vh] overflow-y-auto">
                             <div className="p-5 border-b flex items-start justify-between gap-4">
                                 <div>
-                                    <p className="text-xs font-black uppercase tracking-widest text-brand-600">Day view</p>
+                                    <p className="text-xs font-black uppercase tracking-widest text-brand-600">{copy('Day view', 'Muonekano wa siku')}</p>
                                     <h2 className="text-xl font-black mt-1">{selectedCalendarLabel}</h2>
                                     <p className="text-xs text-muted-foreground mt-1">
-                                        {selectedCalendarRequests.length} booking{selectedCalendarRequests.length === 1 ? '' : 's'} scheduled on this date.
+                                        {selectedCalendarRequests.length} {copy(selectedCalendarRequests.length === 1 ? 'booking scheduled on this date.' : 'bookings scheduled on this date.', selectedCalendarRequests.length === 1 ? 'booking imepangwa kwa tarehe hii.' : 'booking zimepangwa kwa tarehe hii.')}
                                     </p>
                                 </div>
                                 <button
@@ -1803,8 +1834,8 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                 {selectedCalendarGroups.length === 0 ? (
                                     <div className="rounded-2xl border border-dashed p-8 text-center">
                                         <CalendarDays className="h-8 w-8 mx-auto text-muted-foreground" />
-                                        <p className="font-black mt-3">No bookings on this day</p>
-                                        <p className="text-sm text-muted-foreground mt-1">Scheduled bookings will appear here once customers book or you confirm a time.</p>
+                                        <p className="font-black mt-3">{copy('No bookings on this day', 'Hakuna booking siku hii')}</p>
+                                        <p className="text-sm text-muted-foreground mt-1">{copy('Scheduled bookings will appear here once customers book or you confirm a time.', 'Booking zilizopangwa zitaonekana hapa wateja wakifanya booking au ukithibitisha muda.')}</p>
                                     </div>
                                 ) : (
                                     selectedCalendarGroups.map((group) => (
@@ -1816,7 +1847,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                 </div>
                                                 <div className="flex flex-wrap gap-1.5">
                                                     <span className="rounded-full bg-brand-50 px-2 py-1 text-[10px] font-black text-brand-700 uppercase tracking-widest">
-                                                        {group.requests.length} total
+                                                        {group.requests.length} {copy('total', 'jumla')}
                                                     </span>
                                                     {Object.entries(group.statusCounts).map(([status, count]) => (
                                                         <span key={status} className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${serviceRequestStatusClass(status)}`}>
@@ -1837,7 +1868,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                             <div className="min-w-0">
                                                                 <p className="text-sm font-black truncate">{request.customer_name}</p>
                                                                 <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                                                                    {request.customer_phone || request.customer_email || 'No contact'} · {formatTimeRange(request)}
+                                                                    {request.customer_phone || request.customer_email || copy('No contact', 'Hakuna mawasiliano')} · {formatTimeRange(request)}
                                                                 </p>
                                                             </div>
                                                             <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${serviceRequestStatusClass(request.status)}`}>
@@ -1863,9 +1894,9 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                     <p className="text-xs font-black uppercase tracking-widest text-amber-600">
                                         {serviceRequestTypeLabel(selectedServiceRequest.request_type)}
                                     </p>
-                                    <h2 className="text-xl font-black mt-1">{selectedServiceRequest.product?.title || 'Service request'}</h2>
+                                    <h2 className="text-xl font-black mt-1">{selectedServiceRequest.product?.title || copy('Service request', 'Ombi la huduma')}</h2>
                                     <p className="text-xs text-muted-foreground mt-1">
-                                        Sent {selectedServiceRequest.created_at ? new Date(selectedServiceRequest.created_at).toLocaleString() : ''}
+                                        {copy('Sent', 'Limetumwa')} {selectedServiceRequest.created_at ? new Date(selectedServiceRequest.created_at).toLocaleString() : ''}
                                     </p>
                                 </div>
                                 <button
@@ -1880,7 +1911,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                             <div className="p-5 space-y-5">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div className="rounded-xl border bg-muted/20 p-3">
-                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Customer</p>
+                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Customer', 'Mteja')}</p>
                                         <p className="font-black mt-1">{selectedServiceRequest.customer_name}</p>
                                         <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                                             {selectedServiceRequest.customer_phone && (
@@ -1892,7 +1923,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                         </div>
                                     </div>
                                     <div className="rounded-xl border bg-muted/20 p-3">
-                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Preference</p>
+                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Preference', 'Upendeleo')}</p>
                                         <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                                             {selectedServiceRequest.service_option?.name && (
                                                 <p className="font-black text-foreground">{selectedServiceRequest.service_option.name}</p>
@@ -1900,14 +1931,14 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                             {(selectedServiceRequest.preferred_date || selectedServiceRequest.preferred_time) && (
                                                 <p className="flex items-center gap-2">
                                                     <Calendar className="h-3.5 w-3.5" />
-                                                    {selectedServiceRequest.preferred_date || 'Any date'} {selectedServiceRequest.preferred_time || ''}
+                                                    {selectedServiceRequest.preferred_date || copy('Any date', 'Tarehe yoyote')} {selectedServiceRequest.preferred_time || ''}
                                                 </p>
                                             )}
                                             {selectedServiceRequest.location_text && (
                                                 <p className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5" /> {selectedServiceRequest.location_text}</p>
                                             )}
                                             {selectedServiceRequest.duration_minutes && (
-                                                <p>{selectedServiceRequest.duration_minutes} min expected duration</p>
+                                                <p>{selectedServiceRequest.duration_minutes} {copy('min expected duration', 'dakika za muda unaotarajiwa')}</p>
                                             )}
                                         </div>
                                     </div>
@@ -1915,14 +1946,14 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
                                 {selectedServiceRequest.message && (
                                     <div className="rounded-xl border bg-white p-3">
-                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Message</p>
+                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Message', 'Ujumbe')}</p>
                                         <p className="text-sm mt-2 whitespace-pre-line">{selectedServiceRequest.message}</p>
                                     </div>
                                 )}
 
                                 {selectedServiceRequest.client_requirements && Object.keys(selectedServiceRequest.client_requirements).length > 0 && (
                                     <div className="rounded-xl border bg-white p-3">
-                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Intake Details</p>
+                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Intake Details', 'Maelezo ya awali')}</p>
                                         <div className="mt-2 grid gap-2">
                                             {Object.entries(selectedServiceRequest.client_requirements).map(([key, value]) => {
                                                 const field = (selectedServiceRequest.product?.service_intake_form || []).find((item) => String(item.id) === String(key));
@@ -1960,7 +1991,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                         ) : (
                                                             <p className="text-sm font-semibold mt-1 break-words">
                                                                 {typeof value === 'boolean'
-                                                                    ? (value ? 'Yes' : 'No')
+                                                                    ? (value ? copy('Yes', 'Ndiyo') : copy('No', 'Hapana'))
                                                                     : typeof value === 'object' && value !== null
                                                                         ? (value.address || value.name || JSON.stringify(value))
                                                                         : String(value)}
@@ -2006,21 +2037,21 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Action</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Action', 'Hatua')}</span>
                                                     <select
                                                         className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                                         value={fulfillmentAction.action}
                                                         onChange={(e) => setFulfillmentAction((prev) => ({ ...prev, action: e.target.value }))}
                                                     >
-                                                        <option value="confirm">Confirm</option>
-                                                        <option value="start">Start / check in</option>
-                                                        <option value="update">Update only</option>
-                                                        <option value="complete">Complete</option>
-                                                        <option value="cancel">Cancel</option>
+                                                        <option value="confirm">{copy('Confirm', 'Thibitisha')}</option>
+                                                        <option value="start">{copy('Start / check in', 'Anza / ingia')}</option>
+                                                        <option value="update">{copy('Update only', 'Sasisha tu')}</option>
+                                                        <option value="complete">{copy('Complete', 'Kamilisha')}</option>
+                                                        <option value="cancel">{copy('Cancel', 'Ghairi')}</option>
                                                     </select>
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status ya zana</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Tool status', 'Hali ya zana')}</span>
                                                     <select
                                                         className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                                         value={fulfillmentAction.fulfillment_status}
@@ -2049,28 +2080,28 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                     </label>
                                                 ))}
                                                 <label className="space-y-1.5 sm:col-span-2">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Internal notes</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Internal notes', 'Maelezo ya ndani')}</span>
                                                     <textarea
                                                         className="w-full min-h-20 rounded-xl border border-input bg-background px-3 py-2 text-sm"
                                                         value={fulfillmentAction.notes}
                                                         onChange={(e) => setFulfillmentAction((prev) => ({ ...prev, notes: e.target.value }))}
-                                                        placeholder="Room issue, pickup instructions, production note, handover note..."
+                                                        placeholder={copy('Room issue, pickup instructions, production note, handover note...', 'Tatizo la chumba, maelekezo ya pickup, maelezo ya uzalishaji, maelezo ya makabidhiano...')}
                                                     />
                                                 </label>
                                             </div>
 
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                                 <Button type="button" variant="outline" className="rounded-xl" disabled={fulfillmentUpdating} onClick={() => saveModuleFulfillment({ action: 'confirm' })}>
-                                                    Confirm
+                                                    {copy('Confirm', 'Thibitisha')}
                                                 </Button>
                                                 <Button type="button" variant="outline" className="rounded-xl" disabled={fulfillmentUpdating} onClick={() => saveModuleFulfillment({ action: 'start' })}>
-                                                    Start
+                                                    {copy('Start', 'Anza')}
                                                 </Button>
                                                 <Button type="button" variant="outline" className="rounded-xl" disabled={fulfillmentUpdating} onClick={() => saveModuleFulfillment({ action: 'complete' })}>
-                                                    Complete
+                                                    {copy('Complete', 'Kamilisha')}
                                                 </Button>
                                                 <Button type="button" className="rounded-xl bg-sky-700 hover:bg-sky-800 text-white" disabled={fulfillmentUpdating} onClick={() => saveModuleFulfillment()}>
-                                                    {fulfillmentUpdating ? 'Saving...' : 'Save'}
+                                                    {fulfillmentUpdating ? copy('Saving...', 'Inahifadhi...') : copy('Save', 'Hifadhi')}
                                                 </Button>
                                             </div>
                                         </div>
@@ -2079,35 +2110,35 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
                                 {canUpdate && (
                                 <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4 space-y-3">
-                                    <p className="font-black">Manage Request</p>
+                                    <p className="font-black">{copy('Manage Request', 'Dhibiti ombi')}</p>
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                         <label className="space-y-1.5">
-                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</span>
+                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Status', 'Hali')}</span>
                                             <select
                                                 className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                                 value={requestAction.status}
                                                 onChange={(e) => setRequestAction((prev) => ({ ...prev, status: e.target.value }))}
                                             >
-                                                <option value="pending">Pending</option>
-                                                <option value="contacted">Contacted</option>
-                                                <option value="quoted">Quoted</option>
-                                                <option value="confirmed">Confirmed</option>
-                                                <option value="completed">Completed</option>
-                                                <option value="cancelled">Cancelled</option>
+                                                <option value="pending">{copy('Pending', 'Inasubiri')}</option>
+                                                <option value="contacted">{copy('Contacted', 'Amefikiwa')}</option>
+                                                <option value="quoted">{copy('Quoted', 'Bei imetolewa')}</option>
+                                                <option value="confirmed">{copy('Confirmed', 'Imethibitishwa')}</option>
+                                                <option value="completed">{copy('Completed', 'Imekamilika')}</option>
+                                                <option value="cancelled">{copy('Cancelled', 'Imeghairiwa')}</option>
                                             </select>
                                         </label>
                                         <label className="space-y-1.5">
-                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Quote TZS</span>
+                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Quote TZS', 'Bei ya TZS')}</span>
                                             <input
                                                 type="number"
                                                 className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                                 value={requestAction.quoted_amount}
                                                 onChange={(e) => setRequestAction((prev) => ({ ...prev, quoted_amount: e.target.value, status: e.target.value ? 'quoted' : prev.status }))}
-                                                placeholder="Optional"
+                                                placeholder={copy('Optional', 'Si lazima')}
                                             />
                                         </label>
                                         <label className="space-y-1.5">
-                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Schedule</span>
+                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Schedule', 'Ratiba')}</span>
                                             <input
                                                 type="datetime-local"
                                                 className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
@@ -2119,13 +2150,13 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
                                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                                         <Button type="button" variant="outline" className="rounded-xl" disabled={requestUpdating} onClick={() => updateServiceRequest({ status: 'contacted' })}>
-                                            Mark Contacted
+                                            {copy('Mark Contacted', 'Weka amefikiwa')}
                                         </Button>
                                         <Button type="button" variant="outline" className="rounded-xl" disabled={requestUpdating} onClick={() => updateServiceRequest({ status: 'quoted' })}>
-                                            Save Quote
+                                            {copy('Save Quote', 'Hifadhi bei')}
                                         </Button>
                                         <Button type="button" variant="outline" className="rounded-xl" disabled={requestUpdating} onClick={() => updateServiceRequest({ status: 'confirmed' })}>
-                                            Confirm
+                                            {copy('Confirm', 'Thibitisha')}
                                         </Button>
                                         <Button
                                             type="button"
@@ -2134,23 +2165,23 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                             disabled={requestUpdating || !['held', 'paid'].includes(selectedServiceRequest.payment_status)}
                                             onClick={markServiceDelivered}
                                         >
-                                            Delivered
+                                            {copy('Delivered', 'Imewasilishwa')}
                                         </Button>
                                         <Button type="button" className="rounded-xl bg-brand-600 hover:bg-brand-700 text-white" disabled={requestUpdating} onClick={() => updateServiceRequest()}>
-                                            {requestUpdating ? 'Saving...' : 'Save'}
+                                            {requestUpdating ? copy('Saving...', 'Inahifadhi...') : copy('Save', 'Hifadhi')}
                                         </Button>
                                     </div>
 
                                     {selectedServiceRequest.payment_status && (
                                         <div className="rounded-xl border bg-white p-3">
-                                            <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">SafePay</p>
+                                            <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('PSP settlement', 'Malipo ya PSP')}</p>
                                             <p className="text-sm font-semibold mt-1">
-                                                Payment: {selectedServiceRequest.payment_status.replaceAll('_', ' ')}
-                                                {selectedServiceRequest.delivery_status ? ` · Delivery: ${selectedServiceRequest.delivery_status.replaceAll('_', ' ')}` : ''}
+                                                {copy('Payment:', 'Malipo:')} {selectedServiceRequest.payment_status.replaceAll('_', ' ')}
+                                                {selectedServiceRequest.delivery_status ? ` · ${copy('Delivery:', 'Delivery:')} ${selectedServiceRequest.delivery_status.replaceAll('_', ' ')}` : ''}
                                             </p>
                                             {selectedServiceRequest.auto_confirm_after && (
                                                 <p className="text-xs text-muted-foreground mt-1">
-                                                    Auto-confirm window ends {new Date(selectedServiceRequest.auto_confirm_after).toLocaleString()} if no dispute is opened.
+                                                    {copy('Auto-confirm window ends', 'Muda wa uthibitishaji wa moja kwa moja unaisha')} {new Date(selectedServiceRequest.auto_confirm_after).toLocaleString()} {copy('if no dispute is opened.', 'ikiwa hakuna mgogoro unaofunguliwa.')}
                                                 </p>
                                             )}
                                         </div>
@@ -2159,13 +2190,13 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                     {selectedServiceRequest.scheduled_at && (
                                         <div className="rounded-xl border bg-white p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                             <div>
-                                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Calendar readiness</p>
+                                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Calendar readiness', 'Utayari wa kalenda')}</p>
                                                 <p className="text-sm text-muted-foreground mt-1">
                                                     {selectedServiceRequest.calendar_sync_status || 'pending'}{selectedServiceRequest.calendar_sync_error ? ` · ${selectedServiceRequest.calendar_sync_error}` : ''}
                                                 </p>
                                             </div>
                                             <Button type="button" variant="outline" className="rounded-xl shrink-0" disabled={requestUpdating} onClick={prepareCalendarEvent}>
-                                                <Calendar className="h-4 w-4 mr-1" /> Prepare Event
+                                                <Calendar className="h-4 w-4 mr-1" /> {copy('Prepare Event', 'Andaa tukio')}
                                             </Button>
                                         </div>
                                     )}
@@ -2174,21 +2205,19 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                         <div className="space-y-3">
                                             <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                                 <div className="min-w-0">
-                                                    <p className="text-xs font-black uppercase tracking-widest text-emerald-700">Payment link</p>
+                                                    <p className="text-xs font-black uppercase tracking-widest text-emerald-700">{copy('Payment link', 'Kiungo cha malipo')}</p>
                                                     <p className="text-xs text-emerald-800 truncate mt-1">{selectedServiceRequest.payment_url}</p>
                                                 </div>
                                                 <Button type="button" variant="outline" className="rounded-xl shrink-0" onClick={() => copyPaymentLink(selectedServiceRequest.payment_url)}>
-                                                    <Copy className="h-4 w-4 mr-1" /> Copy Link
+                                                    <Copy className="h-4 w-4 mr-1" /> {copy('Copy Link', 'Nakili kiungo')}
                                                 </Button>
                                             </div>
 
                                             <div className="rounded-xl border bg-white p-3 space-y-3">
                                                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                                     <div>
-                                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Notification outbox</p>
-                                                        <p className="text-sm text-muted-foreground mt-1">
-                                                            Prepare pending SMS, WhatsApp, and email payloads. Provider sending will connect here later.
-                                                        </p>
+                                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Notification outbox', 'Kikasha cha arifa')}</p>
+                                                        <p className="text-sm text-muted-foreground mt-1">{copy('Prepare pending SMS, WhatsApp, and email payloads. Provider sending will connect here later.', 'Andaa ujumbe wa SMS, WhatsApp na barua pepe unaosubiri. Utaftaji wa mtoa huduma utaunganishwa hapa baadaye.')}</p>
                                                     </div>
                                                     <div className="flex flex-wrap gap-2">
                                                         <Button

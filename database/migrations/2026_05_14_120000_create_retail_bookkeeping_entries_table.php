@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('counterparty')->nullable();
             $table->decimal('amount', 14, 2);
             $table->string('currency_code', 8)->default('TZS');
-            $table->enum('payment_method', ['cash', 'bank', 'mobile_money', 'card', 'takeer_wallet', 'director_loan', 'other']);
+            $table->enum('payment_method', ['cash', 'bank', 'mobile_money', 'card', 'external_psp', 'director_loan', 'other']);
             $table->enum('reference_type', ['efd_receipt', 'bank_transaction', 'mobile_money', 'invoice', 'tra_payment', 'contract', 'other'])->nullable();
             $table->string('reference_number')->nullable();
             $table->string('tax_type')->nullable();

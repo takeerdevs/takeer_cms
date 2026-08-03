@@ -7,7 +7,6 @@ use App\Http\Requests\Auth\SendOtpRequest;
 use App\Http\Requests\Auth\VerifyOtpRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
-use App\Models\Wallet;
 use App\Models\Country;
 use App\Services\PhoneService;
 use App\Services\SmsService;
@@ -165,11 +164,6 @@ class AuthController extends Controller
             ]);
         } elseif (!$user->phone_verified_at) {
             $user->forceFill(['phone_verified_at' => now()])->save();
-        }
-
-        // Create wallet if this is their first login
-        if (!$user->wallet) {
-            Wallet::create(['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]);
         }
 
         $token = $this->completeLogin($request, $user);

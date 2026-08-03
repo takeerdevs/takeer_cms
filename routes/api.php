@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\AiSearchController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\CheckoutController;
+use App\Http\Controllers\Api\LegalDocumentController;
 use App\Http\Controllers\Api\CommerceCatalogController;
 use App\Http\Controllers\Api\ContentReportModerationController;
 use App\Http\Controllers\Api\DeliveryController;
@@ -24,7 +25,6 @@ use App\Http\Controllers\Api\MerchantFollowController;
 use App\Http\Controllers\Api\MerchantOrderController;
 use App\Http\Controllers\Api\MerchantSubscriptionPlanController;
 use App\Http\Controllers\Api\MiniStoreController;
-use App\Http\Controllers\Api\PaymentWebhookController;
 use App\Http\Controllers\Api\Payments\AzamPayCallbackController;
 use App\Http\Controllers\Api\PlatformNotificationController;
 use App\Http\Controllers\Api\ProductLicenseKeyController;
@@ -62,8 +62,6 @@ Route::post('/payments/tz/flutterwave', [\App\Http\Controllers\Api\Payments\Flut
     ->name('payments.callback.flutterwave');
 
 
-// ─── WEBHOOKS (legacy M-Pesa placeholder) ────────────────────────────────────
-Route::post('/webhooks/mpesa', [PaymentWebhookController::class, 'callback']);
 Route::match(['get', 'post'], '/webhooks/social/comments', [\App\Http\Controllers\Api\MerchantMarketingController::class, 'receiveSocialWebhook'])
     ->middleware('throttle:240,1');
 Route::match(['get', 'post'], '/webhooks/whatsapp', [\App\Http\Controllers\Api\MerchantMarketingController::class, 'receiveWhatsappWebhook'])
@@ -111,6 +109,9 @@ Route::get('/search/unified/posts', [UnifiedSearchController::class, 'posts'])->
 Route::post('/v1/checkout/initiate', [CheckoutController::class, 'initiate']);
 Route::middleware('auth:sanctum')->group(function () {
 
+    Route::get('/legal/documents', [LegalDocumentController::class, 'index']);
+    Route::post('/legal/acceptances', [LegalDocumentController::class, 'accept']);
+
     // Auth & Profile
     Route::get('/user', fn(Request $request) => $request->user());
     Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -122,15 +123,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Buyer Checkout & Orders
     Route::post('/orders/{order}/complete', [CheckoutController::class, 'complete']);
-    Route::post('/buyer/orders/{order}/confirm-receipt', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'confirmReceipt']);
-    Route::post('/buyer/orders/{order}/pickup-extension', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'requestPickupExtension']);
-    Route::post('/buyer/orders/{order}/extra-charges/accept', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'acceptExtraCharge']);
-    Route::post('/buyer/orders/{order}/pickup-delivery-conversion', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'requestPickupDeliveryConversion']);
-    Route::post('/buyer/orders/{order}/pickup-delivery-conversion/accept', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'acceptPickupDeliveryConversion']);
-    Route::post('/buyer/orders/{order}/request-revision', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'requestCustomRevision']);
-    Route::post('/buyer/orders/{order}/return-request', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'requestReturn']);
-    Route::post('/buyer/return-requests/{returnRequest}/escalate', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'escalateReturn']);
-    Route::post('/buyer/orders/{order}/dispute', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'fileDispute']);
+    Route::post('/buyer/orders/{order}/confirm-receipt', [\App\Http\Controllers\Api\BuyerSettlementController::class, 'confirmReceipt']);
+    Route::post('/buyer/orders/{order}/pickup-extension', [\App\Http\Controllers\Api\BuyerSettlementController::class, 'requestPickupExtension']);
+    Route::post('/buyer/orders/{order}/extra-charges/accept', [\App\Http\Controllers\Api\BuyerSettlementController::class, 'acceptExtraCharge']);
+    Route::post('/buyer/orders/{order}/pickup-delivery-conversion', [\App\Http\Controllers\Api\BuyerSettlementController::class, 'requestPickupDeliveryConversion']);
+    Route::post('/buyer/orders/{order}/pickup-delivery-conversion/accept', [\App\Http\Controllers\Api\BuyerSettlementController::class, 'acceptPickupDeliveryConversion']);
+    Route::post('/buyer/orders/{order}/request-revision', [\App\Http\Controllers\Api\BuyerSettlementController::class, 'requestCustomRevision']);
+    Route::post('/buyer/orders/{order}/return-request', [\App\Http\Controllers\Api\BuyerSettlementController::class, 'requestReturn']);
+    Route::post('/buyer/return-requests/{returnRequest}/escalate', [\App\Http\Controllers\Api\BuyerSettlementController::class, 'escalateReturn']);
+    Route::post('/buyer/orders/{order}/dispute', [\App\Http\Controllers\Api\BuyerSettlementController::class, 'fileDispute']);
     Route::get('/orders/{order}/download', [\App\Http\Controllers\Api\DownloadController::class, 'download']);
     Route::post('/orders/{order}/send-download-link', [\App\Http\Controllers\Api\DownloadController::class, 'sendDownloadLink']);
     Route::get('/orders/{order}/download/local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadLocal'])->name('api.download.local');
@@ -285,6 +286,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ─── ADMIN ──────────────────────────────────────────────────────────────
     Route::prefix('admin')->middleware('admin')->group(function () {
+        Route::get('/legal/documents', [LegalDocumentController::class, 'adminIndex']);
+        Route::post('/legal/documents/{legalDocument}/activate', [LegalDocumentController::class, 'activate']);
         // Disputes
         Route::get('/disputes', [AdminController::class, 'indexDisputes']);
         Route::post('/disputes/{dispute}/resolve', [AdminController::class, 'resolveDispute']);
@@ -293,10 +296,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/trust-safety-reviews', [AdminController::class, 'indexTrustSafetyReviews']);
         Route::post('/trust-safety-reviews/{review}', [AdminController::class, 'resolveTrustSafetyReview']);
 
-        // Withdrawals
-        Route::post('/withdrawals/{withdrawal}/approve', [AdminController::class, 'approveWithdrawal']);
-        Route::get('/withdrawals', [AdminSettingsController::class, 'withdrawals']);
         Route::get('/refunds', [AdminSettingsController::class, 'refunds']);
+        Route::get('/payment-operations', [\App\Http\Controllers\Api\ProviderPaymentOperationsController::class, 'index']);
         Route::post('/refunds/{refund}/approve', [AdminController::class, 'approveRefund']);
         Route::post('/refunds/{refund}/reject', [AdminController::class, 'rejectRefund']);
 
@@ -456,7 +457,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // ─── PUBLIC STOREFRONT (Catch-all for merchant slugs) ────────────────────────
 // These routes are at the bottom to avoid catching specific dashboard API segments.
-$reservedMerchantSlugs = 'locations|shipping-profiles|shipping-zones|bundles|content-items|settings|dispatch|orders|posts|subscription-plans|wallet|chat|delivery';
+$reservedMerchantSlugs = 'locations|shipping-profiles|shipping-zones|bundles|content-items|settings|dispatch|orders|posts|subscription-plans|earnings|chat|delivery';
 
 Route::get('/merchant/{slug}/catalog', [MiniStoreController::class, 'catalog'])
     ->where('slug', "^(?!($reservedMerchantSlugs)$).+");

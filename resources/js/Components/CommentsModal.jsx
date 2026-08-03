@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLocale } from '@/lib/i18n';
 import { X, Send, Heart, MessageCircle, CornerDownRight } from 'lucide-react';
 
 // Stub comments — in production replace with API fetch by postId
@@ -15,6 +16,7 @@ const STUB_COMMENTS = [
 ];
 
 function CommentBubble({ comment, isReply = false }) {
+    const { t } = useLocale();
     const [liked, setLiked] = useState(false);
     const [count, setCount] = useState(comment.likes);
     const [showReplies, setShowReplies] = useState(false);
@@ -45,7 +47,7 @@ function CommentBubble({ comment, isReply = false }) {
                             onClick={() => setShowReplies(s => !s)}
                         >
                             <CornerDownRight className="h-3 w-3" />
-                            Jibu {comment.replies?.length > 0 && `(${comment.replies.length})`}
+                            {t('sharedUi.reply')} {comment.replies?.length > 0 && `(${comment.replies.length})`}
                         </button>
                     )}
                 </div>
@@ -69,6 +71,7 @@ function CommentBubble({ comment, isReply = false }) {
 }
 
 export default function CommentsModal({ post, isOpen, onClose }) {
+    const { t } = useLocale();
     const [text, setText] = useState('');
     const [comments, setComments] = useState(STUB_COMMENTS);
     const inputRef = useRef(null);
@@ -131,7 +134,7 @@ export default function CommentsModal({ post, isOpen, onClose }) {
                         <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
                             <div className="flex items-center gap-2">
                                 <MessageCircle className="h-5 w-5 text-foreground" />
-                                <h2 className="text-base font-bold">{comments.length} Maoni</h2>
+                                <h2 className="text-base font-bold">{comments.length} {t('sharedUi.comments')}</h2>
                             </div>
                             <button onClick={onClose} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-accent transition-colors">
                                 <X className="h-4 w-4 text-muted-foreground" />
@@ -150,7 +153,7 @@ export default function CommentsModal({ post, isOpen, onClose }) {
                                 <input
                                     ref={inputRef}
                                     type="text"
-                                    placeholder="Andika maoni yako..."
+                                    placeholder={t('sharedUi.writeComment')}
                                     className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                                     value={text}
                                     onChange={e => setText(e.target.value)}

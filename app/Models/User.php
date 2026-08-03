@@ -77,22 +77,19 @@ class User extends Authenticatable
         if (!$this->is_merchant) return [];
 
         $merchant = $this->merchantProfiles()->with('currency')->first();
-        $wallet = $this->wallet;
         $productIds = $this->products()->pluck('products.id');
         
         return [
-            'wallet_balance' => (float) ($wallet->balance ?? 0),
-            'frozen_balance' => (float) ($wallet->frozen_balance ?? 0),
             'currency_code' => $merchant?->currency?->code ?: 'TZS',
             'total_products' => $this->products()->count(),
             'orders_today'   => Order::whereIn('product_id', $productIds)
                                     ->whereDate('created_at', now()->today())
                                     ->count(),
             'orders_pending' => Order::whereIn('product_id', $productIds)
-                                    ->whereIn('payment_status', ['awaiting_payment', 'escrow_locked'])
+                                    ->whereIn('payment_status', ['pending', 'pending_fulfillment', 'release_eligible'])
                                     ->count(),
             'orders_completed' => Order::whereIn('product_id', $productIds)
-                                    ->whereIn('payment_status', ['resolved_merchant_paid'])
+                                    ->whereIn('payment_status', ['paid_out'])
                                     ->count(),
         ];
     }
@@ -289,19 +286,9 @@ class User extends Authenticatable
         return $this->hasMany(Order::class, 'buyer_id');
     }
 
-    public function wallet(): HasOne
-    {
-        return $this->hasOne(Wallet::class)->whereNull('merchant_id');
-    }
-
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);
-    }
-
-    public function withdrawalRequests(): HasMany
-    {
-        return $this->hasMany(WithdrawalRequest::class);
     }
 
     public function notificationLogs(): HasMany

@@ -56,7 +56,9 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74,#86efac\" \"php artisan serve\" \"php artisan horizon\" \"php artisan schedule:work\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,horizon,schedule,logs,vite --kill-others"
+            "@php -r \"file_exists('bootstrap/cache/config.php') && unlink('bootstrap/cache/config.php');\"",
+            "@php artisan optimize:clear --ansi",
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74,#86efac\" \"php artisan serve --host=127.0.0.1 --port=${DEV_SERVER_PORT:-8000}\" \"php artisan horizon\" \"php artisan schedule:work\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,horizon,schedule,logs,vite --kill-others"
         ],
         "dev:infra": [
             "docker compose -f docker-compose.dev.yml up -d postgres redis minio minio-init soketi"

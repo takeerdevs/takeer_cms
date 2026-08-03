@@ -313,11 +313,10 @@ class ProductResource extends JsonResource
                 'deposit_mode' => $this->wholesale_deposit_mode ?: 'quote_based',
                 'deposit_percent' => $this->wholesale_deposit_percent !== null ? (float) $this->wholesale_deposit_percent : null,
                 'balance_due' => $this->wholesale_balance_due ?: 'before_delivery',
-                'safepay_methods' => collect([
-                    'mobile_money' => (bool) ($this->safepay_mobile_money_enabled ?? true),
-                    'bank_transfer' => (bool) ($this->safepay_bank_transfer_enabled ?? true),
-                    'wallet' => (bool) ($this->safepay_wallet_enabled ?? true),
-                    'card' => (bool) ($this->safepay_card_enabled ?? false),
+                'provider_payment_methods' => collect([
+                    'mobile_money' => (bool) ($this->provider_mobile_money_enabled ?? true),
+                    'bank_transfer' => (bool) ($this->provider_bank_transfer_enabled ?? true),
+                    'card' => (bool) ($this->provider_card_enabled ?? false),
                 ])->filter()->keys()->values()->all(),
             ] : null,
             'pricing_tiers' => $this->whenLoaded('pricingTiers', fn () => $this->pricingTiers->map(fn ($tier) => [
@@ -796,7 +795,7 @@ class ProductResource extends JsonResource
 
         return [
             'identity_verified' => (bool) $identityVerified,
-            'safepay_enabled' => true,
+            'provider_payment_enabled' => true,
             'category_risk_level' => $category?->risk_level ?? 'standard',
             'requires_manual_review' => (bool) ($category?->requires_manual_review ?? false),
             'required_documents' => $requiredDocuments->all(),

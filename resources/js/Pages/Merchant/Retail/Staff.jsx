@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import {
     Users,
     UserPlus,
@@ -16,14 +16,17 @@ import {
     ArrowRightLeft,
     LinkIcon,
     ShieldAlert,
-    Upload
+    Upload,
+    ShoppingCart
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
+import { useLocale } from '@/lib/i18n';
 
 export default function Staff({ merchant }) {
+    const { copy } = useLocale();
     const [staff, setStaff] = useState([]);
     const [permissionRegistry, setPermissionRegistry] = useState({});
     const [permissionPresets, setPermissionPresets] = useState({});
@@ -86,17 +89,17 @@ export default function Staff({ merchant }) {
                 const payload = { ...form };
                 if (!payload.pin) delete payload.pin;
                 await window.axios.patch(`/api/retail/staff/${editingStaff.id}`, payload);
-                toast.success('Habari za mhudumu zimepataishwa!');
+                toast.success(copy('Staff details updated.', 'Taarifa za mhudumu zimesasishwa.'));
             } else {
                 await window.axios.post('/api/retail/staff', form);
-                toast.success('Mhudumu amesajiliwa kikamilifu!');
+                toast.success(copy('Staff member enrolled successfully.', 'Mhudumu amesajiliwa kikamilifu.'));
             }
             setIsAdding(false);
             setEditingStaff(null);
             setForm(emptyForm());
             fetchStaff();
         } catch (err) {
-            alert('Imeshindwa kuhifadhi: ' + (err.response?.data?.message || err.message));
+            alert(copy('Unable to save: ', 'Imeshindikana kuhifadhi: ') + (err.response?.data?.message || err.message));
         }
     };
 
@@ -120,23 +123,23 @@ export default function Staff({ merchant }) {
     };
 
     const handleResetPin = async (s) => {
-        const newPin = prompt('Enter new 4-digit PIN for ' + s.user?.name);
+        const newPin = prompt(copy('Enter new 4-digit PIN for ', 'Weka PIN mpya ya tarakimu 4 kwa ') + s.user?.name);
         if (!newPin || newPin.length !== 4) return;
         try {
             await window.axios.patch(`/api/retail/staff/${s.id}/reset-pin`, { pin: newPin });
-            toast.success('PIN updated successfully!');
+            toast.success(copy('PIN updated successfully.', 'PIN imesasishwa kikamilifu.'));
         } catch (err) {
-            toast.error('Failed to reset PIN');
+            toast.error(copy('Failed to reset PIN.', 'Imeshindikana kubadilisha PIN.'));
         }
     };
 
     const handleClearDevices = async (s) => {
-        if (!confirm('This will log out this staff from all trusted terminals and require an OTP on next login. Proceed?')) return;
+        if (!confirm(copy('This will log out this staff member from all trusted terminals and require an OTP on next login. Proceed?', 'Hii itamtoa mhudumu huyu kwenye vituo vyote vinavyoaminika na itahitaji OTP wakati wa kuingia tena. Uendelee?'))) return;
         try {
             await window.axios.post(`/api/retail/staff/${s.id}/clear-devices`);
-            toast.success('All trusted devices cleared!');
+            toast.success(copy('All trusted devices cleared.', 'Vifaa vyote vinavyoaminika vimeondolewa.'));
         } catch (err) {
-            toast.error('Failed to clear devices');
+            toast.error(copy('Failed to clear devices.', 'Imeshindikana kuondoa vifaa.'));
         }
     };
 
@@ -156,9 +159,9 @@ export default function Staff({ merchant }) {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             setForm((current) => ({ ...current, avatar_url: res.data.url }));
-            toast.success('Staff photo uploaded.');
+            toast.success(copy('Staff photo uploaded.', 'Picha ya mhudumu imepakiwa.'));
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed to upload staff photo.');
+            toast.error(err.response?.data?.message || copy('Failed to upload staff photo.', 'Imeshindikana kupakia picha ya mhudumu.'));
         } finally {
             setUploadingAvatar(false);
             event.target.value = '';
@@ -228,7 +231,7 @@ export default function Staff({ merchant }) {
 
     return (
         <AppLayout>
-            <Head title="Staff Management | Takeer" />
+            <Head title={`${copy('Staff Management', 'Usimamizi wa Wahudumu')} | Takeer`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-8 pb-24">
 
                 {permissionError ? (
@@ -236,7 +239,7 @@ export default function Staff({ merchant }) {
                         <div className="h-20 w-20 bg-amber-100 rounded-full flex items-center justify-center mb-6">
                             <Users className="h-10 w-10 text-amber-600" />
                         </div>
-                        <h2 className="text-2xl font-black mb-2">Ufikiaji Umezuiwa</h2>
+                        <h2 className="text-2xl font-black mb-2">{copy('Access restricted', 'Ufikiaji umezuiwa')}</h2>
                         <p className="text-muted-foreground max-w-md mb-8">{permissionError}</p>
 
                         <div className="flex flex-wrap justify-center gap-4">
@@ -244,7 +247,7 @@ export default function Staff({ merchant }) {
                                 className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl h-12 px-6"
                                 onClick={() => router.visit(`/merchant/${merchant.username}/retail/pos`)}
                             >
-                                <ShoppingCart className="mr-2 h-5 w-5" /> Fungua POS (Uza)
+                                <ShoppingCart className="mr-2 h-5 w-5" /> {copy('Open POS', 'Fungua POS')}
                             </Button>
                         </div>
                     </div>
@@ -254,9 +257,9 @@ export default function Staff({ merchant }) {
                         <div className="flex items-center justify-between">
                             <div>
                                 <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
-                                    Team & Access <Users className="h-8 w-8 text-brand-600" />
+                                    {copy('Team & access', 'Timu na ufikiaji')} <Users className="h-8 w-8 text-brand-600" />
                                 </h1>
-                                <p className="text-muted-foreground">Manage employees and their terminal access PINs.</p>
+                                <p className="text-muted-foreground">{copy('Manage employees and their terminal access PINs.', 'Simamia wafanyakazi na PIN zao za kufikia vituo.')}</p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Button
@@ -264,11 +267,11 @@ export default function Staff({ merchant }) {
                                     onClick={() => {
                                         const url = `${window.location.origin}/${merchant.username}/terminal`;
                                         navigator.clipboard.writeText(url);
-                                        toast.success('Terminal link copied to clipboard!');
+                                        toast.success(copy('Terminal link copied to clipboard.', 'Kiungo cha kituo kimenakiliwa.'));
                                     }}
                                     className="rounded-xl border-brand-200"
                                 >
-                                    <LinkIcon className="mr-2 h-4 w-4 text-brand-600" /> Copy Link
+                                    <LinkIcon className="mr-2 h-4 w-4 text-brand-600" /> {copy('Copy link', 'Nakili kiungo')}
                                 </Button>
                                 <Button
                                     onClick={() => {
@@ -278,7 +281,7 @@ export default function Staff({ merchant }) {
                                     }}
                                     className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg"
                                 >
-                                    {isAdding ? 'Cancel' : <><UserPlus className="mr-2 h-4 w-4" /> Enroll Staff</>}
+                                    {isAdding ? copy('Cancel', 'Ghairi') : <><UserPlus className="mr-2 h-4 w-4" /> {copy('Enroll staff', 'Sajili mhudumu')}</>}
                                 </Button>
                             </div>
                         </div>
@@ -288,7 +291,7 @@ export default function Staff({ merchant }) {
                                 <CardHeader className="bg-brand-50/50 p-6">
                                     <CardTitle className="text-lg font-bold flex items-center gap-2">
                                         <UserPlus className="h-5 w-5 text-brand-600" /> 
-                                        {editingStaff ? `Update Info: ${editingStaff.user?.name}` : 'Enroll New Staff Member'}
+                                        {editingStaff ? `${copy('Update information', 'Sasisha taarifa')}: ${editingStaff.user?.name}` : copy('Enroll new staff member', 'Sajili mhudumu mpya')}
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-6">
@@ -302,27 +305,27 @@ export default function Staff({ merchant }) {
                                                 )}
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-black text-slate-900">Work profile photo</p>
-                                                <p className="text-xs font-semibold text-muted-foreground">Only used inside this business, separate from the person’s platform account.</p>
+                                                <p className="text-sm font-black text-slate-900">{copy('Work profile photo', 'Picha ya wasifu wa kazi')}</p>
+                                                <p className="text-xs font-semibold text-muted-foreground">{copy('Only used inside this business, separate from the person’s platform account.', 'Itatumika ndani ya biashara hii pekee, tofauti na akaunti ya mtu kwenye jukwaa.')}</p>
                                             </div>
                                             <label className="h-10 shrink-0 rounded-xl border border-slate-200 bg-white px-3 flex items-center gap-2 text-xs font-black text-slate-700 cursor-pointer hover:bg-slate-50">
                                                 <Upload className="h-4 w-4" />
-                                                {uploadingAvatar ? 'Uploading...' : 'Upload'}
+                                                {uploadingAvatar ? copy('Uploading...', 'Inapakia...') : copy('Upload', 'Pakia')}
                                                 <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={uploadingAvatar} />
                                             </label>
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Full Name</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">{copy('Full name', 'Jina kamili')}</label>
                                             <Input
                                                 required
-                                                placeholder="Mf. Juma Kassim"
+                                                placeholder={copy('e.g. Juma Kassim', 'Mf. Juma Kassim')}
                                                 className="rounded-xl"
                                                 value={form.name}
                                                 onChange={e => setForm({ ...form, name: e.target.value })}
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Phone Number</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">{copy('Phone number', 'Namba ya simu')}</label>
                                             <Input
                                                 required
                                                 placeholder="+255..."
@@ -332,31 +335,31 @@ export default function Staff({ merchant }) {
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Work Display Name</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">{copy('Work display name', 'Jina la kuonyesha kazini')}</label>
                                             <Input
-                                                placeholder="Optional, e.g. Dr. Amina"
+                                                placeholder={copy('Optional, e.g. Dr. Amina', 'Si lazima, mfano Dkt. Amina')}
                                                 className="rounded-xl"
                                                 value={form.display_name}
                                                 onChange={e => setForm({ ...form, display_name: e.target.value })}
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Access Level</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">{copy('Access level', 'Kiwango cha ufikiaji')}</label>
                                             <select
                                                 className="flex h-10 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm"
                                                 value={form.role}
                                                 onChange={e => setForm({ ...form, role: e.target.value })}
                                             >
-                                                <option value="CASHIER">Cashier (POS only)</option>
-                                                <option value="STOREKEEPER">Storekeeper (Transfers)</option>
-                                                <option value="MANAGER">POS Manager (approvals + voids)</option>
+                                                <option value="CASHIER">{copy('Cashier (POS only)', 'Keshia (POS pekee)')}</option>
+                                                <option value="STOREKEEPER">{copy('Storekeeper (transfers)', 'Mhifadhi stoo (uhamishaji)')}</option>
+                                                <option value="MANAGER">{copy('POS manager (approvals + voids)', 'Msimamizi wa POS (idhini na kufuta miamala)')}</option>
                                             </select>
                                             <p className="text-[10px] font-semibold text-slate-500">
-                                                Dashboard access comes from Advanced permissions below.
+                                                {copy('Dashboard access comes from advanced permissions below.', 'Ufikiaji wa dashibodi unatokana na ruhusa za ziada hapa chini.')}
                                             </p>
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Permission Preset</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">{copy('Permission preset', 'Kiolezo cha ruhusa')}</label>
                                             <select
                                                 className="flex h-10 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm"
                                                 defaultValue=""
@@ -365,7 +368,7 @@ export default function Staff({ merchant }) {
                                                     e.target.value = '';
                                                 }}
                                             >
-                                                <option value="">Choose a template...</option>
+                                                <option value="">{copy('Choose a template...', 'Chagua kiolezo...')}</option>
                                                 {Object.keys(permissionPresets)
                                                     .filter((preset) => preset !== 'OWNER')
                                                     .map((preset) => (
@@ -374,22 +377,22 @@ export default function Staff({ merchant }) {
                                             </select>
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Job Title</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">{copy('Job title', 'Cheo cha kazi')}</label>
                                             <Input
-                                                placeholder="Pharmacist, Driver, Cleaner..."
+                                                placeholder={copy('Pharmacist, driver, cleaner...', 'Mfamasia, dereva, msafishaji...')}
                                                 className="rounded-xl"
                                                 value={form.job_title}
                                                 onChange={e => setForm({ ...form, job_title: e.target.value })}
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Primary Location</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">{copy('Primary location', 'Eneo kuu')}</label>
                                             <select
                                                 className="flex h-10 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm"
                                                 value={form.assigned_location_id}
                                                 onChange={e => setForm({ ...form, assigned_location_id: e.target.value })}
                                             >
-                                                <option value="">No specific location</option>
+                                                <option value="">{copy('No specific location', 'Hakuna eneo maalum')}</option>
                                                 {locations.map(loc => (
                                                     <option key={loc.id} value={loc.id}>{loc.name} ({loc.type})</option>
                                                 ))}
@@ -397,7 +400,7 @@ export default function Staff({ merchant }) {
                                         </div>
                                         <div className="space-y-1">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                                                {editingStaff ? '4-Digit Terminal PIN (optional - only if changing)' : '4-Digit Terminal PIN'}
+                                                {editingStaff ? copy('4-digit terminal PIN (optional — only if changing)', 'PIN ya tarakimu 4 ya kituo (si lazima — ikiwa inabadilishwa)') : copy('4-digit terminal PIN', 'PIN ya tarakimu 4 ya kituo')}
                                             </label>
                                             <Input
                                                 required={!editingStaff}
@@ -418,8 +421,8 @@ export default function Staff({ merchant }) {
                                                     onChange={e => setForm({ ...form, pos_access_enabled: e.target.checked })}
                                                 />
                                                 <span>
-                                                    <span className="block text-sm font-black text-slate-900">Allow POS terminal access</span>
-                                                    <span className="block text-xs font-semibold text-slate-500">Can use PIN/device login for POS and retail operations.</span>
+                                                    <span className="block text-sm font-black text-slate-900">{copy('Allow POS terminal access', 'Ruhusu ufikiaji wa kituo cha POS')}</span>
+                                                    <span className="block text-xs font-semibold text-slate-500">{copy('Can use PIN/device login for POS and retail operations.', 'Anaweza kutumia PIN/kifaa kuingia kwenye POS na shughuli za rejareja.')}</span>
                                                 </span>
                                             </label>
                                             <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4">
@@ -430,16 +433,16 @@ export default function Staff({ merchant }) {
                                                     onChange={e => setForm({ ...form, dashboard_access_enabled: e.target.checked })}
                                                 />
                                                 <span>
-                                                    <span className="block text-sm font-black text-slate-900">Allow merchant dashboard access</span>
-                                                    <span className="block text-xs font-semibold text-slate-500">Shows this business in their account switcher and enables selected dashboard permissions.</span>
+                                                    <span className="block text-sm font-black text-slate-900">{copy('Allow merchant dashboard access', 'Ruhusu ufikiaji wa dashibodi ya mfanyabiashara')}</span>
+                                                    <span className="block text-xs font-semibold text-slate-500">{copy('Shows this business in their account switcher and enables selected dashboard permissions.', 'Huonyesha biashara hii kwenye chaguo la akaunti na kuwezesha ruhusa za dashibodi zilizochaguliwa.')}</span>
                                                 </span>
                                             </label>
                                         </div>
                                         <div className="md:col-span-2 lg:col-span-3 rounded-3xl border border-slate-200 bg-white p-4 space-y-4">
                                             <div className="flex flex-wrap items-center justify-between gap-3">
                                                 <div>
-                                                    <h3 className="text-sm font-black text-slate-900">Advanced permissions</h3>
-                                                    <p className="text-xs font-semibold text-slate-500">Resource + action controls for this business.</p>
+                                                    <h3 className="text-sm font-black text-slate-900">{copy('Advanced permissions', 'Ruhusa za ziada')}</h3>
+                                                    <p className="text-xs font-semibold text-slate-500">{copy('Resource + action controls for this business.', 'Udhibiti wa rasilimali na vitendo kwa biashara hii.')}</p>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <Button
@@ -448,7 +451,7 @@ export default function Staff({ merchant }) {
                                                         className="h-9 rounded-xl text-[10px] font-black uppercase tracking-widest"
                                                         onClick={() => setForm({ ...form, permissions: allRegisteredPermissions, dashboard_access_enabled: true, pos_access_enabled: true })}
                                                     >
-                                                        Select All
+                                                        {copy('Select all', 'Chagua zote')}
                                                     </Button>
                                                     <Button
                                                         type="button"
@@ -456,7 +459,7 @@ export default function Staff({ merchant }) {
                                                         className="h-9 rounded-xl text-[10px] font-black uppercase tracking-widest"
                                                         onClick={() => setForm({ ...form, permissions: [] })}
                                                     >
-                                                        Clear
+                                                        {copy('Clear', 'Futa')}
                                                     </Button>
                                                 </div>
                                             </div>
@@ -511,7 +514,7 @@ export default function Staff({ merchant }) {
                                         </div>
                                         <div className="flex items-end">
                                             <Button type="submit" className="w-full bg-brand-600 hover:bg-brand-700 text-white rounded-xl h-11 font-black uppercase tracking-widest text-[10px]">
-                                                {editingStaff ? 'Save Changes' : 'Enroll Member'}
+                                                {editingStaff ? copy('Save changes', 'Hifadhi mabadiliko') : copy('Enroll member', 'Sajili mhudumu')}
                                             </Button>
                                         </div>
                                     </form>
@@ -533,7 +536,7 @@ export default function Staff({ merchant }) {
                                             </div>
                                             <div className="flex flex-col items-end gap-2">
                                                 <span className={`text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
-                                                    {s.is_active ? 'Active' : 'Inactive'}
+                                                    {s.is_active ? copy('Active', 'Anafanya kazi') : copy('Inactive', 'Hafanyi kazi')}
                                                 </span>
                                                 <Button 
                                                     variant="ghost" 
@@ -553,20 +556,20 @@ export default function Staff({ merchant }) {
                                                     <p className="text-xs font-semibold text-slate-400">{s.user?.name}</p>
                                                 )}
                                                 <p className="text-xs font-bold text-brand-600 flex items-center gap-1">
-                                                    <ShieldCheck className="h-3 w-3" /> {s.role}
+                                                    <ShieldCheck className="h-3 w-3" /> {s.role === 'CASHIER' ? copy('Cashier', 'Keshia') : s.role === 'STOREKEEPER' ? copy('Storekeeper', 'Mhifadhi stoo') : s.role === 'MANAGER' ? copy('Manager', 'Msimamizi') : s.role}
                                                 </p>
                                                 {s.job_title && (
                                                     <p className="mt-1 text-xs font-semibold text-slate-500">{s.job_title}</p>
                                                 )}
                                                 <div className="mt-3 flex flex-wrap gap-2">
                                                     <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${s.pos_access_enabled ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-400'}`}>
-                                                        POS {s.pos_access_enabled ? 'On' : 'Off'}
+                                                        POS {s.pos_access_enabled ? copy('On', 'Imewashwa') : copy('Off', 'Imezimwa')}
                                                     </span>
                                                     <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${s.dashboard_access_enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
-                                                        Dashboard {s.dashboard_access_enabled ? 'On' : 'Off'}
+                                                        {copy('Dashboard', 'Dashibodi')} {s.dashboard_access_enabled ? copy('On', 'Imewashwa') : copy('Off', 'Imezimwa')}
                                                     </span>
                                                     <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                                        {(s.effective_permissions || []).length} permissions
+                                                        {(s.effective_permissions || []).length} {copy('permissions', 'ruhusa')}
                                                     </span>
                                                 </div>
                                             </div>
@@ -576,7 +579,7 @@ export default function Staff({ merchant }) {
                                                     <Smartphone className="h-3 w-3" /> {s.user?.phone_number}
                                                 </div>
                                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                    <MapPin className="h-3 w-3" /> {s.location?.name || 'All Locations'}
+                                                    <MapPin className="h-3 w-3" /> {s.location?.name || copy('All locations', 'Maeneo yote')}
                                                 </div>
                                             </div>
 
@@ -587,7 +590,7 @@ export default function Staff({ merchant }) {
                                                     className="text-[10px] font-bold text-muted-foreground hover:text-brand-600"
                                                     onClick={() => toggleStatus(s)}
                                                 >
-                                                    {s.is_active ? <><XCircle className="mr-1 h-3 w-3" /> Deactivate</> : <><CheckCircle2 className="mr-1 h-3 w-3" /> Reactivate</>}
+                                                    {s.is_active ? <><XCircle className="mr-1 h-3 w-3" /> {copy('Deactivate', 'Zima')}</> : <><CheckCircle2 className="mr-1 h-3 w-3" /> {copy('Reactivate', 'Washa tena')}</>}
                                                 </Button>
                                                 <div className="flex items-center gap-1">
                                                     <Button
@@ -595,7 +598,7 @@ export default function Staff({ merchant }) {
                                                         size="icon"
                                                         className="h-8 w-8 text-muted-foreground hover:text-brand-600"
                                                         onClick={() => handleResetPin(s)}
-                                                        title="Reset PIN"
+                                                        title={copy('Reset PIN', 'Badilisha PIN')}
                                                     >
                                                         <Key className="h-4 w-4" />
                                                     </Button>
@@ -604,7 +607,7 @@ export default function Staff({ merchant }) {
                                                         size="icon"
                                                         className="h-8 w-8 text-muted-foreground hover:text-red-600"
                                                         onClick={() => handleClearDevices(s)}
-                                                        title="De-authorize Devices"
+                                                        title={copy('De-authorize devices', 'Ondoa uaminifu wa vifaa')}
                                                     >
                                                         <ShieldAlert className="h-4 w-4" />
                                                     </Button>
@@ -618,8 +621,8 @@ export default function Staff({ merchant }) {
                             {staff.length === 0 && !loading && (
                                 <div className="col-span-full py-20 text-center border-2 border-dashed border-brand-100 rounded-3xl">
                                     <Users className="h-16 w-16 text-brand-100 mx-auto mb-4" />
-                                    <h2 className="text-xl font-bold text-gray-400">No staff enrolled yet</h2>
-                                    <p className="text-muted-foreground mt-2">Start adding team members to manage your shops.</p>
+                                    <h2 className="text-xl font-bold text-gray-400">{loading ? copy('Loading staff...', 'Inapakia wahudumu...') : copy('No staff enrolled yet', 'Hakuna mhudumu aliyesajiliwa bado')}</h2>
+                                    <p className="text-muted-foreground mt-2">{copy('Start adding team members to manage your shops.', 'Anza kuongeza wanachama wa timu ili kusimamia maduka yako.')}</p>
                                 </div>
                             )}
                         </div>

@@ -8,6 +8,7 @@ import { CalendarClock, ChevronRight, Clock, Loader2, MapPin, RefreshCw, Search,
 import axios from 'axios';
 import { toast } from 'sonner';
 import { businessToolLabel } from '@/lib/businessToolCopy';
+import { useLocale } from '@/lib/i18n';
 
 const MODULE_OPTIONS = [
     { value: 'all', label: 'Aina zote za huduma' },
@@ -39,6 +40,7 @@ const futureInput = (days) => {
 };
 
 export default function BookingCalendar({ merchantUsername }) {
+    const { copy } = useLocale();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState({ summary: {}, events: [], unscheduled: [] });
     const [filters, setFilters] = useState({
@@ -59,7 +61,7 @@ export default function BookingCalendar({ merchantUsername }) {
             const response = await axios.get(`/merchant/${merchantUsername}/booking-calendar/api?${params.toString()}`);
             setData(response.data || { summary: {}, events: [], unscheduled: [] });
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to load booking calendar.');
+            toast.error(error.response?.data?.message || copy('Failed to load booking calendar.', 'Imeshindikana kupakia kalenda ya booking.'));
         } finally {
             setLoading(false);
         }
@@ -106,24 +108,24 @@ export default function BookingCalendar({ merchantUsername }) {
 
     return (
         <AppLayout>
-            <Head title="Booking Calendar | Takeer" />
+            <Head title={`${copy('Booking Calendar', 'Kalenda ya Booking')} | Takeer`} />
             <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div>
-                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Operations</p>
-                        <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">Booking Calendar</h1>
+                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{copy('Operations', 'Uendeshaji')}</p>
+                        <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">{copy('Booking Calendar', 'Kalenda ya Booking')}</h1>
                         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                            Maombi yaliyopangwa, sessions za tarehe maalum, capacity, na maombi ya wateja kwenye aina zako za huduma.
+                            {copy('Scheduled requests, fixed-date sessions, capacity, and customer requests across your services.', 'Maombi yaliyopangwa, sessions za tarehe maalum, capacity, na maombi ya wateja kwenye aina zako za huduma.')}
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button variant="outline" onClick={loadCalendar} disabled={loading}>
                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                            Refresh
+                            {copy('Refresh', 'Onyesha upya')}
                         </Button>
                         <Button asChild>
                             <Link href={`/merchant/${merchantUsername}/services`}>
-                                Service Requests
+                                {copy('Service Requests', 'Maombi ya Huduma')}
                                 <ChevronRight className="ml-2 h-4 w-4" />
                             </Link>
                         </Button>
@@ -131,10 +133,10 @@ export default function BookingCalendar({ merchantUsername }) {
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-4">
-                    <MetricCard icon={CalendarClock} label="Calendar events" value={data.summary?.events ?? 0} />
-                    <MetricCard icon={Users} label="Requests" value={data.summary?.service_requests ?? 0} />
-                    <MetricCard icon={Clock} label="Fixed sessions" value={data.summary?.sessions ?? 0} />
-                    <MetricCard icon={Search} label="Unscheduled" value={data.summary?.unscheduled ?? 0} />
+                    <MetricCard icon={CalendarClock} label={copy('Calendar events', 'Matukio ya kalenda')} value={data.summary?.events ?? 0} />
+                    <MetricCard icon={Users} label={copy('Requests', 'Maombi')} value={data.summary?.service_requests ?? 0} />
+                    <MetricCard icon={Clock} label={copy('Fixed sessions', 'Vipindi maalum')} value={data.summary?.sessions ?? 0} />
+                    <MetricCard icon={Search} label={copy('Unscheduled', 'Bila ratiba')} value={data.summary?.unscheduled ?? 0} />
                 </div>
 
                 <Card>
@@ -142,14 +144,14 @@ export default function BookingCalendar({ merchantUsername }) {
                         <Input type="date" value={filters.from} onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))} />
                         <Input type="date" value={filters.to} onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))} />
                         <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={filters.module} onChange={(e) => setFilters((prev) => ({ ...prev, module: e.target.value }))}>
-                            {MODULE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            {MODULE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{moduleLabel(option.value, copy)}</option>)}
                         </select>
                         <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={filters.status} onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}>
-                            {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{statusLabel(option.value, copy)}</option>)}
                         </select>
                         <div className="relative">
                             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                            <Input className="pl-9" placeholder="Search customer, service, location..." value={filters.q} onChange={(e) => setFilters((prev) => ({ ...prev, q: e.target.value }))} />
+                            <Input className="pl-9" placeholder={copy('Search customer, service, location...', 'Tafuta mteja, huduma, eneo...')} value={filters.q} onChange={(e) => setFilters((prev) => ({ ...prev, q: e.target.value }))} />
                         </div>
                     </CardContent>
                 </Card>
@@ -158,7 +160,7 @@ export default function BookingCalendar({ merchantUsername }) {
                     <Card>
                         <CardContent className="flex min-h-64 flex-col items-center justify-center text-center">
                             <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
-                            <p className="mt-3 text-sm text-muted-foreground">Loading booking calendar...</p>
+                            <p className="mt-3 text-sm text-muted-foreground">{copy('Loading booking calendar...', 'Inapakia kalenda ya booking...')}</p>
                         </CardContent>
                     </Card>
                 ) : (
@@ -168,8 +170,8 @@ export default function BookingCalendar({ merchantUsername }) {
                                 <Card>
                                     <CardContent className="p-8 text-center">
                                         <CalendarClock className="mx-auto h-9 w-9 text-muted-foreground" />
-                                        <h3 className="mt-3 text-lg font-black">No scheduled bookings</h3>
-                                        <p className="mt-1 text-sm text-muted-foreground">Try another date range or create scheduled services with available sessions.</p>
+                                        <h3 className="mt-3 text-lg font-black">{copy('No scheduled bookings', 'Hakuna booking zilizopangwa')}</h3>
+                                        <p className="mt-1 text-sm text-muted-foreground">{copy('Try another date range or create scheduled services with available sessions.', 'Jaribu kipindi kingine cha tarehe au unda huduma zenye ratiba.')}</p>
                                     </CardContent>
                                 </Card>
                             ) : days.map((day) => (
@@ -186,22 +188,22 @@ export default function BookingCalendar({ merchantUsername }) {
 
                         <Card className="h-fit">
                             <CardHeader>
-                                <CardTitle className="text-base">Needs scheduling</CardTitle>
+                                <CardTitle className="text-base">{copy('Needs scheduling', 'Inahitaji ratiba')}</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-3">
                                 {unscheduled.length === 0 ? (
-                                    <p className="text-sm text-muted-foreground">No unscheduled requests in this range.</p>
+                                    <p className="text-sm text-muted-foreground">{copy('No unscheduled requests in this range.', 'Hakuna maombi bila ratiba katika kipindi hiki.')}</p>
                                 ) : unscheduled.map((event) => (
                                     <div key={`unscheduled-${event.id}`} className="rounded-lg border border-border p-3">
                                         <div className="flex items-start justify-between gap-3">
                                             <div>
-                                                <p className="text-sm font-bold">{event.customer?.name || 'Customer'}</p>
+                                                <p className="text-sm font-bold">{event.customer?.name || copy('Customer', 'Mteja')}</p>
                                                 <p className="text-xs text-muted-foreground">{event.title}</p>
                                             </div>
                                             <StatusBadge status={event.status} />
                                         </div>
                                         <p className="mt-2 text-xs text-muted-foreground">
-                                            Preferred {event.preferred_date || 'date not set'}{event.preferred_time ? `, ${event.preferred_time}` : ''}
+                                            {copy('Preferred', 'Inayopendelewa')} {event.preferred_date || copy('date not set', 'tarehe haijawekwa')}{event.preferred_time ? `, ${event.preferred_time}` : ''}
                                         </p>
                                     </div>
                                 ))}
@@ -296,4 +298,29 @@ function formatTimeRange(event) {
     const startText = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const endText = end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
     return endText ? `${startText} - ${endText}` : startText;
+}
+
+function moduleLabel(value, copy) {
+    const labels = {
+        all: ['All service types', 'Aina zote za huduma'],
+        rooms: ['Rooms', 'Vyumba'],
+        appointments: ['Appointments', 'Miadi'],
+        reservations: ['Reservations', 'Reservations'],
+        rentals: ['Rentals', 'Ukodishaji'],
+        workshops: ['Workshops', 'Workshops'],
+        tour_departures: ['Tour departures', 'Safari zinazoanza'],
+        custom_orders: ['Custom orders', 'Oda maalum'],
+        services: ['Services', 'Huduma'],
+    };
+    const [english, swahili] = labels[value] || [value, value];
+    return copy(english, swahili);
+}
+
+function statusLabel(value, copy) {
+    const labels = {
+        all: ['All statuses', 'Hali zote'], pending: ['Pending', 'Inasubiri'], contacted: ['Contacted', 'Amefikiwa'],
+        quoted: ['Quoted', 'Bei imetolewa'], confirmed: ['Confirmed', 'Imethibitishwa'], completed: ['Completed', 'Imekamilika'], cancelled: ['Cancelled', 'Imeghairiwa'],
+    };
+    const [english, swahili] = labels[value] || [value, value];
+    return copy(english, swahili);
 }

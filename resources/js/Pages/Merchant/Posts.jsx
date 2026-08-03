@@ -17,8 +17,10 @@ import {
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
+import { useLocale } from '@/lib/i18n';
 
 export default function MerchantPosts({ merchantUsername = '' }) {
+    const { copy } = useLocale();
     const { can } = useMerchantPermissions(merchantUsername);
     const canCreate = can('posts.create');
     const canUpdate = can('posts.update');
@@ -98,12 +100,12 @@ export default function MerchantPosts({ merchantUsername = '' }) {
     const sectionSummaryCards = useMemo(() => {
         const postsSummary = commerceSummary?.sections?.posts || {};
         return [
-            { label: 'All Posts', value: postsSummary.total_items ?? posts.length },
-            { label: 'Long Form', value: postsSummary.long_form ?? 0 },
-            { label: 'Total Views', value: Number(postsSummary.total_views ?? 0).toLocaleString() },
-            { label: 'Sales Today', value: `TZS ${Number(postsSummary.today_sales ?? 0).toLocaleString()}` },
+            { label: copy('All posts', 'Machapisho yote'), value: postsSummary.total_items ?? posts.length },
+            { label: copy('Long form', 'Muundo mrefu'), value: postsSummary.long_form ?? 0 },
+            { label: copy('Total views', 'Mionekano yote'), value: Number(postsSummary.total_views ?? 0).toLocaleString() },
+            { label: copy('Sales today', 'Mauzo ya leo'), value: `TZS ${Number(postsSummary.today_sales ?? 0).toLocaleString()}` },
         ];
-    }, [commerceSummary, posts.length]);
+    }, [commerceSummary, posts.length, copy]);
 
     async function loadCommerceSummary() {
         try {
@@ -126,7 +128,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
             setPosts(postsRes.data?.data || []);
             setPostsMeta(postsRes.data?.meta || { current_page: 1, last_page: 1, total: 0 });
         } catch (error) {
-            toast.error('Imeshindwa kupakia posts.');
+            toast.error(copy('Failed to load posts.', 'Imeshindikana kupakia machapisho.'));
         } finally {
             setPostsLoading(false);
             setLoading(false);
@@ -140,7 +142,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
             setContentReports(reportsRes.data?.data || []);
             setReportsMeta(reportsRes.data?.meta || { current_page: 1, last_page: 1, total: 0 });
         } catch (error) {
-            toast.error('Imeshindwa kupakia content reports.');
+            toast.error(copy('Failed to load content reports.', 'Imeshindikana kupakia ripoti za maudhui.'));
         } finally {
             setReportsLoading(false);
             setLoading(false);
@@ -170,9 +172,9 @@ export default function MerchantPosts({ merchantUsername = '' }) {
 
                 return next;
             }));
-            toast.success('Post override imesasishwa.');
+            toast.success(copy('Post override updated.', 'Marekebisho ya chapisho yamesasishwa.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kusasisha override ya post.');
+            toast.error(error.response?.data?.message || copy('Failed to update post override.', 'Imeshindikana kusasisha marekebisho ya chapisho.'));
         } finally {
             setSavingPostInteraction(null);
         }
@@ -190,9 +192,9 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                     ? { ...entry, status, action_taken: actionTaken, resolved_at: status === 'resolved' || status === 'dismissed' ? new Date().toISOString() : null }
                     : entry
             )));
-            toast.success('Report imesasishwa.');
+            toast.success(copy('Report updated.', 'Ripoti imesasishwa.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kusasisha report.');
+            toast.error(error.response?.data?.message || copy('Failed to update report.', 'Imeshindikana kusasisha ripoti.'));
         } finally {
             setResolvingReportId(null);
         }
@@ -201,7 +203,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
     async function submitAppeal(reportId) {
         const appealMessage = (appealMessageById[reportId] || '').trim();
         if (appealMessage.length < 20) {
-            toast.error('Andika appeal yenye maelezo angalau herufi 20.');
+            toast.error(copy('Write an appeal with at least 20 characters.', 'Andika rufaa yenye angalau herufi 20.'));
             return;
         }
 
@@ -219,9 +221,9 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                 safety_state: 'appeal_pending',
             }) : entry));
             setAppealMessageById((current) => ({ ...current, [reportId]: '' }));
-            toast.success('Appeal imetumwa kwa Takeer.');
+            toast.success(copy('Appeal sent to Takeer.', 'Rufaa imetumwa kwa Takeer.'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kutuma appeal.');
+            toast.error(error.response?.data?.message || copy('Failed to submit appeal.', 'Imeshindikana kutuma rufaa.'));
         } finally {
             setAppealingReportId(null);
         }
@@ -230,10 +232,10 @@ export default function MerchantPosts({ merchantUsername = '' }) {
     if (loading) {
         return (
             <AppLayout>
-                <Head title="Posts | Takeer" />
+                <Head title={`${copy('Posts', 'Machapisho')} | Takeer`} />
                 <div className="max-w-5xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
-                    <p className="text-sm text-muted-foreground">Inapakia posts...</p>
+                    <p className="text-sm text-muted-foreground">{copy('Loading posts...', 'Inapakia machapisho...')}</p>
                 </div>
             </AppLayout>
         );
@@ -241,13 +243,13 @@ export default function MerchantPosts({ merchantUsername = '' }) {
 
     return (
         <AppLayout>
-            <Head title="Posts | Takeer" />
+            <Head title={`${copy('Posts', 'Machapisho')} | Takeer`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24 space-y-6">
                 <Card className="rounded-[24px] border-brand-200/70">
                     <CardHeader>
-                        <CardTitle className="text-lg font-black">Posts Summary</CardTitle>
+                        <CardTitle className="text-lg font-black">{copy('Posts summary', 'Muhtasari wa machapisho')}</CardTitle>
                         <CardDescription>
-                            {commerceSummary?.date ? `Daily metrics for ${commerceSummary.date}` : 'Useful performance snapshot for posts.'}
+                            {commerceSummary?.date ? `${copy('Daily metrics for', 'Vipimo vya kila siku vya')} ${commerceSummary.date}` : copy('Useful performance snapshot for posts.', 'Muhtasari wa utendaji wa machapisho.')}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -262,9 +264,9 @@ export default function MerchantPosts({ merchantUsername = '' }) {
 
                 <Card className="rounded-[24px]">
                     <CardHeader>
-                        <CardTitle className="text-lg font-black">All Posts (Short + Long)</CardTitle>
+                        <CardTitle className="text-lg font-black">{copy('All posts (short + long)', 'Machapisho yote (mafupi + marefu)')}</CardTitle>
                         <CardDescription>
-                            Simamia posts zako zote hapa.
+                            {copy('Manage all your posts here.', 'Simamia machapisho yako yote hapa.')}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -275,7 +277,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                                     <Input
                                         value={postSearch}
                                         onChange={(e) => setPostSearch(e.target.value)}
-                                        placeholder="Search posts..."
+                                        placeholder={copy('Search posts...', 'Tafuta machapisho...')}
                                         className="h-11 pl-10 rounded-xl"
                                     />
                                 </div>
@@ -284,9 +286,9 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                                     onChange={(e) => setPostTypeFilter(e.target.value)}
                                     className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                 >
-                                    <option value="all">All types</option>
-                                    <option value="short">Short Form</option>
-                                    <option value="long">Long Form</option>
+                                    <option value="all">{copy('All types', 'Aina zote')}</option>
+                                    <option value="short">{copy('Short form', 'Fomu fupi')}</option>
+                                    <option value="long">{copy('Long form', 'Fomu ndefu')}</option>
                                 </select>
                             </div>
                             {canCreate && (
@@ -298,9 +300,9 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                         </div>
 
                         {postsLoading ? (
-                            <InlineLoader label="Loading posts..." />
+                            <InlineLoader label={copy('Loading posts...', 'Inapakia posts...')} />
                         ) : posts.length === 0 ? (
-                            <EmptyState icon={MessageCircle} title="Hakuna posts bado" body="Ukichapisha post, utaweza kui-manage hapa." />
+                            <EmptyState icon={MessageCircle} title={copy('No posts yet', 'Hakuna posts bado')} body={copy('Published posts will appear here for you to manage.', 'Ukichapisha post, utaweza kui-manage hapa.')} />
                         ) : (
                             <>
                                 {posts.map((entry) => (
@@ -337,7 +339,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                                         {canUpdate && (
                                             <div className="grid gap-3 md:grid-cols-2">
                                                 <div className="space-y-1 min-w-0">
-                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Comments Override</label>
+                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Comments override', 'Mabadiliko ya maoni')}</label>
                                                     <select
                                                         className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
                                                         value={entry.comments_enabled_override === null ? 'inherit' : (entry.comments_enabled_override ? 'on' : 'off')}
@@ -348,13 +350,13 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                                                         disabled={savingPostInteraction === `${entry.id}:comments_enabled_override`}
                                                     >
                                                         <option value="inherit">Inherit ({entry.global_comments_enabled ? 'ON' : 'OFF'})</option>
-                                                        <option value="on">Force ON</option>
-                                                        <option value="off">Force OFF</option>
+                                                        <option value="on">{copy('Force on', 'Washa lazima')}</option>
+                                                        <option value="off">{copy('Force off', 'Zima lazima')}</option>
                                                     </select>
                                                 </div>
 
                                                 <div className="space-y-1 min-w-0">
-                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Reactions Override</label>
+                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Reactions override', 'Mabadiliko ya reactions')}</label>
                                                     <select
                                                         className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
                                                         value={entry.reactions_enabled_override === null ? 'inherit' : (entry.reactions_enabled_override ? 'on' : 'off')}
@@ -365,8 +367,8 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                                                         disabled={savingPostInteraction === `${entry.id}:reactions_enabled_override`}
                                                     >
                                                         <option value="inherit">Inherit ({entry.global_reactions_enabled ? 'ON' : 'OFF'})</option>
-                                                        <option value="on">Force ON</option>
-                                                        <option value="off">Force OFF</option>
+                                                        <option value="on">{copy('Force on', 'Washa lazima')}</option>
+                                                        <option value="off">{copy('Force off', 'Zima lazima')}</option>
                                                     </select>
                                                 </div>
                                             </div>
@@ -381,16 +383,16 @@ export default function MerchantPosts({ merchantUsername = '' }) {
 
                 <Card className="rounded-[24px] border-amber-200/70">
                     <CardHeader>
-                        <CardTitle className="text-lg font-black">Content Reports Queue</CardTitle>
+                                <CardTitle className="text-lg font-black">{copy('Content reports queue', 'Foleni ya ripoti za maudhui')}</CardTitle>
                         <CardDescription>
-                            Ripoti za sera kutoka kwa wateja.
+                            {copy('Policy reports submitted by customers.', 'Ripoti za sera kutoka kwa wateja.')}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
                         {reportsLoading ? (
-                            <InlineLoader label="Loading reports..." />
+                            <InlineLoader label={copy('Loading reports...', 'Inapakia ripoti...')} />
                         ) : contentReports.length === 0 ? (
-                            <EmptyState icon={ShieldCheck} title="Hakuna reports kwa sasa" body="Ripoti mpya zitaonekana hapa." />
+                                <EmptyState icon={ShieldCheck} title={copy('No reports yet', 'Hakuna ripoti kwa sasa')} body={copy('New reports will appear here.', 'Ripoti mpya zitaonekana hapa.')} />
                         ) : (
                             <>
                                 {contentReports.map((report) => (
@@ -401,7 +403,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                                                 Reason: {report.reason_code || report.reason} · Context: {report.report_context || 'marketplace'}
                                             </p>
                                             <p className="text-xs text-muted-foreground mt-1">
-                                                Target: {report.item_summary?.label || '-'} · Status: <span className="font-bold uppercase">{report.status}</span> · Safety: <span className="font-bold uppercase">{report.safety_state || 'reported'}</span>
+                                                {copy('Target:', 'Lengo:')} {report.item_summary?.label || '-'} · {copy('Status:', 'Hali:')} <span className="font-bold uppercase">{report.status}</span> · {copy('Safety:', 'Usalama:')} <span className="font-bold uppercase">{report.safety_state || copy('reported', 'imeripotiwa')}</span>
                                             </p>
                                         </div>
 
@@ -418,30 +420,30 @@ export default function MerchantPosts({ merchantUsername = '' }) {
 
                                         {['restricted', 'appeal_rejected'].includes(report.safety_state) && report.appeal_status !== 'pending' && (
                                             <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                                                <p className="text-xs font-black uppercase tracking-widest text-amber-900">Appeal restriction</p>
+                                                <p className="text-xs font-black uppercase tracking-widest text-amber-900">{copy('Appeal restriction', 'Kizuizi cha rufaa')}</p>
                                                 <textarea
                                                     rows={3}
                                                     value={appealMessageById[report.id] || ''}
                                                     onChange={(e) => setAppealMessageById((current) => ({ ...current, [report.id]: e.target.value }))}
-                                                    placeholder="Explain why this item should be restored, what was fixed, or why the report is mistaken..."
+                                                    placeholder={copy('Explain why this item should be restored, what was fixed, or why the report is mistaken...', 'Eleza kwa nini kipengele hiki kirudishwe, kilichorekebishwa au kwa nini ripoti si sahihi...')}
                                                     className="w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm"
                                                     maxLength={3000}
                                                 />
                                                 <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white" disabled={appealingReportId === report.id} onClick={() => submitAppeal(report.id)}>
-                                                    Submit Appeal
+                                                    {copy('Submit appeal', 'Wasilisha rufaa')}
                                                 </Button>
                                             </div>
                                         )}
 
                                         <div className="flex flex-wrap gap-2">
                                             <Button variant="outline" className="rounded-xl" disabled={resolvingReportId === report.id} onClick={() => resolveContentReport(report.id, 'under_review', 'none')}>
-                                                Under Review
+                                                {copy('Under review', 'Inakaguliwa')}
                                             </Button>
                                             <Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white" disabled={resolvingReportId === report.id} onClick={() => resolveContentReport(report.id, 'resolved', 'warn_content')}>
-                                                Resolve + Warn
+                                                {copy('Resolve + warn', 'Tatua + onya')}
                                             </Button>
                                             <Button variant="outline" className="rounded-xl" disabled={resolvingReportId === report.id} onClick={() => resolveContentReport(report.id, 'dismissed', 'none')}>
-                                                Dismiss
+                                                {copy('Dismiss', 'Puuza')}
                                             </Button>
                                         </div>
                                     </div>
@@ -478,6 +480,7 @@ function InlineLoader({ label }) {
 }
 
 function PaginationControls({ meta, onPageChange, label }) {
+    const { copy } = useLocale();
     const currentPage = Number(meta?.current_page || 1);
     const lastPage = Number(meta?.last_page || 1);
     const total = Number(meta?.total || 0);
@@ -487,7 +490,7 @@ function PaginationControls({ meta, onPageChange, label }) {
     return (
         <div className="flex flex-col gap-3 rounded-2xl border border-border/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs font-bold text-muted-foreground">
-                Page {currentPage} of {lastPage} · {total.toLocaleString()} {label}
+                {copy('Page', 'Ukurasa')} {currentPage} {copy('of', 'wa')} {lastPage} · {total.toLocaleString()} {copy(label, label === 'posts' ? 'posts' : 'ripoti')}
             </p>
             <div className="flex items-center gap-2">
                 <Button
@@ -499,7 +502,7 @@ function PaginationControls({ meta, onPageChange, label }) {
                     disabled={currentPage <= 1}
                 >
                     <ChevronLeft className="mr-1 h-4 w-4" />
-                    Previous
+                    {copy('Previous', 'Iliyotangulia')}
                 </Button>
                 <Button
                     type="button"
@@ -509,7 +512,7 @@ function PaginationControls({ meta, onPageChange, label }) {
                     onClick={() => onPageChange(Math.min(lastPage, currentPage + 1))}
                     disabled={currentPage >= lastPage}
                 >
-                    Next
+                    {copy('Next', 'Inayofuata')}
                     <ChevronRight className="ml-1 h-4 w-4" />
                 </Button>
             </div>

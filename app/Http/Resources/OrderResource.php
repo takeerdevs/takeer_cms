@@ -55,7 +55,12 @@ class OrderResource extends JsonResource
             'agreed_at' => $this->agreed_at?->toISOString(),
             'merchant_confirmed_at' => $this->merchant_confirmed_at?->toISOString(),
             'is_merchant_confirmed' => $this->merchant_confirmed_at !== null,
-            'paid_out_at' => $this->paid_out_at?->toISOString(),
+            'settlement' => $this->whenLoaded('settlement', fn () => [
+                'state' => $this->settlement?->settlement_state,
+                'seller_amount_minor' => $this->settlement?->seller_amount_minor,
+                'payout_eligible_amount_minor' => $this->settlement?->payout_eligible_amount_minor,
+                'paid_out_amount_minor' => $this->settlement?->paid_out_amount_minor,
+            ]),
             'pickup_location_id' => $this->pickup_location_id,
             'pickup_ready_at' => $this->pickup_ready_at?->toISOString(),
             'pickup_deadline_at' => $this->pickup_deadline_at?->toISOString(),
@@ -135,7 +140,7 @@ class OrderResource extends JsonResource
                         ->where('extra_items->parent_order_id', $this->id);
                 });
             })
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->whereIn('payment_status', ['pending_fulfillment', 'release_eligible', 'paid_out'])
             ->sum('total_paid');
     }
 

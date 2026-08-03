@@ -10,8 +10,10 @@ import { router } from '@inertiajs/react';
 import ShopLocationsManager from '@/Components/Merchant/ShopLocationsManager';
 import ReturnPoliciesManager from '@/Components/Merchant/ReturnPoliciesManager';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
+import { useLocale } from '@/lib/i18n';
 
 export default function Settings({ merchant, merchantUsername, countries = [], currencies = [], storefrontSettings = {}, retailEligible = false }) {
+    const { t } = useLocale();
     const [locations, setLocations] = useState([]);
     const [loadingLocations, setLoadingLocations] = useState(true);
     const [profiles, setProfiles] = useState([]);
@@ -189,7 +191,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                 router.visit(payload.redirect_url);
                 return;
             }
-            alert('Imeshindikana kubadilisha zana: ' + (payload.message || err.message));
+            alert(t('merchantSettings.changeToolFailed', { message: payload.message || err.message }));
         }
     };
 
@@ -205,7 +207,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
 
     return (
         <AppLayout>
-            <Head title="Mipangilio ya Biashara | Takeer" />
+            <Head title={`${t('merchantSettings.title')} | Takeer`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-24">
 
                 {/* Header with Back Button */}
@@ -219,29 +221,29 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
                     <div>
-                        <h1 className="text-2xl font-black tracking-tight">Mipangilio ya Biashara ⚙️</h1>
-                        <p className="text-sm text-muted-foreground">Hariri taarifa za biashara yako na upendeleo.</p>
+                        <h1 className="text-2xl font-black tracking-tight">{t('merchantSettings.title')} ⚙️</h1>
+                        <p className="text-sm text-muted-foreground">{t('merchantSettings.description')}</p>
                     </div>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* Avatar Upload */}
                     <div className="flex flex-col items-center justify-center gap-2 space-y-6">
-                        <label className="text-sm font-bold text-muted-foreground">Nembo ya {data.display_name} (Logo)</label>
+                        <label className="text-sm font-bold text-muted-foreground">{t('merchantSettings.logo', { name: data.display_name })}</label>
 
                         <div
                             className="relative h-32 w-32 rounded-full bg-muted flex items-center justify-center overflow-hidden border-4 border-background shadow-md cursor-pointer group hover:border-brand-200 transition-all hover:shadow-lg"
                             onClick={() => canUpdateSettings && document.getElementById('avatar-upload').click()}
                         >
                             {data.avatar_url ? (
-                                <img src={data.avatar_url} alt="Avatar" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                            <img src={data.avatar_url} alt={t('merchantSettings.avatar')} className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
                             ) : (
                                 <User className="h-10 w-10 text-muted-foreground group-hover:text-brand-600 transition-colors" />
                             )}
 
                             <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                 <UploadCloud className="h-6 w-6 text-white" />
-                                <span className="text-[10px] font-bold text-white mt-1">Badilisha</span>
+                                <span className="text-[10px] font-bold text-white mt-1">{t('merchantSettings.change')}</span>
                             </div>
                         </div>
 
@@ -253,35 +255,35 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                             onChange={handleAvatarUpload}
                             disabled={uploading || !canUpdateSettings}
                         />
-                        {uploading && <p className="text-xs text-brand-600 font-bold animate-pulse">Inapakia...</p>}
+                        {uploading && <p className="text-xs text-brand-600 font-bold animate-pulse">{t('merchantSettings.uploading')}</p>}
                     </div>
 
                     <Card className="glass-card shadow-sm">
                         <CardHeader className="p-5 pb-2">
                             <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-muted-foreground uppercase tracking-wider">
-                                <User className="h-4 w-4" /> Taarifa za Biashara
+                                <User className="h-4 w-4" /> {t('merchantSettings.businessInformation')}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-5 space-y-4">
                             <div className="space-y-1">
-                                <label className="text-sm font-bold text-muted-foreground">Jina la Biashara</label>
+                                <label className="text-sm font-bold text-muted-foreground">{t('merchantSettings.businessName')}</label>
                                 <Input
                                     id="display_name"
                                     value={data.display_name}
                                     onChange={e => setData('display_name', e.target.value)}
-                                    placeholder="Mf. Biashara ya Viatu"
+                                    placeholder={t('merchantSettings.businessNamePlaceholder')}
                                     className="rounded-xl mt-1"
                                 />
                                 {errors.display_name && <p className="text-xs text-red-500 mt-0.5">{errors.display_name}</p>}
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-sm font-bold text-muted-foreground">Maelezo Mafupi (Bio)</label>
+                                <label className="text-sm font-bold text-muted-foreground">{t('merchantSettings.shortBio')}</label>
                                 <Textarea
                                     id="bio"
                                     value={data.bio}
                                     onChange={e => setData('bio', e.target.value)}
-                                    placeholder={`Elezea kuhusu ${data.display_name}, mnafanya nini...`}
+                                    placeholder={t('merchantSettings.bioPlaceholder', { name: data.display_name })}
                                     className="rounded-xl min-h-[100px] mt-1"
                                 />
                                 {errors.bio && <p className="text-xs text-red-500 mt-0.5">{errors.bio}</p>}
@@ -292,18 +294,18 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                     <Card className="glass-card shadow-sm">
                         <CardHeader className="p-5 pb-2">
                             <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-muted-foreground uppercase tracking-wider">
-                                <Globe className="h-4 w-4" /> Maeneo na Fedha
+                                <Globe className="h-4 w-4" /> {t('merchantSettings.locationAndCurrency')}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-5 space-y-4">
                             <div className="space-y-1">
-                                <label className="text-sm font-bold text-muted-foreground">Nchi</label>
+                                <label className="text-sm font-bold text-muted-foreground">{t('merchantSettings.country')}</label>
                                 <select
                                     value={data.country_id}
                                     onChange={e => updateCountry(e.target.value)}
                                     className="flex h-10 w-full rounded-xl border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
                                 >
-                                    <option value="" disabled>Chagua Nchi</option>
+                                    <option value="" disabled>{t('merchantSettings.chooseCountry')}</option>
                                     {countries.map(country => (
                                         <option key={country.id} value={String(country.id)}>
                                             {country.name} ({country.code})
@@ -315,7 +317,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
 
                             {showTimezoneSelect && (
                                 <div className="space-y-1">
-                                    <label className="text-sm font-bold text-muted-foreground">Timezone</label>
+                                    <label className="text-sm font-bold text-muted-foreground">{t('merchantSettings.timezone')}</label>
                                     <select
                                         value={data.timezone}
                                         onChange={e => setData('timezone', e.target.value)}
@@ -332,13 +334,13 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                             )}
 
                             <div className="space-y-1">
-                                <label className="text-sm font-bold text-muted-foreground">Sarafu (Currency)</label>
+                                <label className="text-sm font-bold text-muted-foreground">{t('merchantSettings.currency')}</label>
                                 <select
                                     value={data.currency_id}
                                     onChange={e => setData('currency_id', e.target.value)}
                                     className="flex h-10 w-full rounded-xl border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
                                 >
-                                    <option value="" disabled>Chagua Sarafu</option>
+                                    <option value="" disabled>{t('merchantSettings.chooseCurrency')}</option>
                                     {currencies.map(currency => (
                                         <option key={currency.id} value={String(currency.id)}>
                                             {currency.code} - {currency.name} ({currency.symbol})
@@ -353,14 +355,14 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                     <Card className="glass-card shadow-sm">
                         <CardHeader className="p-5 pb-2">
                             <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-muted-foreground uppercase tracking-wider">
-                                <MessageCircle className="h-4 w-4" /> Uwezeshaji wa Maoni na Reactions
+                                <MessageCircle className="h-4 w-4" /> {t('merchantSettings.commentsAndReactions')}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-5 space-y-4">
                             <label className="rounded-2xl border border-input bg-muted/30 px-4 py-3 flex items-center justify-between gap-3">
                                 <div>
-                                    <p className="text-sm font-bold">Allow Comments in posts</p>
-                                    <p className="text-xs text-muted-foreground">Ikiwa imezimwa, post zote mpya na za zamani zitafunga maoni isipokuwa override ya post.</p>
+                                    <p className="text-sm font-bold">{t('merchantSettings.allowComments')}</p>
+                                    <p className="text-xs text-muted-foreground">{t('merchantSettings.commentsDescription')}</p>
                                 </div>
                                 <input
                                     type="checkbox"
@@ -374,9 +376,9 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                 <div className="flex-1">
                                     <p className="text-sm font-bold flex items-center gap-2">
                                         <Heart className="h-4 w-4 text-brand-600" />
-                                        Allow Reactions in posts
+                                        {t('merchantSettings.allowReactions')}
                                     </p>
-                                    <p className="text-xs text-muted-foreground">Ikiwa imezimwa, users hawataweza kuweka emoji reactions kwenye post isipokuwa override ya post.</p>
+                                    <p className="text-xs text-muted-foreground">{t('merchantSettings.reactionsDescription')}</p>
                                 </div>
                                 <input
                                     type="checkbox"
@@ -392,7 +394,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                         <Card className="glass-card shadow-sm border-brand-200 bg-brand-50/20">
                             <CardHeader className="p-5 pb-2">
                                 <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-brand-700 uppercase tracking-wider">
-                                    <ShoppingBag className="h-4 w-4" /> Business Tools
+                                <ShoppingBag className="h-4 w-4" /> {t('merchantSettings.businessTools')}
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="p-5 space-y-4">
@@ -402,8 +404,8 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                             <LayoutDashboard className="h-6 w-6" />
                                         </div>
                                         <div>
-                                            <p className="text-sm font-bold">Takeer Retail Ops</p>
-                                            <p className="text-xs text-muted-foreground">Manage multi-location inventory, staff PINs, and in-store POS sales.</p>
+                                            <p className="text-sm font-bold">{t('merchantSettings.retailOps')}</p>
+                                            <p className="text-xs text-muted-foreground">{t('merchantSettings.retailDescription')}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
@@ -415,7 +417,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                                 className="rounded-lg h-8 text-xs font-bold border-brand-200 text-brand-700 hover:bg-brand-50"
                                                 onClick={() => router.visit(`/merchant/${merchantSlug}/retail/dashboard`)}
                                             >
-                                                Dashboard
+                                                {t('merchantSettings.dashboard')}
                                             </Button>
                                         )}
                                         <label className="relative inline-flex items-center cursor-pointer">
@@ -440,7 +442,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                             className="w-full h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-brand-600/20"
                             disabled={processing}
                         >
-                            <Save className="h-4 w-4" /> {processing ? 'Inahifadhi...' : 'Hifadhi Mabadiliko'}
+                            <Save className="h-4 w-4" /> {processing ? t('merchantSettings.saving') : t('merchantSettings.saveChanges')}
                         </Button>
                     )}
                 </form>

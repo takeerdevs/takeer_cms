@@ -5,11 +5,13 @@ import { Card } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { AlertTriangle, ExternalLink, Link as LinkIcon, RefreshCw, ShieldCheck, ShieldOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
 import axios from 'axios';
 
 const statusOptions = ['all', 'active', 'paused', 'disabled'];
 
 export default function AdminTrackedLinks() {
+    const { t, copy } = useLocale();
     const [links, setLinks] = useState([]);
     const [loading, setLoading] = useState(true);
     const [status, setStatus] = useState('all');
@@ -32,7 +34,7 @@ export default function AdminTrackedLinks() {
             const res = await axios.get(`/admin/api/tracked-links?${params.toString()}`);
             setLinks(res.data?.data || []);
         } catch (error) {
-            toast.error('Failed to load tracked links.');
+            toast.error(t('adminUi.loadingLinks'));
         } finally {
             setLoading(false);
         }
@@ -45,51 +47,51 @@ export default function AdminTrackedLinks() {
                 status: nextStatus,
                 moderation_note: noteById[linkId] || '',
             });
-            toast.success('Tracked link updated.');
+            toast.success(copy('Tracked link updated.', 'Link iliyofuatiliwa imesasishwa.'));
             await loadLinks();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to update tracked link.');
+            toast.error(error.response?.data?.message || copy('Failed to update tracked link.', 'Imeshindikana kusasisha link iliyofuatiliwa.'));
         } finally {
             setUpdatingId(null);
         }
     };
 
     return (
-        <AdminLayout title="Tracked Links">
-            <Head title="Tracked Links | Takeer Admin" />
+        <AdminLayout title={t('adminUi.trackedLinks')}>
+            <Head title={`${t('adminUi.trackedLinks')} | Takeer Admin`} />
 
             <div className="space-y-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
                         <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-                            <LinkIcon className="h-6 w-6 text-brand-700" /> Tracked Links
+                            <LinkIcon className="h-6 w-6 text-brand-700" /> {t('adminUi.trackedLinks')}
                         </h1>
-                        <p className="mt-1 text-sm text-slate-600">Review outbound destinations, reports, and creator link activity.</p>
+                        <p className="mt-1 text-sm text-slate-600">{t('adminUi.trackedLinksDescription')}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && loadLinks()}
-                            placeholder="Search URL, host, code..."
+                            placeholder={t('adminUi.searchLinks')}
                             className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
                         />
                         <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm">
                             {statusOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                         </select>
                         <Button variant={reportedOnly ? 'default' : 'outline'} onClick={() => setReportedOnly((value) => !value)}>
-                            <AlertTriangle className="mr-2 h-4 w-4" /> Reported
+                            <AlertTriangle className="mr-2 h-4 w-4" /> {copy('Reported', 'Zimeripotiwa')}
                         </Button>
                         <Button variant="outline" onClick={loadLinks}>
-                            <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+                            <RefreshCw className="mr-2 h-4 w-4" /> {t('adminUi.refresh')}
                         </Button>
                     </div>
                 </div>
 
                 {loading ? (
-                    <Card className="border-slate-200 bg-white p-12 text-center text-slate-500">Loading tracked links...</Card>
+                    <Card className="border-slate-200 bg-white p-12 text-center text-slate-500">{t('adminUi.loadingLinks')}</Card>
                 ) : links.length === 0 ? (
-                    <Card className="border-slate-200 bg-white p-12 text-center text-slate-500">No tracked links found.</Card>
+                    <Card className="border-slate-200 bg-white p-12 text-center text-slate-500">{t('adminUi.noLinks')}</Card>
                 ) : (
                     <div className="space-y-4">
                         {links.map((item) => (
@@ -112,19 +114,19 @@ export default function AdminTrackedLinks() {
                                         <p className="mt-1 text-xs text-slate-500">
                                             Merchant: {item.merchant?.display_name || '-'}
                                             {item.merchant?.id && (
-                                                <> · <Link className="font-bold text-brand-700 underline" href={`/admin/merchants/${item.merchant.id}`}>view merchant</Link></>
+                                                <> · <Link className="font-bold text-brand-700 underline" href={`/admin/merchants/${item.merchant.id}`}>{copy('view merchant', 'angalia merchant')}</Link></>
                                             )}
                                         </p>
                                     </div>
                                     <div className="flex shrink-0 flex-wrap gap-2">
                                         <a href={item.tracked_url} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center rounded-lg border border-slate-300 px-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
-                                            <ExternalLink className="mr-2 h-4 w-4" /> Open
+                                            <ExternalLink className="mr-2 h-4 w-4" /> {copy('Open', 'Fungua')}
                                         </a>
                                         <Button className="bg-red-600 text-white hover:bg-red-700" disabled={updatingId === item.id || item.status === 'disabled'} onClick={() => updateStatus(item.id, 'disabled')}>
-                                            <ShieldOff className="mr-2 h-4 w-4" /> Disable
+                                            <ShieldOff className="mr-2 h-4 w-4" /> {copy('Disable', 'Zima')}
                                         </Button>
                                         <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={updatingId === item.id || item.status === 'active'} onClick={() => updateStatus(item.id, 'active')}>
-                                            <ShieldCheck className="mr-2 h-4 w-4" /> Restore
+                                            <ShieldCheck className="mr-2 h-4 w-4" /> {copy('Restore', 'Rejesha')}
                                         </Button>
                                     </div>
                                 </div>
@@ -133,7 +135,7 @@ export default function AdminTrackedLinks() {
                                     rows={2}
                                     value={noteById[item.id] || ''}
                                     onChange={(e) => setNoteById((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                                    placeholder="Moderation note..."
+                                    placeholder={t('adminUi.moderationNote')}
                                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                                 />
                             </Card>

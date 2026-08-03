@@ -105,7 +105,7 @@ class MiniStoreController extends Controller
             ->with(['attributes', 'images', 'merchant', 'postTags.post'])
             ->withCount([
                 'postTags',
-                'orders as paid_orders_count' => fn ($query) => $query->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid']),
+                'orders as paid_orders_count' => fn ($query) => $query->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out']),
             ])
             ->latest()
             ->take(60)
@@ -134,7 +134,7 @@ class MiniStoreController extends Controller
 
         $paidOrderBase = \App\Models\Order::query()
             ->where('merchant_id', $merchant->id)
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid']);
+            ->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out']);
 
         $digitalRevenue = (clone $paidOrderBase)
             ->where('purchasable_type', 'product')
@@ -358,7 +358,7 @@ class MiniStoreController extends Controller
             ->withCount('postTags')
             ->withCount([
                 'orders as purchases_count' => fn ($orders) => $orders->whereNotIn('payment_status', ['pending', 'failed']),
-                'orders as paid_orders_count' => fn ($orders) => $orders->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid']),
+                'orders as paid_orders_count' => fn ($orders) => $orders->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out']),
             ])
             ->latest()
             ->paginate(24);

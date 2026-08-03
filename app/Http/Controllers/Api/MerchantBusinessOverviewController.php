@@ -35,7 +35,7 @@ class MerchantBusinessOverviewController extends Controller
         $merchant->loadMissing('currency');
         $currencyCode = $merchant->currency?->code ?: 'TZS';
 
-        $paidStatuses = ['escrow_locked', 'resolved_merchant_paid', 'held', 'paid'];
+        $paidStatuses = ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out', 'held', 'paid'];
         $orders = Order::query()
             ->where('merchant_id', $merchant->id)
             ->where('created_at', '>=', $from)
@@ -153,7 +153,7 @@ class MerchantBusinessOverviewController extends Controller
             'operations' => [
                 'active_staff' => MerchantStaff::query()->where('merchant_id', $merchant->id)->where('is_active', true)->count(),
                 'pending_service_requests' => ServiceRequest::query()->where('merchant_id', $merchant->id)->where('status', 'pending')->count(),
-                'pending_orders' => Order::query()->where('merchant_id', $merchant->id)->whereIn('payment_status', ['awaiting_payment', 'awaiting_merchant_confirmation', 'escrow_locked'])->count(),
+                'pending_orders' => Order::query()->where('merchant_id', $merchant->id)->whereIn('payment_status', ['awaiting_payment', 'pending_fulfillment', 'payment_confirmed'])->count(),
                 'bookkeeping_income' => (float) $income,
                 'bookkeeping_expenses' => (float) $expenses,
                 'bookkeeping_pending_review' => RetailBookkeepingEntry::query()->where('merchant_id', $merchant->id)->where('review_status', 'pending')->count(),

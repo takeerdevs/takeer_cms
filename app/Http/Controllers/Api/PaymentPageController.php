@@ -16,10 +16,10 @@ class PaymentPageController extends Controller
     {
         $pages = $merchant->paymentPages()
             ->withCount(['views', 'orders' => function($q) {
-                $q->whereIn('payment_status', ['paid_pending_confirmation', 'awaiting_merchant_confirmation', 'escrow_locked', 'resolved_merchant_paid']);
+                $q->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out']);
             }])
             ->withSum(['orders as revenue' => function($q) {
-                $q->whereIn('payment_status', ['paid_pending_confirmation', 'awaiting_merchant_confirmation', 'escrow_locked', 'resolved_merchant_paid']);
+                $q->whereIn('payment_status', ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out']);
             }], 'total_paid')
             ->latest()
             ->get();

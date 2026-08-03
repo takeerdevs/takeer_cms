@@ -100,7 +100,6 @@ class Order extends Model
         'cancelled_at',
         'cancelled_by',
         'cancellation_reason',
-        'paid_out_at',
         'pickup_ready_at',
         'pickup_deadline_at',
         'pickup_grace_ends_at',
@@ -175,7 +174,6 @@ class Order extends Model
             'inventory_reserved_at' => 'datetime',
             'merchant_confirmed_at' => 'datetime',
             'cancelled_at' => 'datetime',
-            'paid_out_at' => 'datetime',
             'pickup_ready_at' => 'datetime',
             'pickup_deadline_at' => 'datetime',
             'pickup_grace_ends_at' => 'datetime',
@@ -275,7 +273,7 @@ class Order extends Model
             if ($order->isReferralCommissionEarnedStatus()) {
                 app(\App\Services\RetailBookkeepingSyncService::class)->syncOnlineOrder($order);
                 $order->ensureReferralCommission();
-                if (! in_array($order->getOriginal('payment_status'), ['escrow_locked', 'resolved_merchant_paid'], true)) {
+                if (! in_array($order->getOriginal('payment_status'), ['pending_fulfillment', 'release_eligible', 'paid_out'], true)) {
                     $order->recordGroupSaleConversion();
                     $order->recordReferralConversion();
                 }
@@ -284,10 +282,10 @@ class Order extends Model
 
             if ($order->isReferralCommissionVoidStatus()) {
                 app(\App\Services\RetailBookkeepingSyncService::class)->voidOnlineOrder($order);
-                if (in_array($order->getOriginal('payment_status'), ['escrow_locked', 'resolved_merchant_paid', 'disputed'], true)) {
+                if (in_array($order->getOriginal('payment_status'), ['pending_fulfillment', 'release_eligible', 'paid_out', 'disputed'], true)) {
                     $order->reverseGroupSaleConversion();
                 }
-                if (in_array($order->getOriginal('payment_status'), ['escrow_locked', 'resolved_merchant_paid', 'disputed'], true)) {
+                if (in_array($order->getOriginal('payment_status'), ['pending_fulfillment', 'release_eligible', 'paid_out', 'disputed'], true)) {
                     $order->reverseReferralConversion();
                 }
                 $order->voidReferralCommission();
@@ -328,6 +326,11 @@ class Order extends Model
     public function paymentProviderChannel(): BelongsTo
     {
         return $this->belongsTo(PaymentProviderChannel::class, 'payment_provider_channel_id');
+    }
+
+    public function settlement(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(OrderSettlement::class);
     }
 
     public function product(): BelongsTo
@@ -420,9 +423,9 @@ class Order extends Model
 
     // ─── Helpers ────────────────────────────────────────────────────────────────
 
-    public function isEscrowLocked(): bool
+    public function isPendingFulfillment(): bool
     {
-        return $this->payment_status === 'escrow_locked';
+        return $this->payment_status === 'pending_fulfillment';
     }
 
     public function isDisputed(): bool
@@ -450,7 +453,7 @@ class Order extends Model
 
     public function isPaidOut(): bool
     {
-        return $this->paid_out_at !== null || $this->payment_status === 'resolved_merchant_paid';
+        return $this->payment_status === 'paid_out';
     }
 
     public function canBeCancelledBeforePayment(): bool
@@ -479,12 +482,12 @@ class Order extends Model
 
     public function isReferralCommissionEarnedStatus(): bool
     {
-        return in_array($this->payment_status, ['escrow_locked', 'resolved_merchant_paid'], true);
+        return in_array($this->payment_status, ['pending_fulfillment', 'release_eligible', 'release_requested', 'payout_processing', 'paid_out'], true);
     }
 
     public function isReferralCommissionVoidStatus(): bool
     {
-        return in_array($this->payment_status, ['failed', 'resolved_buyer_refunded'], true);
+        return in_array($this->payment_status, ['failed', 'refunded'], true);
     }
 
     public function markDigitalAccessed(string $reason = 'download'): void
@@ -517,18 +520,18 @@ class Order extends Model
             ? $windowStartsAt->copy()->addDays((int) $windowDays)
             : null;
         $status = 'eligible';
-        $reason = 'Eligible for review while payment is held by Takeer.';
+        $reason = 'Eligible for review under the order and PSP settlement policy.';
 
         if ($policy === 'final_sale') {
             $status = 'not_eligible';
             $reason = 'The creator marked this item as final sale.';
-        } elseif ($isPhysical && ! in_array($this->payment_status, ['escrow_locked', 'shipped', 'resolved_merchant_paid'], true)) {
+        } elseif ($isPhysical && ! in_array($this->payment_status, ['pending_fulfillment', 'release_eligible', 'paid_out'], true)) {
             $status = 'not_eligible';
             $reason = 'Return requests are only available after payment and before the order is closed from return handling.';
         } elseif ($isPhysical && ! $windowStartsAt) {
             $status = 'not_eligible';
             $reason = 'Return window starts once the item is delivered to the customer or forwarding address.';
-        } elseif (! $isPhysical && ! in_array($this->payment_status, ['escrow_locked', 'shipped'], true)) {
+        } elseif (! $isPhysical && ! in_array($this->payment_status, ['payment_confirmed', 'pending_fulfillment', 'release_eligible', 'paid_out'], true)) {
             $status = 'not_eligible';
             $reason = 'Refund claims are only available while payment is still held or shipment is active.';
         } elseif ($windowEndsAt && now()->greaterThan($windowEndsAt)) {
@@ -550,8 +553,8 @@ class Order extends Model
             $status = 'not_eligible';
             $reason = 'Digital access has already started.';
         } elseif ($isService) {
-            $reason = 'Service refund requests are reviewed against delivery evidence and SafePay status.';
-        } elseif ($isPhysical && $this->payment_status === 'resolved_merchant_paid') {
+            $reason = 'Service refund requests are reviewed against delivery evidence and PSP status.';
+        } elseif ($isPhysical && $this->payment_status === 'paid_out') {
             $reason = 'Return request is available within the seller policy window; merchant will handle the normal return workflow.';
         } elseif ($isDigital && $deliveryType === 'custom_delivery') {
             $reason = 'Custom work can be disputed before acceptance; revisions should be requested first when possible.';
@@ -815,10 +818,7 @@ class Order extends Model
 
     public function isCompleted(): bool
     {
-        return in_array($this->payment_status, [
-            'resolved_merchant_paid',
-            'resolved_buyer_refunded',
-        ]);
+        return in_array($this->payment_status, ['paid_out', 'refunded'], true);
     }
 
     public function hasPhysicalBundleItems(): bool

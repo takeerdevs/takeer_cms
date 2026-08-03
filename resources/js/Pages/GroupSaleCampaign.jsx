@@ -5,8 +5,11 @@ import { Input } from '@/Components/ui/Input';
 import { Loader2, Users, Clock, Store, CheckCircle2 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useLocale } from '@/lib/i18n';
+import LanguageSwitcher from '@/Components/LanguageSwitcher';
 
 export default function GroupSaleCampaign({ campaign }) {
+    const { t, copy } = useLocale();
     const [data, setData] = useState(campaign || {});
     const [form, setForm] = useState({
         name: '',
@@ -27,9 +30,9 @@ export default function GroupSaleCampaign({ campaign }) {
             });
             setData(res.data?.campaign || data);
             setJoined(true);
-            toast.success(res.data?.message || 'Reservation saved.');
+            toast.success(res.data?.message || t('publicCommerce.reservationSaved'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Could not join this campaign.');
+            toast.error(error.response?.data?.message || t('publicCommerce.campaignJoinFailed'));
         } finally {
             setJoining(false);
         }
@@ -44,7 +47,8 @@ export default function GroupSaleCampaign({ campaign }) {
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-950">
-            <Head title={`${data.title || 'Group sale'} | Takeer`} />
+            <Head title={`${data.title || t('publicCommerce.groupPrice')} | Takeer`} />
+            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
             <main className="mx-auto max-w-5xl px-4 py-6 md:py-10">
                 <div className="mb-5 flex items-center justify-between gap-3">
                     <Link href="/" className="text-lg font-black text-brand-700">Takeer</Link>
@@ -70,23 +74,23 @@ export default function GroupSaleCampaign({ campaign }) {
                         <div className="p-5 md:p-7">
                             <div className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-700">
                                 <Users className="h-3.5 w-3.5" />
-                                Group sale
+                                {copy('Group sale', 'Mauzo ya kikundi')}
                             </div>
                             <h1 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">{data.title}</h1>
-                            <p className="mt-3 text-sm leading-6 text-slate-600">{data.description || 'Join this campaign before the deadline. If enough buyers reserve, the merchant can unlock the offer.'}</p>
+                            <p className="mt-3 text-sm leading-6 text-slate-600">{data.description || copy('Join this campaign before the deadline. If enough buyers reserve, the merchant can unlock the offer.', 'Jiunge na kampeni hii kabla ya muda kuisha. Wanunuzi wakitosha kuweka nafasi, mfanyabiashara anaweza kufungua ofa.')}</p>
                             <div className="mt-5 flex flex-wrap gap-3">
                                 <div className="rounded-2xl border bg-slate-50 px-4 py-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Group price</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('publicCommerce.groupPrice')}</p>
                                     <p className="mt-1 text-2xl font-black text-brand-700">TSh {Number(data.campaign_price || 0).toLocaleString()}{unitSuffix}</p>
                                 </div>
                                 {data.regular_price ? (
                                     <div className="rounded-2xl border bg-slate-50 px-4 py-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Regular price</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('publicCommerce.regularPrice')}</p>
                                         <p className="mt-1 text-2xl font-black text-slate-500 line-through">TSh {Number(data.regular_price || 0).toLocaleString()}{unitSuffix}</p>
                                     </div>
                                 ) : null}
                                 <div className="rounded-2xl border bg-slate-50 px-4 py-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Deadline</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('publicCommerce.deadline')}</p>
                                     <p className="mt-1 flex items-center gap-2 text-sm font-black"><Clock className="h-4 w-4" />{deadline}</p>
                                 </div>
                             </div>
@@ -95,7 +99,7 @@ export default function GroupSaleCampaign({ campaign }) {
 
                     <aside className="rounded-[28px] border bg-white p-5 shadow-sm md:p-6">
                         <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-widest text-slate-500">
-                            <span>{Number(data.reserved_quantity || 0).toLocaleString()} / {Number(data.goal_quantity || 0).toLocaleString()} reserved</span>
+                            <span>{Number(data.reserved_quantity || 0).toLocaleString()} / {Number(data.goal_quantity || 0).toLocaleString()} {copy('reserved', 'zimehifadhiwa')}</span>
                             <span>{progress}%</span>
                         </div>
                         <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100">
@@ -105,33 +109,33 @@ export default function GroupSaleCampaign({ campaign }) {
                         {isCheckoutOpen && buyUrl ? (
                             <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
                                 <CheckCircle2 className="h-8 w-8" />
-                                <p className="mt-3 font-black">Target reached. Checkout is open.</p>
-                                <p className="mt-1 text-sm">Buy now at the group-sale price before the campaign closes.</p>
+                                <p className="mt-3 font-black">{t('publicCommerce.targetReached')}</p>
+                                <p className="mt-1 text-sm">{t('publicCommerce.buyGroupPrice')}</p>
                                 <Link href={buyUrl} className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-2xl bg-brand-600 px-5 text-sm font-black text-white shadow-sm">
-                                    Buy at group price
+                                    {copy('Buy at group price', 'Nunua kwa bei ya kikundi')}
                                 </Link>
                             </div>
                         ) : joined ? (
                             <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900">
                                 <CheckCircle2 className="h-8 w-8" />
-                                <p className="mt-3 font-black">You joined this group sale.</p>
-                                <p className="mt-1 text-sm">The merchant can notify you when the target is reached or the campaign changes.</p>
+                                <p className="mt-3 font-black">{t('publicCommerce.joinedGroup')}</p>
+                                <p className="mt-1 text-sm">{t('publicCommerce.merchantNotify')}</p>
                             </div>
                         ) : (
                             <div className="mt-6 space-y-3">
-                                <Input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Your name" className="h-12 rounded-xl" />
-                                <Input value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Phone for updates" className="h-12 rounded-xl" />
-                                <Input value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="Email optional" className="h-12 rounded-xl" />
-                                <Input type="number" min="1" value={form.quantity} onChange={(e) => setForm((prev) => ({ ...prev, quantity: e.target.value }))} placeholder="Quantity" className="h-12 rounded-xl" />
+                                <Input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder={t('publicCommerce.yourName')} className="h-12 rounded-xl" />
+                                <Input value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder={t('publicCommerce.phoneUpdates')} className="h-12 rounded-xl" />
+                                <Input value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} placeholder={t('publicCommerce.emailOptional')} className="h-12 rounded-xl" />
+                                <Input type="number" min="1" value={form.quantity} onChange={(e) => setForm((prev) => ({ ...prev, quantity: e.target.value }))} placeholder={t('publicCommerce.quantity')} className="h-12 rounded-xl" />
                                 {data.allow_sms_updates && (
                                     <label className="flex items-center gap-3 rounded-xl border bg-slate-50 px-3 py-3 text-sm font-bold">
                                         <input type="checkbox" checked={form.wants_sms_updates} onChange={(e) => setForm((prev) => ({ ...prev, wants_sms_updates: e.target.checked }))} className="h-5 w-5" />
-                                        Send me SMS updates
+                                        {copy('Send me SMS updates', 'Nitume taarifa kwa SMS')}
                                     </label>
                                 )}
                                 <Button disabled={!isJoinable || joining} onClick={joinCampaign} className="h-12 w-full rounded-2xl font-black">
                                     {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="mr-2 h-4 w-4" />}
-                                    {isJoinable ? 'Join group sale' : 'Campaign closed'}
+                                    {isJoinable ? copy('Join group sale', 'Jiunge na mauzo ya kikundi') : copy('Campaign closed', 'Kampeni imefungwa')}
                                 </Button>
                             </div>
                         )}

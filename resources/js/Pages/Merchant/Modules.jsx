@@ -7,8 +7,10 @@ import { Check, ChevronRight, LayoutGrid, Loader2, RefreshCw, Save, Settings2, S
 import axios from 'axios';
 import { toast } from 'sonner';
 import { businessToolCopy } from '@/lib/businessToolCopy';
+import { useLocale } from '@/lib/i18n';
 
 export default function Modules({ merchantUsername }) {
+    const { locale, t, copy } = useLocale();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [payload, setPayload] = useState(null);
@@ -23,7 +25,7 @@ export default function Modules({ merchantUsername }) {
             setActiveModules(response.data?.merchant?.active_modules || []);
             setCommerceModes(response.data?.merchant?.commerce_modes || []);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindikana kupakia zana za biashara.');
+            toast.error(error.response?.data?.message || t('publicCommerce.shopUnavailable'));
         } finally {
             setLoading(false);
         }
@@ -82,9 +84,9 @@ export default function Modules({ merchantUsername }) {
             setPayload(response.data);
             setActiveModules(response.data?.merchant?.active_modules || []);
             setCommerceModes(response.data?.merchant?.commerce_modes || []);
-            toast.success('Zana za biashara zimehifadhiwa.');
+            toast.success(t('merchantUi.saveTools'));
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindikana kuhifadhi zana.');
+            toast.error(error.response?.data?.message || t('merchantUi.saveTools'));
         } finally {
             setSaving(false);
         }
@@ -92,24 +94,24 @@ export default function Modules({ merchantUsername }) {
 
     return (
         <AppLayout>
-            <Head title="Zana za Biashara | Takeer" />
+            <Head title={`${t('merchantUi.tools')} | Takeer`} />
             <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div>
-                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Mpangilio wa biashara</p>
-                        <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">Zana za Biashara</h1>
+                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('merchantUi.setup')}</p>
+                        <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">{t('merchantUi.tools')}</h1>
                         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                            Chagua biashara hii inatumia nini: bidhaa, booking, menu, kozi, timu, ripoti, mawasiliano, na bookkeeping.
+                            {t('merchantUi.toolsDescription')}
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button variant="outline" onClick={loadModules} disabled={loading}>
                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                            Pakia upya
+                            {t('merchantUi.reload')}
                         </Button>
                         <Button onClick={saveModules} disabled={saving || loading}>
                             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                            Hifadhi zana
+                            {t('merchantUi.saveTools')}
                         </Button>
                     </div>
                 </div>
@@ -118,7 +120,7 @@ export default function Modules({ merchantUsername }) {
                     <Card>
                         <CardContent className="flex min-h-72 flex-col items-center justify-center">
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            <p className="mt-3 text-sm text-muted-foreground">Inapakia mpangilio wa zana...</p>
+                            <p className="mt-3 text-sm text-muted-foreground">{t('merchantUi.loadingSetup')}</p>
                         </CardContent>
                     </Card>
                 ) : (
@@ -126,7 +128,7 @@ export default function Modules({ merchantUsername }) {
                         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Aina za mauzo</CardTitle>
+                                    <CardTitle>{t('merchantUi.salesTypes')}</CardTitle>
                                 </CardHeader>
                                 <CardContent className="grid gap-3 md:grid-cols-2">
                                     {Object.entries(payload?.commerce_modes || {}).map(([key, mode]) => {
@@ -149,20 +151,20 @@ export default function Modules({ merchantUsername }) {
                             <div className="space-y-4">
                                 <Card>
                                     <CardHeader>
-                                        <CardTitle>Mapendekezo</CardTitle>
+                                        <CardTitle>{t('merchantUi.recommendations')}</CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-3">
                                         <PresetBlock
                                             icon={Sparkles}
-                                            title="Kulingana na aina ya biashara"
+                                            title={t('merchantUi.basedOnBusiness')}
                                             text={payload?.business_context?.subcategory_label ? `${payload.business_context.label} / ${payload.business_context.subcategory_label}` : payload?.business_context?.label || 'No category selected'}
                                             count={recommendedModules.length}
                                             onClick={applyCategoryPreset}
                                         />
                                         <PresetBlock
                                             icon={Settings2}
-                                            title="Aina za mauzo ulizochagua"
-                                            text={`${selectedModeModules.length} zana zilizopendekezwa kutokana na aina za mauzo`}
+                                            title={t('merchantUi.selectedSalesTypes')}
+                                            text={copy(`${selectedModeModules.length} tools recommended from your sales types`, `${selectedModeModules.length} zana zilizopendekezwa kutokana na aina za mauzo`)}
                                             count={selectedModeModules.length}
                                             onClick={applyModePreset}
                                         />
@@ -171,12 +173,12 @@ export default function Modules({ merchantUsername }) {
 
                                 <Card>
                                     <CardHeader>
-                                        <CardTitle>Mpangilio uliopo</CardTitle>
+                                        <CardTitle>{t('merchantUi.currentSetup')}</CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-3 text-sm">
-                                        <MiniStat label="Aina za mauzo" value={commerceModes.length} />
-                                        <MiniStat label="Zana zinazotumika" value={activeModules.length} />
-                                        <MiniStat label="Zana zilizopendekezwa" value={recommendedModules.length} />
+                                        <MiniStat label={t('merchantUi.salesTypeCount')} value={commerceModes.length} />
+                                        <MiniStat label={t('merchantUi.activeTools')} value={activeModules.length} />
+                                        <MiniStat label={t('merchantUi.recommendedTools')} value={recommendedModules.length} />
                                     </CardContent>
                                 </Card>
                             </div>
@@ -186,15 +188,15 @@ export default function Modules({ merchantUsername }) {
                             {Object.entries(groupedModules).map(([group, modules]) => (
                                 <section key={group} className="space-y-3">
                                     <div className="flex items-center justify-between gap-3">
-                                        <h2 className="text-lg font-black">{group}</h2>
-                                        <p className="text-sm text-muted-foreground">{modules.filter(([key]) => activeModules.includes(key)).length}/{modules.length} zinatumika</p>
+                                        <h2 className="text-lg font-black">{localizeModuleGroup(group, copy)}</h2>
+                                        <p className="text-sm text-muted-foreground">{modules.filter(([key]) => activeModules.includes(key)).length}/{modules.length} {t('merchantUi.inUse')}</p>
                                     </div>
                                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                         {modules.map(([key, module]) => {
                                             const active = activeModules.includes(key);
                                             const recommended = recommendedModules.includes(key);
                                             const modeSuggested = selectedModeModules.includes(key);
-                                            const toolCopy = businessToolCopy(key);
+                                            const toolCopy = businessToolCopy(key, locale);
 
                                             return (
                                                 <button key={key} type="button" onClick={() => toggleModule(key)} className={`rounded-lg border p-4 text-left transition ${active ? 'border-brand-500 bg-brand-50' : 'border-border hover:bg-muted/50'}`}>
@@ -208,9 +210,9 @@ export default function Modules({ merchantUsername }) {
                                                         </span>
                                                     </div>
                                                     <div className="mt-3 flex flex-wrap gap-1.5">
-                                                        {recommended && <Tag>Imependekezwa</Tag>}
-                                                        {modeSuggested && <Tag>Aina ya mauzo</Tag>}
-                                                        {module.requires_approval && <Tag>Inahitaji ruhusa</Tag>}
+                                                        {recommended && <Tag>{copy('Recommended', 'Imependekezwa')}</Tag>}
+                                                        {modeSuggested && <Tag>{copy('Sales type', 'Aina ya mauzo')}</Tag>}
+                                                        {module.requires_approval && <Tag>{copy('Requires approval', 'Inahitaji ruhusa')}</Tag>}
                                                     </div>
                                                 </button>
                                             );
@@ -223,13 +225,13 @@ export default function Modules({ merchantUsername }) {
                         <div className="flex flex-wrap justify-end gap-2">
                             <Button variant="outline" asChild>
                                 <Link href={`/merchant/${merchantUsername}/settings`}>
-                                    Mipangilio ya biashara
+                                    {t('merchantUi.businessSettings')}
                                     <ChevronRight className="ml-2 h-4 w-4" />
                                 </Link>
                             </Button>
                             <Button onClick={saveModules} disabled={saving}>
                                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LayoutGrid className="mr-2 h-4 w-4" />}
-                                Hifadhi zana
+                                {t('merchantUi.saveTools')}
                             </Button>
                         </div>
                     </>
@@ -240,16 +242,30 @@ export default function Modules({ merchantUsername }) {
 }
 
 function PresetBlock({ icon: Icon, title, text, count, onClick }) {
+    const { t } = useLocale();
     return (
         <div className="rounded-lg border border-border p-3">
             <Icon className="h-5 w-5 text-muted-foreground" />
             <p className="mt-2 font-black">{title}</p>
             <p className="mt-1 text-sm text-muted-foreground">{text}</p>
             <Button className="mt-3 w-full" variant="outline" size="sm" onClick={onClick} disabled={count === 0}>
-                Apply preset
+                {t('merchantUi.applyPreset')}
             </Button>
         </div>
     );
+}
+
+function localizeModuleGroup(group, copy) {
+    const labels = {
+        Commerce: ['Commerce', 'Biashara'],
+        Operations: ['Operations', 'Uendeshaji'],
+        Learning: ['Learning', 'Kujifunza'],
+        Marketing: ['Marketing', 'Masoko'],
+        Retail: ['Retail', 'Rejareja'],
+        Other: ['Other', 'Nyingine'],
+    };
+
+    return labels[group] ? copy(...labels[group]) : group;
 }
 
 function MiniStat({ label, value }) {

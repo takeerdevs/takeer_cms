@@ -168,7 +168,10 @@ class RiderDeliveryController extends Controller
                 'longitude' => $validated['longitude'] ?? null,
             ]);
 
-            app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
+            app(\App\Services\MarketplaceSettlementService::class)->releaseAfterFulfillment($order, 'rider_delivery_confirmed', [
+                'delivery_id' => $delivery->id,
+                'proof_url' => $proofUrl,
+            ]);
             app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
         });
 

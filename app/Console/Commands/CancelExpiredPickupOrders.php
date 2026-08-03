@@ -24,7 +24,7 @@ class CancelExpiredPickupOrders extends Command
             ->with(['delivery', 'merchant.user', 'buyer', 'product'])
             ->whereNotNull('pickup_grace_ends_at')
             ->where('pickup_grace_ends_at', '<=', now())
-            ->whereIn('payment_status', ['awaiting_merchant_confirmation', 'escrow_locked'])
+            ->whereIn('payment_status', ['pending_fulfillment', 'payment_confirmed'])
             ->whereNull('pickup_completed_at')
             ->where(function ($query) {
                 $query->whereNull('pickup_status')

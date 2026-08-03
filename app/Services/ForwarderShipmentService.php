@@ -114,7 +114,7 @@ class ForwarderShipmentService
         Order::query()
             ->with(['delivery', 'merchant', 'product'])
             ->whereIn('user_address_id', $addressIds)
-            ->whereIn('payment_status', ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'resolved_merchant_paid'])
+            ->whereIn('payment_status', ['pending_fulfillment', 'payment_confirmed', 'release_eligible', 'paid_out'])
             ->whereHas('delivery', fn ($query) => $query->where('delivery_type', 'forwarder'))
             ->latest()
             ->limit($limit)
@@ -139,10 +139,10 @@ class ForwarderShipmentService
 
         if (
             in_array($order->delivery->delivery_status, ['with_boda', 'ready_at_terminal', 'customer_confirmed'], true)
-            && $order->payment_status === 'awaiting_merchant_confirmation'
+            && $order->payment_status === 'pending_fulfillment'
         ) {
             $order->forceFill([
-                'payment_status' => 'escrow_locked',
+                'payment_status' => 'pending_fulfillment',
                 'merchant_confirmed_at' => $order->merchant_confirmed_at ?: now(),
             ])->save();
         }
@@ -170,7 +170,7 @@ class ForwarderShipmentService
                     $shipment->events()->create([
                         'actor_user_id' => $actorUserId,
                         'status' => 'received_at_origin',
-                        'note' => 'Buyer confirmed forwarder handoff. Seller-side SafePay was released; freight tracking remains active.',
+                        'note' => 'Buyer confirmed forwarder handoff. The order is eligible for a provider payout request; freight tracking remains active.',
                         'metadata' => [
                             'order_id' => $order->id,
                             'delivery_status' => $order->delivery->delivery_status,

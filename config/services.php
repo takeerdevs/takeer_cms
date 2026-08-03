@@ -119,6 +119,7 @@ return [
         'client_id'              => env('AZAMPAY_CLIENT_ID'),
         'client_secret'          => env('AZAMPAY_CLIENT_SECRET'),
         'token'                  => env('AZAMPAY_TOKEN'), // X-API-Key static header
+        'callback_signature_fields' => array_values(array_filter(array_map('trim', explode(',', (string) env('AZAMPAY_CALLBACK_SIGNATURE_FIELDS', ''))))),
         'app_name'               => env('APP_NAME', 'Takeer'),
     ],
 
@@ -131,7 +132,7 @@ return [
     ],
 
     'selcom' => [
-        'simulate' => env('SELCOM_SIMULATE', true),
+        'simulate' => env('SELCOM_SIMULATE', false),
         'base_url' => env('SELCOM_BASE_URL', 'https://apigw.selcommobile.com'),
         'api_key' => env('SELCOM_API_KEY'),
         'api_secret' => env('SELCOM_API_SECRET'),
@@ -141,6 +142,7 @@ return [
         'sender_name' => env('SELCOM_SENDER_NAME', env('APP_NAME', 'Takeer')),
         'sender_msisdn' => env('SELCOM_SENDER_MSISDN'),
         'callback_url' => env('SELCOM_PAYOUT_CALLBACK_URL', env('APP_URL') ? rtrim(env('APP_URL'), '/') . '/api/payments/selcom/payout-callback' : null),
+        'callback_secret' => env('SELCOM_CALLBACK_SECRET'),
     ],
 
     'open_exchange_rates' => [

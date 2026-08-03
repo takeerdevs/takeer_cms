@@ -87,14 +87,14 @@ class SmsService
     public function sendPhysicalPaymentHeldToBuyer(string $phone, string $orderPublicId, float $total, ?int $userId = null): bool
     {
         $amount = number_format($total);
-        $message = "Takeer: Malipo ya order #{$orderPublicId} TZS {$amount} yameshikiliwa SafePay. Muuzaji sasa atatuma mzigo au kuthibitisha pickup.";
+        $message = "Takeer: PSP imethibitisha malipo ya order #{$orderPublicId} TZS {$amount}. Muuzaji sasa atatuma mzigo au kuthibitisha pickup.";
         return $this->sendOnce("physical-payment-held-buyer:{$orderPublicId}", $phone, $message, $userId);
     }
 
     public function sendPhysicalPaymentHeldToMerchant(string $phone, string $orderPublicId, float $total, ?int $userId = null): bool
     {
         $amount = number_format($total);
-        $message = "Takeer: Mteja amelipia order #{$orderPublicId}. TZS {$amount} iko SafePay. Pakia ushahidi wa dispatch au thibitisha Pickup PIN.";
+        $message = "Takeer: Mteja amelipia order #{$orderPublicId}. PSP imethibitisha TZS {$amount}. Pakia ushahidi wa dispatch au thibitisha Pickup PIN.";
         return $this->sendOnce("physical-payment-held-merchant:{$orderPublicId}", $phone, $message, $userId);
     }
 
@@ -162,14 +162,14 @@ class SmsService
     public function sendPickupFeeHeldToBuyer(string $phone, string $orderPublicId, string $label, float $amount, ?int $userId = null): bool
     {
         $formatted = number_format($amount);
-        $message = "Takeer: {$label} ya order #{$orderPublicId} TZS {$formatted} imelipwa na iko SafePay. Fedha itatolewa kwa muuzaji baada ya pickup/delivery kukamilika.";
+        $message = "Takeer: {$label} ya order #{$orderPublicId} TZS {$formatted} imethibitishwa na PSP. Payout ya muuzaji itaombwa baada ya pickup/delivery kukamilika.";
         return $this->sendOnce("pickup-fee-held-buyer:{$label}:{$orderPublicId}", $phone, $message, $userId);
     }
 
     public function sendPickupFeeHeldToMerchant(string $phone, string $orderPublicId, string $label, float $amount, ?int $userId = null): bool
     {
         $formatted = number_format($amount);
-        $message = "Takeer: {$label} ya order #{$orderPublicId} TZS {$formatted} imelipwa na iko SafePay. Itatolewa kwenye wallet baada ya pickup/delivery kukamilika.";
+        $message = "Takeer: {$label} ya order #{$orderPublicId} TZS {$formatted} imethibitishwa na PSP. Payout itaombwa baada ya pickup/delivery kukamilika.";
         return $this->sendOnce("pickup-fee-held-merchant:{$label}:{$orderPublicId}", $phone, $message, $userId);
     }
 
@@ -182,7 +182,7 @@ class SmsService
     public function sendMerchantPayoutReleased(string $phone, string $orderPublicId, float $netAmount, ?int $userId = null): bool
     {
         $amount = number_format($netAmount);
-        $message = "Takeer: Malipo ya order #{$orderPublicId} yametolewa. TZS {$amount} imeingia kwenye wallet yako.";
+        $message = "Takeer: PSP payout ya order #{$orderPublicId} imethibitishwa. Kiasi: TZS {$amount}.";
         return $this->sendOnce("physical-payout-released:{$orderPublicId}", $phone, $message, $userId);
     }
 

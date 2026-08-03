@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart } from 'lucide-react';
 import axios from 'axios';
+import { useLocale } from '@/lib/i18n';
 
 export default function LikeButton({ postId, initialCount = 0, initialLiked = false, variant = 'horizontal' }) {
+    const { copy } = useLocale();
     const [liked, setLiked] = useState(initialLiked);
     const [count, setCount] = useState(initialCount);
     const [burst, setBurst] = useState(false);
@@ -86,7 +88,7 @@ export default function LikeButton({ postId, initialCount = 0, initialLiked = fa
                     animate={liked ? { scale: [1, 1.4, 1] } : { scale: 1 }}
                     transition={{ type: 'spring', stiffness: 400, damping: 15 }}
                     className="w-12 h-12 flex items-center justify-center rounded-full bg-black/25 backdrop-blur-lg border border-white/15 active:bg-white/20 transition-colors"
-                    aria-label="Penda"
+                    aria-label={copy('Like', 'Penda')}
                 >
                     <Heart
                         className={`h-7 w-7 drop-shadow-lg transition-colors duration-200 ${liked ? 'fill-red-500 text-red-500' : 'text-white'}`}

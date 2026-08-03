@@ -101,7 +101,7 @@ class AdminFeePolicyController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
-            'category' => ['required', Rule::in(['sale', 'withdrawal', 'subscription', 'storage'])],
+            'category' => ['required', Rule::in(['sale', 'subscription', 'storage'])],
             'scope' => ['required', Rule::in(['global', 'country', 'currency', 'merchant', 'payment_channel', 'sellable_type'])],
             'country_code' => ['nullable', 'string', 'size:2'],
             'currency_code' => ['nullable', 'string', 'size:3', Rule::exists('currencies', 'code')->where('is_active', true)],

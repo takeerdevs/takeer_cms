@@ -1,6 +1,7 @@
 import React from 'react';
 import { Camera, Check, Circle, MapPin, Phone, TriangleAlert, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLocale } from '@/lib/i18n';
 
 export const LOCAL_DELIVERY_STEPS = [
     { value: 'packing', label: 'Packing order', riderLabel: 'Mzigo unaandaliwa' },
@@ -73,6 +74,20 @@ export function deliveryStatusTextSw(status) {
     return map[status] || (status ? String(status).replaceAll('_', ' ') : 'Hakuna taarifa bado');
 }
 
+function deliveryStepLabelSwahili(status) {
+    const map = {
+        packing: 'Mzigo unaandaliwa',
+        with_boda: 'Mzigo umechukuliwa',
+        in_transit: 'Uko njiani',
+        arrived: 'Umefika kwa mteja',
+        ready_at_terminal: 'Uko terminal (Bus Terminal)',
+        delivered: 'Imekabidhiwa',
+        ready_at_forwarder: 'Forwarder amepokea',
+    };
+
+    return map[status] || deliveryStatusTextSw(status);
+}
+
 export function deliveryCurrentIndex(delivery = {}) {
     const safeDelivery = delivery || {};
     const steps = deliveryStepsFor(safeDelivery.delivery_type || safeDelivery.type);
@@ -93,17 +108,17 @@ export function deliveryCurrentIndexForSteps(delivery = {}, steps = null) {
     return indexes.length ? Math.max(...indexes) : -1;
 }
 
-function proofLinksFor(event) {
+function proofLinksFor(event, swahili = false) {
     const metadataProofs = Array.isArray(event.metadata?.proofs) ? event.metadata.proofs : [];
     const proofs = metadataProofs
         .map((proof, index) => ({
             url: proof?.url,
-            label: proof?.name || `Proof ${index + 1}`,
+            label: proof?.name || `${swahili ? 'Ushahidi' : 'Proof'} ${index + 1}`,
         }))
         .filter((proof) => proof.url);
 
     if (event.proof_url && !proofs.some((proof) => proof.url === event.proof_url)) {
-        proofs.unshift({ url: event.proof_url, label: 'Proof' });
+        proofs.unshift({ url: event.proof_url, label: swahili ? 'Ushahidi' : 'Proof' });
     }
 
     return proofs;
@@ -119,9 +134,11 @@ export function DeliveryFlowTimeline({
     disabledStatuses = [],
     hiddenStatuses = [],
     renderAfterStep,
-    swahili = false,
+    swahili: swahiliProp = false,
     className = '',
 }) {
+    const { locale } = useLocale();
+    const swahili = swahiliProp || locale === 'sw';
     const safeDelivery = delivery || {};
     const steps = deliveryStepsFor(safeDelivery.delivery_type || safeDelivery.type)
         .filter((step) => !hiddenStatuses.includes(step.value));
@@ -169,7 +186,9 @@ export function DeliveryFlowTimeline({
                     const isSelected = selectedStatus === step.value;
                     const isDisabledStatus = disabledStatuses.includes(step.value);
                     const canSelect = selectable && !isDone && !isDisabledStatus && index <= latestSelectableIndex;
-                    const label = riderLabels ? (step.riderLabel || step.label) : step.label;
+                    const label = swahili
+                        ? (riderLabels ? (step.riderLabel || deliveryStepLabelSwahili(step.value) || step.label) : (deliveryStepLabelSwahili(step.value) || step.label))
+                        : step.label;
 
                     return (
                         <div key={step.value} className="relative pl-8">
@@ -217,26 +236,26 @@ export function DeliveryFlowTimeline({
                                                         <div className="mt-2 grid gap-2 rounded-xl border border-slate-100 bg-white/80 p-2 sm:grid-cols-2">
                                                             {event.metadata?.forwarder_evidence_type && (
                                                                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                                                    Evidence
+                                                                    {swahili ? 'Ushahidi' : 'Evidence'}
                                                                     <span className="mt-0.5 block normal-case tracking-normal text-slate-800">{String(event.metadata.forwarder_evidence_type).replaceAll('_', ' ')}</span>
                                                                 </p>
                                                             )}
                                                             {(event.metadata?.courier_company || event.metadata?.bus_company) && (
                                                                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                                                    Courier/Cargo
+                                                                    {swahili ? 'Courier/Mizigo' : 'Courier/Cargo'}
                                                                     <span className="mt-0.5 block normal-case tracking-normal text-slate-800">{event.metadata.courier_company || event.metadata.bus_company}</span>
                                                                 </p>
                                                             )}
                                                             {event.metadata?.waybill_tracking_number && (
                                                                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                                                    Waybill/Tracking
+                                                                    {swahili ? 'Waybill/Ufuatiliaji' : 'Waybill/Tracking'}
                                                                     <span className="mt-0.5 block normal-case tracking-normal text-slate-800">{event.metadata.waybill_tracking_number}</span>
                                                                 </p>
                                                             )}
                                                             {event.metadata?.tracking_link && (
                                                                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                                                    Tracking link
-                                                                    <a href={event.metadata.tracking_link} target="_blank" rel="noreferrer" className="mt-0.5 block normal-case tracking-normal text-sky-700 underline">Open tracking</a>
+                                                                    {swahili ? 'Kiungo cha ufuatiliaji' : 'Tracking link'}
+                                                                    <a href={event.metadata.tracking_link} target="_blank" rel="noreferrer" className="mt-0.5 block normal-case tracking-normal text-sky-700 underline">{swahili ? 'Fungua ufuatiliaji' : 'Open tracking'}</a>
                                                                 </p>
                                                             )}
                                                         </div>
@@ -246,7 +265,7 @@ export function DeliveryFlowTimeline({
                                                         {event.actor_type ? ` · ${swahili && event.actor_type === 'rider' ? 'dereva' : event.actor_type}` : ''}
                                                     </p>
                                                     <div className="mt-1 flex flex-wrap gap-2">
-                                                        {proofLinksFor(event).map((proof, proofIndex, proofs) => (
+                                                        {proofLinksFor(event, swahili).map((proof, proofIndex, proofs) => (
                                                             <a key={`${proof.url}-${proofIndex}`} href={proof.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-sky-700 underline">
                                                                 <Camera className="h-3 w-3" />
                                                                 {proofs.length > 1 ? `${swahili ? 'Ushahidi' : 'Proof'} ${proofIndex + 1}` : (swahili ? 'Ushahidi' : 'Proof')}
@@ -283,26 +302,26 @@ export function DeliveryFlowTimeline({
                                     <div className="mt-2 grid gap-2 rounded-xl border border-amber-100 bg-white/80 p-2 sm:grid-cols-2">
                                         {event.metadata?.forwarder_evidence_type && (
                                             <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
-                                                Evidence
+                                                {swahili ? 'Ushahidi' : 'Evidence'}
                                                 <span className="mt-0.5 block normal-case tracking-normal text-amber-950">{String(event.metadata.forwarder_evidence_type).replaceAll('_', ' ')}</span>
                                             </p>
                                         )}
                                         {(event.metadata?.courier_company || event.metadata?.bus_company) && (
                                             <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
-                                                Courier/Cargo
+                                                {swahili ? 'Courier/Mizigo' : 'Courier/Cargo'}
                                                 <span className="mt-0.5 block normal-case tracking-normal text-amber-950">{event.metadata.courier_company || event.metadata.bus_company}</span>
                                             </p>
                                         )}
                                         {event.metadata?.waybill_tracking_number && (
                                             <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
-                                                Waybill/Tracking
+                                                {swahili ? 'Waybill/Ufuatiliaji' : 'Waybill/Tracking'}
                                                 <span className="mt-0.5 block normal-case tracking-normal text-amber-950">{event.metadata.waybill_tracking_number}</span>
                                             </p>
                                         )}
                                         {event.metadata?.tracking_link && (
                                             <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
-                                                Tracking link
-                                                <a href={event.metadata.tracking_link} target="_blank" rel="noreferrer" className="mt-0.5 block normal-case tracking-normal text-sky-700 underline">Open tracking</a>
+                                                {swahili ? 'Kiungo cha ufuatiliaji' : 'Tracking link'}
+                                                <a href={event.metadata.tracking_link} target="_blank" rel="noreferrer" className="mt-0.5 block normal-case tracking-normal text-sky-700 underline">{swahili ? 'Fungua ufuatiliaji' : 'Open tracking'}</a>
                                             </p>
                                         )}
                                     </div>
@@ -312,7 +331,7 @@ export function DeliveryFlowTimeline({
                                     {event.actor_type ? ` · ${swahili && event.actor_type === 'rider' ? 'dereva' : event.actor_type}` : ''}
                                 </p>
                                 <div className="mt-1 flex flex-wrap gap-2">
-                                    {proofLinksFor(event).map((proof, proofIndex, proofs) => (
+                                    {proofLinksFor(event, swahili).map((proof, proofIndex, proofs) => (
                                         <a key={`${proof.url}-${proofIndex}`} href={proof.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-sky-700 underline">
                                             <Camera className="h-3 w-3" />
                                             {proofs.length > 1 ? `${swahili ? 'Ushahidi' : 'Proof'} ${proofIndex + 1}` : (swahili ? 'Ushahidi' : 'Proof')}
@@ -335,6 +354,7 @@ export function DeliveryFlowTimeline({
 }
 
 export function DeliveryDirectionsButton({ routeUrl, className = '', label = 'Directions' }) {
+    const { copy } = useLocale();
     if (!routeUrl) return null;
 
     return (
@@ -345,7 +365,7 @@ export function DeliveryDirectionsButton({ routeUrl, className = '', label = 'Di
             className={cn('inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-sky-700 px-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-sky-900/20', className)}
         >
             <Truck className="h-4 w-4" />
-            {label}
+            {label === 'Directions' ? copy('Directions', 'Maelekezo') : label}
         </a>
     );
 }

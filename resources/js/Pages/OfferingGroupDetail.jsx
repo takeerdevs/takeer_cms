@@ -18,6 +18,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Button } from '@/Components/ui/Button';
 import CheckoutModal from '@/Components/CheckoutModal';
 import { cn } from '@/lib/utils';
+import { useLocale } from '@/lib/i18n';
 
 const templateMeta = {
     menu_board: {
@@ -62,12 +63,26 @@ const layoutLabels = {
     schedule: 'Schedule',
 };
 
+const layoutLabelSw = {
+    classic_menu: 'Menyu ya kawaida',
+    photo_grid: 'Gridi ya picha',
+    price_board: 'Ubao wa bei',
+    room_service: 'Huduma ya chumba',
+    package: 'Kifurushi',
+    catalog_grid: 'Gridi ya katalogi',
+    price_list: 'Orodha ya bei',
+    timeline: 'Ratiba ya muda',
+    trip_package: 'Kifurushi cha safari',
+    schedule: 'Ratiba',
+};
+
 const menuLikeLayouts = ['classic_menu', 'photo_grid', 'price_board', 'room_service'];
 const gridLikeLayouts = ['classic_menu', 'photo_grid', 'room_service', 'catalog_grid'];
 const listLikeLayouts = ['price_board', 'price_list'];
 const itineraryLikeLayouts = ['timeline', 'trip_package', 'schedule'];
 
 export default function OfferingGroupDetail({ offeringGroup }) {
+    const { copy } = useLocale();
     const meta = templateMeta[offeringGroup.template_key] || templateMeta.service_package;
     const HeroIcon = meta.icon;
     const displayLayout = offeringGroup.display_settings?.layout
@@ -131,16 +146,16 @@ export default function OfferingGroupDetail({ offeringGroup }) {
             const max = Number(rule?.max_selected || 0);
 
             if (min > 0 && selectedCount < min) {
-                issues.push(`Select at least ${min} item${min === 1 ? '' : 's'} from ${section}.`);
+                issues.push(copy(`Select at least ${min} item${min === 1 ? '' : 's'} from ${section}.`, `Chagua ${min} ${min === 1 ? 'kipengele' : 'vipengele'} kutoka ${section}.`));
             }
 
             if (max > 0 && selectedCount > max) {
-                issues.push(`Select no more than ${max} item${max === 1 ? '' : 's'} from ${section}.`);
+                issues.push(copy(`Select no more than ${max} item${max === 1 ? '' : 's'} from ${section}.`, `Usichague zaidi ya ${max} ${max === 1 ? 'kipengele' : 'vipengele'} kutoka ${section}.`));
             }
 
             return issues;
         }, []);
-    }, [offeringGroup.checkout_rules, offeringGroup.items, selectedItems]);
+    }, [copy, offeringGroup.checkout_rules, offeringGroup.items, selectedItems]);
     const selectedTotal = useMemo(() => {
         const childrenTotal = selectedItems.reduce((sum, row) => {
             const item = offeringGroup.items.find((candidate) => Number(candidate.id) === Number(row.group_item_id));
@@ -248,10 +263,10 @@ export default function OfferingGroupDetail({ offeringGroup }) {
                             <div className="max-w-3xl">
                                 <div className="mb-3 flex flex-wrap items-center gap-2">
                                     <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-black uppercase tracking-wider">
-                                        <HeroIcon className="h-3.5 w-3.5" /> {meta.eyebrow}
+                                        <HeroIcon className="h-3.5 w-3.5" /> {copy(meta.eyebrow, meta.eyebrow === 'Menu' ? 'Menyu' : meta.eyebrow === 'Itinerary' ? 'Ratiba' : 'Kifurushi')}
                                     </span>
                                     <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-black uppercase tracking-wider">
-                                        <Store className="h-3.5 w-3.5" /> {offeringGroup.merchant?.display_name || 'Merchant'}
+                                        <Store className="h-3.5 w-3.5" /> {offeringGroup.merchant?.display_name || copy('Merchant', 'Muuzaji')}
                                     </span>
                                 </div>
                                 <h1 className="text-4xl font-black tracking-tight sm:text-6xl">{offeringGroup.title}</h1>
@@ -260,9 +275,11 @@ export default function OfferingGroupDetail({ offeringGroup }) {
                                 )}
                             </div>
                             <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
-                                <p className="text-xs font-black uppercase tracking-widest text-white/60">Starts from</p>
+                                <p className="text-xs font-black uppercase tracking-widest text-white/60">{copy('Starts from', 'Kuanzia')}</p>
                                 <p className="mt-1 text-3xl font-black">TZS {Number(offeringGroup.checkout_price || selectedTotal || 0).toLocaleString()}</p>
-                                <p className="mt-2 text-xs font-bold text-white/65">{layoutLabels[displayLayout] || 'Custom layout'} · {sectionNames.length} section{sectionNames.length === 1 ? '' : 's'} · {offeringGroup.items?.length || 0} item{Number(offeringGroup.items?.length || 0) === 1 ? '' : 's'}</p>
+                                <p className="mt-2 text-xs font-bold text-white/65">
+                                    {copy(layoutLabels[displayLayout] || 'Custom layout', layoutLabelSw[displayLayout] || 'Mpangilio maalum')} · {sectionNames.length} {copy(sectionNames.length === 1 ? 'section' : 'sections', sectionNames.length === 1 ? 'sehemu' : 'sehemu')} · {offeringGroup.items?.length || 0} {copy(Number(offeringGroup.items?.length || 0) === 1 ? 'item' : 'items', Number(offeringGroup.items?.length || 0) === 1 ? 'kipengele' : 'vipengele')}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -276,7 +293,7 @@ export default function OfferingGroupDetail({ offeringGroup }) {
                                 onClick={() => setActiveSection('')}
                                 className={cn('shrink-0 rounded-full px-4 py-2 text-xs font-black', !activeSection ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600')}
                             >
-                                All
+                                {copy('All', 'Zote')}
                             </button>
                             {sectionNames.map((section) => (
                                 <button
@@ -313,13 +330,14 @@ export default function OfferingGroupDetail({ offeringGroup }) {
 }
 
 function MenuLayout({ sections, selection, itemPrice, toggleItem, adjustQuantity, toggleAddOn }) {
+    const { copy } = useLocale();
     return (
         <div className="space-y-8">
             {Object.entries(sections).map(([section, items]) => (
                 <section key={section} className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
                         <h2 className="text-xl font-black tracking-tight text-slate-950">{section}</h2>
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-400">{items.length} item{items.length === 1 ? '' : 's'}</span>
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-400">{items.length} {copy(items.length === 1 ? 'item' : 'items', items.length === 1 ? 'kipengele' : 'vipengele')}</span>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
                         {items.map((item) => (
@@ -342,13 +360,14 @@ function MenuLayout({ sections, selection, itemPrice, toggleItem, adjustQuantity
 }
 
 function PriceListLayout({ sections, selection, itemPrice, toggleItem, adjustQuantity }) {
+    const { copy } = useLocale();
     return (
         <div className="space-y-6">
             {Object.entries(sections).map(([section, items]) => (
                 <section key={section} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3">
                         <h2 className="text-lg font-black tracking-tight text-slate-950">{section}</h2>
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-400">{items.length} item{items.length === 1 ? '' : 's'}</span>
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-400">{items.length} {copy(items.length === 1 ? 'item' : 'items', items.length === 1 ? 'kipengele' : 'vipengele')}</span>
                     </div>
                     <div className="divide-y divide-slate-100">
                         {items.map((item) => {
@@ -364,18 +383,18 @@ function PriceListLayout({ sections, selection, itemPrice, toggleItem, adjustQua
                                             <h3 className="text-base font-black text-slate-950">{item.title}</h3>
                                             {locked && (
                                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700">
-                                                    <Check className="h-3 w-3" /> Included
+                                                    <Check className="h-3 w-3" /> {copy('Included', 'Imejumuishwa')}
                                                 </span>
                                             )}
                                             {item.item_type === 'offering_group' && (
-                                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-600">Nested group</span>
+                                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-600">{copy('Nested group', 'Kikundi kilichopachikwa')}</span>
                                             )}
                                         </div>
                                         {item.description && <p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-slate-500">{item.description}</p>}
                                     </div>
                                     <div className="flex items-center justify-between gap-3 sm:justify-end">
                                         <p className="shrink-0 text-base font-black text-brand-700">
-                                            {item.pricing_behavior === 'included' ? 'Included' : price > 0 ? `TZS ${price.toLocaleString()}` : 'Quote'}
+                                            {item.pricing_behavior === 'included' ? copy('Included', 'Imejumuishwa') : price > 0 ? `TZS ${price.toLocaleString()}` : copy('Quote', 'Bei kwa ombi')}
                                         </p>
                                         <button
                                             type="button"
@@ -386,7 +405,7 @@ function PriceListLayout({ sections, selection, itemPrice, toggleItem, adjustQua
                                                 selected ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
                                             )}
                                         >
-                                            {selected ? 'Selected' : 'Select'}
+                                            {selected ? copy('Selected', 'Imechaguliwa') : copy('Select', 'Chagua')}
                                         </button>
                                         {selected && (
                                             <div className="flex items-center gap-1">
@@ -411,6 +430,7 @@ function PriceListLayout({ sections, selection, itemPrice, toggleItem, adjustQua
 }
 
 function PackageLayout({ sections, selection, itemPrice, toggleItem, adjustQuantity, toggleAddOn }) {
+    const { copy } = useLocale();
     return (
         <div className="space-y-6">
             {Object.entries(sections).map(([section, items]) => (
@@ -421,7 +441,7 @@ function PackageLayout({ sections, selection, itemPrice, toggleItem, adjustQuant
                         </div>
                         <div>
                             <h2 className="text-lg font-black text-slate-950">{section}</h2>
-                            <p className="text-xs font-bold text-slate-500">{items.length} configurable item{items.length === 1 ? '' : 's'}</p>
+                            <p className="text-xs font-bold text-slate-500">{items.length} {copy(items.length === 1 ? 'configurable item' : 'configurable items', items.length === 1 ? 'kipengele kinachoweza kubadilishwa' : 'vipengele vinavyoweza kubadilishwa')}</p>
                         </div>
                     </div>
                     <div className="space-y-3">
@@ -445,6 +465,7 @@ function PackageLayout({ sections, selection, itemPrice, toggleItem, adjustQuant
 }
 
 function ItineraryLayout({ sections, selection, itemPrice, toggleItem, adjustQuantity, toggleAddOn }) {
+    const { copy } = useLocale();
     return (
         <div className="space-y-0">
             {Object.entries(sections).map(([section, items], sectionIndex) => (
@@ -453,7 +474,7 @@ function ItineraryLayout({ sections, selection, itemPrice, toggleItem, adjustQua
                         <CalendarDays className="h-3 w-3" />
                     </div>
                     <div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-sky-600">Stop {sectionIndex + 1}</p>
+                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-sky-600">{copy('Stop', 'Kituo')} {sectionIndex + 1}</p>
                         <h2 className="text-xl font-black text-slate-950">{section}</h2>
                     </div>
                     <div className="grid gap-3">
@@ -477,6 +498,7 @@ function ItineraryLayout({ sections, selection, itemPrice, toggleItem, adjustQua
 }
 
 function SelectableItemCard({ item, selection, itemPrice, toggleItem, adjustQuantity, toggleAddOn, variant }) {
+    const { copy } = useLocale();
     const row = selection[item.id] || {};
     const selected = Boolean(row.selected);
     const locked = item.is_required || item.role === 'included';
@@ -508,25 +530,25 @@ function SelectableItemCard({ item, selection, itemPrice, toggleItem, adjustQuan
                                     <h3 className="text-base font-black text-slate-950">{item.title}</h3>
                                     {locked && (
                                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700">
-                                            <Check className="h-3 w-3" /> Included
+                                            <Check className="h-3 w-3" /> {copy('Included', 'Imejumuishwa')}
                                         </span>
                                     )}
                                 </div>
                                 {item.description && <p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-slate-500">{item.description}</p>}
                                 {item.item_type === 'offering_group' && (
                                     <p className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-600">
-                                        Nested group
+                                        {copy('Nested group', 'Kikundi kilichopachikwa')}
                                     </p>
                                 )}
                             </div>
                             <p className="shrink-0 text-sm font-black text-brand-700">
-                                {item.pricing_behavior === 'included' ? 'Included' : price > 0 ? `TZS ${price.toLocaleString()}` : 'Quote'}
+                                {item.pricing_behavior === 'included' ? copy('Included', 'Imejumuishwa') : price > 0 ? `TZS ${price.toLocaleString()}` : copy('Quote', 'Bei kwa ombi')}
                             </p>
                         </div>
 
                         {Array.isArray(item.add_ons) && item.add_ons.length > 0 && (
                             <div className="mt-4 rounded-xl bg-slate-50 p-3">
-                                <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">Add-ons</p>
+                                <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">{copy('Add-ons', 'Viongezi')}</p>
                                 <div className="mt-2 flex flex-wrap gap-2">
                                     {item.add_ons.map((addOn) => {
                                         const checked = selectedAddOnNames.has(String(addOn.name || '').toLowerCase());
@@ -559,7 +581,7 @@ function SelectableItemCard({ item, selection, itemPrice, toggleItem, adjustQuan
                                     selected ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
                                 )}
                             >
-                                {selected ? 'Selected' : 'Select'}
+                                {selected ? copy('Selected', 'Imechaguliwa') : copy('Select', 'Chagua')}
                             </button>
                             {selected && (
                                 <div className="flex items-center gap-2">
@@ -581,6 +603,7 @@ function SelectableItemCard({ item, selection, itemPrice, toggleItem, adjustQuan
 }
 
 function SelectionSummary({ offeringGroup, selectedItems, selectedTotal, itemPrice, addOnsForRow, meta, selectionIssues = [], onCheckout }) {
+    const { copy } = useLocale();
     const selectedRows = selectedItems
         .map((row) => {
             const item = offeringGroup.items.find((candidate) => Number(candidate.id) === Number(row.group_item_id));
@@ -595,13 +618,13 @@ function SelectionSummary({ offeringGroup, selectedItems, selectedTotal, itemPri
                     <ShoppingBag className="h-5 w-5" />
                 </div>
                 <div>
-                    <p className="text-xs font-black uppercase tracking-wider text-slate-400">Your selection</p>
-                    <p className="text-sm font-black text-slate-950">{selectedRows.length} item{selectedRows.length === 1 ? '' : 's'} selected</p>
+                    <p className="text-xs font-black uppercase tracking-wider text-slate-400">{copy('Your selection', 'Ulichovichagua')}</p>
+                    <p className="text-sm font-black text-slate-950">{selectedRows.length} {copy(selectedRows.length === 1 ? 'item selected' : 'items selected', selectedRows.length === 1 ? 'kipengele kimechaguliwa' : 'vipengele vimechaguliwa')}</p>
                 </div>
             </div>
             <div className="mt-4 max-h-80 space-y-2 overflow-y-auto pr-1">
                 {selectedRows.length === 0 ? (
-                    <p className="rounded-xl bg-slate-50 p-4 text-sm font-semibold text-slate-500">Choose at least one item.</p>
+                    <p className="rounded-xl bg-slate-50 p-4 text-sm font-semibold text-slate-500">{copy('Choose at least one item.', 'Chagua angalau kipengele kimoja.')}</p>
                 ) : selectedRows.map((row) => {
                     const { item, quantity } = row;
                     const addOns = addOnsForRow(row, item);
@@ -615,7 +638,7 @@ function SelectionSummary({ offeringGroup, selectedItems, selectedTotal, itemPri
                         </div>
                         {addOns.length > 0 && (
                             <p className="mt-1 text-xs font-semibold text-slate-500">
-                                Add-ons: {addOns.map((addOn) => addOn.name).join(', ')}
+                                {copy('Add-ons', 'Viongezi')}: {addOns.map((addOn) => addOn.name).join(', ')}
                             </p>
                         )}
                     </div>
@@ -631,17 +654,17 @@ function SelectionSummary({ offeringGroup, selectedItems, selectedTotal, itemPri
                     </div>
                 )}
                 <div className="flex items-center justify-between">
-                    <span className="text-sm font-black text-slate-500">Total</span>
+                    <span className="text-sm font-black text-slate-500">{copy('Total', 'Jumla')}</span>
                     <span className="text-2xl font-black text-slate-950">TZS {selectedTotal.toLocaleString()}</span>
                 </div>
                 {offeringGroup.checkout_mode === 'book_group' && (
                     <p className="mt-2 flex items-center gap-1.5 text-xs font-bold text-slate-500">
-                        <Clock className="h-3.5 w-3.5" /> Booking details are confirmed during checkout or chat.
+                        <Clock className="h-3.5 w-3.5" /> {copy('Booking details are confirmed during checkout or chat.', 'Maelezo ya booking yanathibitishwa wakati wa checkout au kwenye chat.')}
                     </p>
                 )}
                 <Button type="button" className={cn('mt-4 h-12 w-full rounded-xl font-black text-white', meta.button)} disabled={selectedRows.length === 0 || selectionIssues.length > 0} onClick={onCheckout}>
                     <ShoppingBag className="mr-2 h-5 w-5" />
-                    {offeringGroup.requires_inquiry || offeringGroup.checkout_mode === 'request_quote' ? 'Request offer' : 'Checkout'}
+                    {offeringGroup.requires_inquiry || offeringGroup.checkout_mode === 'request_quote' ? copy('Request offer', 'Omba ofa') : copy('Checkout', 'Endelea kulipa')}
                 </Button>
             </div>
         </aside>

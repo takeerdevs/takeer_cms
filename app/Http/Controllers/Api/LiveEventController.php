@@ -153,7 +153,7 @@ class LiveEventController extends Controller
         return Order::query()
             ->with('buyer')
             ->where('product_id', $product->id)
-            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->whereIn('payment_status', ['payment_confirmed', 'release_eligible', 'paid_out'])
             ->latest();
     }
 
