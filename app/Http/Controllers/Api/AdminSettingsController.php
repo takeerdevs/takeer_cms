@@ -18,12 +18,16 @@ class AdminSettingsController extends Controller
 {
     public function index(): JsonResponse
     {
+        $storedSettings = AdminSetting::allAsMap();
+        unset(
+            $storedSettings['ai_provider'],
+            $storedSettings['openrouter_api_key'],
+            $storedSettings['openrouter_default_model'],
+            $storedSettings['gemini_api_key'],
+            $storedSettings['gemini_default_model']
+        );
+
         $settings = array_merge([
-            'ai_provider' => 'openrouter',
-            'openrouter_api_key' => '',
-            'openrouter_default_model' => 'google/gemini-2.5-flash',
-            'gemini_api_key' => '',
-            'gemini_default_model' => 'gemini-1.5-flash',
             'kyc_enforcement_mode' => 'off',
             'kyc_trigger_gmv_tzs' => '0',
             'kyc_trigger_order_count' => '0',
@@ -38,14 +42,7 @@ class AdminSettingsController extends Controller
             'retail_trial_days' => '0',
             'analytics_retention_days' => '365',
             'analytics_exclude_admins' => '1',
-        ], AdminSetting::allAsMap());
-
-        foreach (['openrouter_api_key', 'gemini_api_key'] as $keyField) {
-            if (! empty($settings[$keyField])) {
-                $settings[$keyField . '_masked'] = '•••••••' . substr((string) $settings[$keyField], -4);
-                $settings[$keyField] = '';
-            }
-        }
+        ], $storedSettings);
 
         return response()->json([
             'settings' => $settings,
@@ -81,7 +78,6 @@ class AdminSettingsController extends Controller
     public function update(Request $request): JsonResponse
     {
         $allowed = [
-            'ai_provider', 'openrouter_api_key', 'openrouter_default_model', 'gemini_api_key', 'gemini_default_model',
             'kyc_enforcement_mode', 'kyc_trigger_gmv_tzs', 'kyc_trigger_order_count',
             'catalog_item_picker_default_limit', 'upload_allowed_extensions', 'upload_allowed_mime_types',
             'upload_max_file_mb', 'storage_access_mode', 'storage_free_mb', 'storage_trial_days',
@@ -94,11 +90,6 @@ class AdminSettingsController extends Controller
             }
 
             $value = $request->input($key);
-            if (in_array($key, ['openrouter_api_key', 'gemini_api_key'], true)
-                && $value === '' && $request->input($key . '_masked')) {
-                continue;
-            }
-
             if ($key === 'catalog_item_picker_default_limit') {
                 $value = (string) max(1, min(20, (int) $value));
             } elseif ($key === 'upload_max_file_mb') {

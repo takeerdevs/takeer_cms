@@ -39,6 +39,7 @@ class Product extends Model
 
     protected $fillable = [
         'type',
+        'try_on_enabled',
         'selling_style',
         'module_key',
         'module_details',
@@ -162,6 +163,7 @@ class Product extends Model
         return [
             'price' => 'decimal:2',
             'has_variants' => 'boolean',
+            'try_on_enabled' => 'boolean',
             'module_details' => 'array',
             'source_details' => 'array',
             'availability_lead_time_days' => 'integer',
@@ -328,6 +330,11 @@ class Product extends Model
     public function images(): HasMany
     {
         return $this->hasMany(ProductImage::class)->orderBy('order');
+    }
+
+    public function tryOnAssets(): HasMany
+    {
+        return $this->hasMany(ProductTryOnAsset::class)->latest('id');
     }
 
     public function productCertificates(): BelongsToMany

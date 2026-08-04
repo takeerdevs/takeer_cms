@@ -34,6 +34,12 @@ class ProductResource extends JsonResource
             ? $this->merchantRatingSummary($this->merchant)
             : null;
         $productRating = $this->productRatingSummary();
+        $tryOnAssets = $this->relationLoaded('tryOnAssets')
+            ? $this->tryOnAssets->where('is_active', true)
+            : collect();
+        $tryOnEnabled = $this->type === 'physical'
+            && (bool) $this->try_on_enabled
+            && $tryOnAssets->isNotEmpty();
         $groupSaleOffer = $this->getAttribute('group_sale_offer');
         if (! $groupSaleOffer && $this->type === 'physical' && ($this->fulfillment_mode ?: 'own_stock') === 'group_sale') {
             $autoGroupSale = MerchantGroupSaleCampaign::query()
@@ -261,6 +267,12 @@ class ProductResource extends JsonResource
             'title' => $this->title,
             'description' => $this->description,
             'type' => $this->type,
+            'try_on' => [
+                'enabled' => $tryOnEnabled,
+                'asset_count' => $tryOnAssets->count(),
+                'supports_photo_upload' => $this->type === 'physical',
+                'notice' => 'Photo preview is an approximation. It is not a measurement or fit guarantee.',
+            ],
             'selling_style' => $this->type === 'physical' ? ($this->selling_style ?: 'retail') : null,
             'is_wholesale_enabled' => $this->type === 'physical' && in_array($this->selling_style ?: 'retail', ['wholesale', 'both'], true),
             'created_by' => $this->creatorPayload(),

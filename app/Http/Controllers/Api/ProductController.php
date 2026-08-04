@@ -15,7 +15,7 @@ class ProductController extends Controller
      */
     public function show(Product $product): JsonResponse
     {
-        $product->loadMissing(['attributes', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'productCertificates', 'pricingTiers', 'leadTimeTiers', 'packagingDetails', 'customizationOptions', 'specifications', 'detailSections', 'merchant.user', 'merchant.locations', 'serviceCategory.parent', 'serviceSubcategory.parent', 'variants.locationInventories', 'locationInventories', 'locationAvailabilities.location']);
+        $product->loadMissing(['attributes', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'productCertificates', 'pricingTiers', 'leadTimeTiers', 'packagingDetails', 'customizationOptions', 'specifications', 'detailSections', 'merchant.user', 'merchant.locations', 'serviceCategory.parent', 'serviceSubcategory.parent', 'variants.locationInventories', 'locationInventories', 'locationAvailabilities.location', 'tryOnAssets']);
 
         return response()->json([
             'product' => ProductResource::make($product),

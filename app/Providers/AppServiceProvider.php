@@ -16,6 +16,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(\App\Contracts\VirtualTryOnProvider::class, function ($app) {
+            return config('services.try_on.driver', 'fake') === 'http'
+                ? new \App\Services\HttpVirtualTryOnProvider($app->make(\App\Services\TryOnStorageService::class))
+                : new \App\Services\SimulatedVirtualTryOnProvider($app->make(\App\Services\TryOnStorageService::class));
+        });
+
         // ─── AzamPay (Tanzania) ──────────────────────────────────────────────────
         $this->app->singleton(AzamPayTokenService::class, function () {
             return new AzamPayTokenService(

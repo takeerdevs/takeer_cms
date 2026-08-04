@@ -30,6 +30,7 @@ use App\Jobs\ProcessPremiumProductVideo;
 use App\Jobs\ProcessPromotableVideo;
 use App\Http\Resources\ProductResource;
 use App\Services\EntitlementService;
+use App\Services\AiCreditService;
 use App\Services\GalleryImageService;
 use App\Services\LegalAcceptanceService;
 use App\Services\MediaUploadService;
@@ -68,7 +69,7 @@ class UploadController extends Controller
 
         $query = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'productCertificates', 'pricingTiers', 'leadTimeTiers', 'packagingDetails', 'customizationOptions', 'specifications', 'detailSections', 'serviceCategory.parent', 'serviceSubcategory.parent', 'locationAvailabilities.location', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'tryOnAssets', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'productCertificates', 'pricingTiers', 'leadTimeTiers', 'packagingDetails', 'customizationOptions', 'specifications', 'detailSections', 'serviceCategory.parent', 'serviceSubcategory.parent', 'locationAvailabilities.location', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
             ->with(['variants', 'postTags.post:id,views_count'])
             ->withCount('postTags')
             ->withCount([
@@ -101,7 +102,7 @@ class UploadController extends Controller
         $productId = $id ?? $merchantOrId;
         $product = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'productCertificates', 'pricingTiers', 'leadTimeTiers', 'packagingDetails', 'customizationOptions', 'specifications', 'detailSections', 'serviceCategory.parent', 'serviceSubcategory.parent', 'variants.locationInventories.location', 'locationInventories.location', 'locationAvailabilities.location', 'postTags.post:id,views_count', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'tryOnAssets', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'productCertificates', 'pricingTiers', 'leadTimeTiers', 'packagingDetails', 'customizationOptions', 'specifications', 'detailSections', 'serviceCategory.parent', 'serviceSubcategory.parent', 'variants.locationInventories.location', 'locationInventories.location', 'locationAvailabilities.location', 'postTags.post:id,views_count', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
             ->withCount('postTags')
             ->withCount([
                 'orders as purchases_count' => fn ($orders) => $orders->whereNotIn('payment_status', ['pending', 'failed']),
@@ -517,7 +518,7 @@ class UploadController extends Controller
      * Accept an uploaded image url from the merchant, perform AI tagging,
      * modify the physical image, and return the drafted Product.
      */
-    public function draftProduct(Request $request, ProductIntelligenceService $aiService): JsonResponse
+    public function draftProduct(Request $request, ProductIntelligenceService $aiService, AiCreditService $credits): JsonResponse
     {
         $request->validate([
             'image_url' => 'required|string',
@@ -546,6 +547,22 @@ class UploadController extends Controller
             return response()->json(['message' => 'Tafadhali tengeneza biashara kwanza.'], 403);
         }
 
+        $access = $credits->accessFor($request->user(), 'product_information_extraction', $merchantProfile);
+        if (! $access['allowed']) {
+            return response()->json([
+                'message' => 'AI product extraction needs a business AI plan or more credits.',
+                'code' => 'ai_access_required',
+                'access' => $access,
+            ], 402);
+        }
+
+        $reservation = $credits->reserveTask(
+            $request->user(),
+            'product_information_extraction',
+            'product-extraction:'.Str::uuid(),
+            $merchantProfile,
+        );
+
         // 1. Ask Vision AI to tag and describe the product.
         // We need to fetch the image content from the URL to pass to the AI Service.
         try {
@@ -558,8 +575,22 @@ class UploadController extends Controller
                 throw new Exception("Could not download image from URL for AI analysis.");
             }
             $base64 = base64_encode($imageContent);
-            $aiTags = $aiService->analyzeProductImage($base64);
+            $aiTags = $aiService->analyzeProductImage($base64, [
+                'user_id' => $request->user()->id,
+                'actor_user_id' => $request->user()->id,
+                'merchant_id' => $merchantProfile->id,
+                'scope_type' => 'merchant',
+                'billable_units' => 1,
+                'unit_type' => 'document',
+                'charged_credits' => $reservation->amount,
+            ]);
+            if ($aiTags !== null) {
+                $credits->settle($reservation);
+            } else {
+                $credits->release($reservation, ['reason' => 'empty_ai_result']);
+            }
         } catch (Exception $e) {
+            $credits->release($reservation, ['reason' => 'provider_failure']);
             Log::error('Upload AI analysis failed: ' . $e->getMessage());
             return response()->json([
                 'message' => 'AI haiwezi kuchambua picha sasa hivi.',

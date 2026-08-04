@@ -3,7 +3,7 @@ import { Head, Link } from '@inertiajs/react';
 import {
     ChevronLeft, ChevronRight, Store, ShieldCheck, Zap, Info, BadgeCheck,
     AlertTriangle, DownloadCloud, CalendarClock, MapPin, Link as LinkIcon,
-    ShoppingBag, Bell, Star, Images, BookOpen, ExternalLink, PlayCircle, Loader2, Clock3,
+    ShoppingBag, Bell, Star, Images, BookOpen, ExternalLink, PlayCircle, Loader2, Clock3, Sparkles,
     X, FileText, Factory, Package, ListChecks, CreditCard
 } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
@@ -24,6 +24,7 @@ import CustomOrderProductTemplate from '@/Components/public-templates/CustomOrde
 import { trackAttributionEvent } from '@/lib/attribution';
 import { formatQuantity, productCardPriceLabel, productPriceLabel, productStockLabel, productUnitLabel } from '@/lib/productUnits';
 import { useLocale } from '@/lib/i18n';
+import TryOnModal from '@/Components/TryOnModal';
 
 function hotspotLinkDomain(value) {
     if (!value) return '';
@@ -53,6 +54,7 @@ export default function ProductDetail({ product }) {
     const [isOnWaitlist, setIsOnWaitlist] = useState(false);
     const [isWaitlistLoading, setIsWaitlistLoading] = useState(false);
     const [serviceRequestOpen, setServiceRequestOpen] = useState(false);
+    const [tryOnOpen, setTryOnOpen] = useState(false);
     const [selectedCertificate, setSelectedCertificate] = useState(null);
     const [serviceRequestSubmitting, setServiceRequestSubmitting] = useState(false);
     const [galleryImageLoaded, setGalleryImageLoaded] = useState({});
@@ -135,6 +137,7 @@ export default function ProductDetail({ product }) {
     const merchant = merchantProfile || product?.merchant || {};
     const attributes = product?.attributes || {};
     const isServiceProduct = product?.type === 'service';
+    const tryOnAvailable = product?.type === 'physical' && Boolean(product?.try_on?.enabled);
     const description = attributes?.suggested_description
         || (isServiceProduct ? t('product.serviceDescriptionMissing') : t('product.productDescriptionMissing'));
     const merchantUsername = merchantProfile?.username || merchant?.username || '';
@@ -1798,6 +1801,22 @@ export default function ProductDetail({ product }) {
                                 </div>
                             )}
                         </div>
+                        {tryOnAvailable && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (hasProductVariants && !selectedVariant?.id) {
+                                        toast.error(copy('Choose a product variant before trying it on.', 'Chagua variant ya bidhaa kabla ya kuijaribu kuvaa.'));
+                                        return;
+                                    }
+                                    setTryOnOpen(true);
+                                }}
+                                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-2.5 text-sm font-black text-brand-700 transition-colors hover:bg-brand-100"
+                            >
+                                <Sparkles className="h-4 w-4" />
+                                {copy('Try it on with your photo', 'Jaribu kwa picha yako')}
+                            </button>
+                        )}
                         {product.type === 'service' && servicePricingModel === 'hourly_rate' && (
                             <p className="mt-2 text-xs font-bold uppercase tracking-wider text-purple-700">
                                 {copy('Hourly price · Minimum', 'Bei kwa saa · Kima cha chini')} {Number(product?.service_min_hours || 1)}h
@@ -3050,6 +3069,7 @@ export default function ProductDetail({ product }) {
                                             </div>
                                         )}
                                     </div>
+
                                 )}
 
                                 {customerLocationNeeded && (
@@ -3214,6 +3234,12 @@ export default function ProductDetail({ product }) {
                             selected_slot_end: serviceAreaGatingEnabled ? '' : prev.selected_slot_end,
                         }));
                     }}
+                />
+                <TryOnModal
+                    product={product}
+                    variantId={selectedVariant?.id || null}
+                    open={tryOnOpen}
+                    onClose={() => setTryOnOpen(false)}
                 />
             </div>
         </AppLayout>

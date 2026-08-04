@@ -93,14 +93,24 @@ return [
 
     'openrouter' => [
         'api_key' => env('OPENROUTER_API_KEY'),
+        'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
         'ocr_model' => env('OPENROUTER_OCR_MODEL', 'google/gemini-2.5-flash'),
         'simulate_ocr' => env('OPENROUTER_SIMULATE_OCR', true),
+        'timeout' => (int) env('OPENROUTER_TIMEOUT', 45),
     ],
 
-    'gemini' => [
-        'api_key' => env('GEMINI_API_KEY'),
-        'flash_model' => 'gemini-1.5-flash',
-        'pro_model' => 'gemini-1.5-pro',
+    'try_on' => [
+        'driver' => env('TRY_ON_DRIVER', 'fake'),
+        'endpoint' => env('TRY_ON_ENDPOINT'),
+        'api_key' => env('TRY_ON_API_KEY'),
+        'timeout' => (int) env('TRY_ON_TIMEOUT', 180),
+        'storage_disk' => env('TRY_ON_STORAGE_DISK', 'local'),
+        'portrait_field' => env('TRY_ON_PORTRAIT_FIELD', 'person_image'),
+        'garment_field' => env('TRY_ON_GARMENT_FIELD', 'garment_image'),
+        'response_base64_field' => env('TRY_ON_RESPONSE_BASE64_FIELD', 'image_base64'),
+        'response_url_field' => env('TRY_ON_RESPONSE_URL_FIELD', 'image_url'),
+        'session_ttl_hours' => (int) env('TRY_ON_SESSION_TTL_HOURS', 24),
+        'max_portrait_mb' => (int) env('TRY_ON_MAX_PORTRAIT_MB', 10),
     ],
 
     'flaresolverr' => [

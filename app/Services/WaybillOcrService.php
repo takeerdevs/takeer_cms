@@ -6,7 +6,7 @@ use Illuminate\Support\Arr;
 
 class WaybillOcrService
 {
-    public function __construct(private OpenRouterService $openRouterService)
+    public function __construct(private OpenRouterService $openRouterService, private AiTaskRouter $router)
     {
     }
 
@@ -14,9 +14,17 @@ class WaybillOcrService
      * Extract delivery metadata from a waybill/receipt image URL.
      * Returns a normalized payload safe for DB usage.
      */
-    public function extractFromReceipt(string $receiptUrl): array
+    public function extractFromReceipt(string $receiptUrl, array $options = []): array
     {
         if ((bool) config('services.openrouter.simulate_ocr', true)) {
+            $this->router->recordExternalUsage('waybill_ocr', array_merge($options, [
+                'provider_key' => 'simulated_openrouter',
+                'model_key' => 'simulated-waybill-ocr',
+                'provider_cost' => 0,
+                'pricing_source' => 'simulation',
+                'metadata' => ['receipt_url_hash' => hash('sha256', $receiptUrl)],
+            ]));
+
             return [
                 'bus_company' => 'Tashriff',
                 'waybill_tracking_number' => 'BUS-' . strtoupper(substr(md5($receiptUrl), 0, 8)),
@@ -25,8 +33,6 @@ class WaybillOcrService
                 'raw_text' => 'TASHRIFF WAYBILL #BUS-12345',
             ];
         }
-
-        $model = (string) config('services.openrouter.ocr_model', 'google/gemini-2.5-flash');
 
         $messages = [
             [
@@ -39,7 +45,7 @@ class WaybillOcrService
             ],
         ];
 
-        $response = $this->openRouterService->chatCompletions($messages, $model);
+        $response = $this->openRouterService->forTask($messages, 'waybill_ocr', null, $options);
         $content = Arr::get($response, 'choices.0.message.content', '');
         $parsed = $this->decodeJson($content);
 
@@ -65,4 +71,3 @@ class WaybillOcrService
         return [];
     }
 }
-

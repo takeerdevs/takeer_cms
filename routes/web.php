@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\Api\PostController;
 use App\Http\Controllers\Api\UploadController;
+use App\Http\Controllers\Api\VirtualTryOnController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\MerchantAuthController;
 use App\Http\Controllers\Api\MerchantBusinessOverviewController;
@@ -33,6 +34,9 @@ use App\Http\Controllers\Api\AdminForwarderController;
 use App\Http\Controllers\Api\ForwarderController;
 use App\Http\Controllers\Api\AdminFeePolicyController;
 use App\Http\Controllers\Api\AdminSettingsController;
+use App\Http\Controllers\Api\AdminAiController;
+use App\Http\Controllers\Api\AdminAiAnalyticsController;
+use App\Http\Controllers\Api\AiSearchController;
 use App\Http\Controllers\Api\AdminTrackedLinkController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\MerchantProfileController;
@@ -205,6 +209,7 @@ Route::get('/product/{product}', function (Product $product) {
         'returnPolicy',
         'faqs',
         'images',
+        'tryOnAssets',
         'variants',
         'productCertificates',
         'pricingTiers',
@@ -367,6 +372,8 @@ Route::get('/search', function (Request $request) {
         'seo' => $seo,
     ])->withViewData('seo', $seo);
 })->name('search.page');
+
+Route::get('/ai/access', [AiSearchController::class, 'access'])->middleware('throttle:30,1');
 
 Route::get('/content/{contentItem}', function (Request $request, string $contentItem, EntitlementService $entitlementService) {
     $internalShortTitle = '__short_locked__';
@@ -2107,6 +2114,10 @@ Route::middleware('auth')->group(function () {
         // File handling & Product Management
         Route::get('/merchant/products/api', [UploadController::class, 'index'])->middleware('merchant_permission:products.view,digital_products.view,services.view');
         Route::get('/merchant/products/{id}/api', [UploadController::class, 'show'])->middleware('merchant_permission:products.view,digital_products.view,services.view');
+        Route::get('/merchant/products/{product}/try-on', [VirtualTryOnController::class, 'merchantConfig'])->middleware('merchant_permission:products.view,products.update');
+        Route::post('/merchant/products/{product}/try-on/assets', [VirtualTryOnController::class, 'uploadAsset'])->middleware('merchant_permission:products.update');
+        Route::patch('/merchant/products/{product}/try-on', [VirtualTryOnController::class, 'updateConfig'])->middleware('merchant_permission:products.update');
+        Route::delete('/merchant/products/{product}/try-on/assets/{asset}', [VirtualTryOnController::class, 'deleteAsset'])->middleware('merchant_permission:products.update');
         Route::delete('/merchant/products/{id}', [UploadController::class, 'deleteProduct'])->middleware('merchant_permission:products.delete,digital_products.delete,services.delete');
         Route::post('/merchant/products/{product}/media', [UploadController::class, 'syncDraftMedia'])->middleware('merchant_permission:products.update,digital_products.update,services.update');
         Route::post('/merchant/upload/media', [UploadController::class, 'uploadMedia'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
@@ -2352,6 +2363,20 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
         Route::get('/settings', [AdminSettingsController::class, 'index']);
         Route::put('/settings', [AdminSettingsController::class, 'update']);
+        Route::get('/ai', [AdminAiController::class, 'index']);
+        Route::get('/ai/usage', [AdminAiAnalyticsController::class, 'index']);
+        Route::post('/ai/credentials', [AdminAiController::class, 'storeCredential']);
+        Route::patch('/ai/credentials/{credential}', [AdminAiController::class, 'updateCredential']);
+        Route::delete('/ai/credentials/{credential}', [AdminAiController::class, 'destroyCredential']);
+        Route::post('/ai/models', [AdminAiController::class, 'storeModel']);
+        Route::patch('/ai/models/{model}', [AdminAiController::class, 'updateModel']);
+        Route::delete('/ai/models/{model}', [AdminAiController::class, 'destroyModel']);
+        Route::patch('/ai/tasks/{taskRoute}', [AdminAiController::class, 'updateTask']);
+        Route::post('/ai/plans', [AdminAiController::class, 'storePlan']);
+        Route::patch('/ai/plans/{aiPlan}', [AdminAiController::class, 'updatePlan']);
+        Route::post('/ai/subscriptions', [AdminAiController::class, 'storeSubscription']);
+        Route::put('/ai/plans/{aiPlan}/limits/{taskKey}', [AdminAiController::class, 'upsertPlanLimit']);
+        Route::delete('/ai/plans/{aiPlan}/limits/{taskKey}', [AdminAiController::class, 'destroyPlanLimit']);
 
         Route::get('/users', [AdminSettingsController::class, 'users']);
         Route::post('/users/{user}/toggle-role', [AdminSettingsController::class, 'toggleRole']);
@@ -2515,6 +2540,10 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
     Route::get('/admin/ai-settings', function () {
         return Inertia::render('Admin/AiSettings');
+    });
+
+    Route::get('/admin/ai-usage', function () {
+        return Inertia::render('Admin/AiUsage');
     });
 
     Route::get('/admin/fee-policies', function () {

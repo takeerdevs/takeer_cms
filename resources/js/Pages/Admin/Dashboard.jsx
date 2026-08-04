@@ -49,6 +49,7 @@ export default function AdminDashboard() {
         { name: copy('Payment Operations', 'Uendeshaji wa Malipo'), href: '/admin/payment-operations', icon: Activity, desc: copy('Review provider payouts, callbacks, and reconciliation breaks', 'Kagua malipo ya PSP, callbacks na tofauti za upatanisho') },
         { name: copy('General Settings', 'Mipangilio ya Jumla'), href: '/admin/settings', icon: Settings2, desc: copy('Configure platform-wide non-AI defaults', 'Sanidi mipangilio ya jumla ya jukwaa isiyo ya AI') },
         { name: copy('AI Settings', 'Mipangilio ya AI'), href: '/admin/ai-settings', icon: Settings2, desc: copy('Configure AI providers and keys', 'Sanidi watoa huduma na funguo za AI') },
+        { name: copy('AI Usage Audit', 'Ukaguzi wa matumizi ya AI'), href: '/admin/ai-usage', icon: BarChart3, desc: copy('Compare model cost and task usage over time', 'Linganisha gharama za model na matumizi kwa muda') },
     ];
 
     return (

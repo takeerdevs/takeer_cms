@@ -21,7 +21,7 @@ class ProductIntelligenceService
      * Feed an uploaded product image to the Vision Model to generate
      * auto-tags, colors, category, and a Swahili description.
      */
-    public function analyzeProductImage(string $base64Image): ?array
+    public function analyzeProductImage(string $base64Image, array $options = []): ?array
     {
         $prompt = "You are an expert e-commerce catalog agent for a Tanzanian market called Takeer. 
         Analyze the provided product image and return a STRICT JSON object containing:
@@ -49,7 +49,7 @@ class ProductIntelligenceService
         Only Output the JSON. No markdown ticks.";
 
         try {
-            // Reusing the OpenRouterService visual capabilities
+            // Route this capability through the shared AI control plane.
             $messages = [
                 [
                     'role' => 'user',
@@ -68,7 +68,7 @@ class ProductIntelligenceService
                 ]
             ];
 
-            $response = $this->openRouter->chatCompletions($messages, 'google/gemini-2.5-flash');
+            $response = $this->openRouter->forTask($messages, 'product_information_extraction', null, $options);
 
             $content = $response['choices'][0]['message']['content'] ?? '';
 

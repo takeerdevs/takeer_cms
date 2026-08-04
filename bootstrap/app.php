@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('marketing:sms-dispatch-scheduled')->everyMinute()->withoutOverlapping();
         $schedule->command('marketing:abandoned-checkouts-dispatch')->everyFifteenMinutes()->withoutOverlapping();
         $schedule->command('analytics:prune')->dailyAt('02:40')->withoutOverlapping();
+        $schedule->command('try-on:prune')->everyFifteenMinutes()->withoutOverlapping();
         $schedule->command('health:check')->everyFiveMinutes()->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {

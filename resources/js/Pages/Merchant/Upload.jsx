@@ -3181,7 +3181,15 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             const data = error.response?.data || {};
             const msg = data.error_detail || data.message || copy('Could not analyze the product.', 'Imeshindwa kutambua bidhaa.');
             setErrorDetail(msg);
-            toast.error(msg, { id: 'ai-analyze' });
+            if (error.response?.status === 402) {
+                setShowManualForm(true);
+                toast.error(copy('AI credits are required for automatic extraction.', 'Credits za AI zinahitajika kwa uchambuzi wa moja kwa moja.'), {
+                    id: 'ai-analyze',
+                    description: copy('You can continue entering the product details manually.', 'Unaweza kuendelea kuingiza maelezo ya bidhaa mwenyewe.'),
+                });
+            } else {
+                toast.error(msg, { id: 'ai-analyze' });
+            }
         } finally {
             setIsAnalyzing(false);
         }

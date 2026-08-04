@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminCatalogController;
 use App\Http\Controllers\Api\AdminForwarderController;
+use App\Http\Controllers\Api\AdminAiController;
+use App\Http\Controllers\Api\AdminAiAnalyticsController;
 use App\Http\Controllers\Api\AdminSettingsController;
 use App\Http\Controllers\Api\AiSearchController;
 use App\Http\Controllers\Api\AuthController;
@@ -38,6 +40,7 @@ use App\Http\Controllers\Api\ServiceRequestController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\UnifiedSearchController;
 use App\Http\Controllers\Api\UploadController;
+use App\Http\Controllers\Api\VirtualTryOnController;
 use App\Http\Controllers\Api\WaitlistController;
 use App\Http\Controllers\HealthController;
 use Illuminate\Http\Request;
@@ -74,6 +77,16 @@ Route::post('/marketing/events', [MarketingEventController::class, 'store'])->mi
 Route::post('/analytics/events', [MarketingEventController::class, 'store'])->middleware('throttle:120,1');
 Route::get('/posts/{post}/comments', [PostController::class, 'comments'])->withTrashed();
 Route::get('/pwa/product/{product}', [ProductController::class, 'show']);
+Route::post('/try-on/products/{product}/sessions', [VirtualTryOnController::class, 'store'])
+    ->middleware('throttle:5,1');
+Route::get('/try-on/sessions/{session}', [VirtualTryOnController::class, 'status'])
+    ->middleware('throttle:60,1')
+    ->name('try-on.session.status');
+Route::get('/try-on/sessions/{session}/result', [VirtualTryOnController::class, 'result'])
+    ->middleware('throttle:60,1')
+    ->name('try-on.session.result');
+Route::get('/try-on/assets/{asset}/image', [VirtualTryOnController::class, 'assetImage'])
+    ->name('try-on.asset.image');
 Route::get('/pwa/post/{post}', [PostController::class, 'getPostData']);
 Route::get('/content-items/{contentItem}', [CommerceCatalogController::class, 'showContentItem']);
 Route::get('/bundles/{bundle}', [CommerceCatalogController::class, 'showBundle']);
@@ -100,6 +113,9 @@ Route::post('/rider-deliveries/{token}/waitlist', [RiderDeliveryController::clas
     ->middleware('throttle:5,10');
 
 // ─── AI SEARCH ──────────────────────────────────────────────────────────────
+Route::get('/ai/access', [AiSearchController::class, 'access'])->middleware('throttle:30,1');
+Route::post('/ai/claim-free', [AiSearchController::class, 'claimFree'])->middleware('throttle:5,10');
+Route::post('/ai/search/chat', [AiSearchController::class, 'chat'])->middleware('throttle:10,1');
 Route::post('/search/text', [AiSearchController::class, 'textSearch'])->middleware('throttle:10,1');
 Route::post('/search/visual', [AiSearchController::class, 'visualSearch'])->middleware('throttle:5,1');
 Route::get('/search/unified/posts', [UnifiedSearchController::class, 'posts'])->middleware('throttle:45,1');
@@ -164,6 +180,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('merchant_status')->prefix('merchant')->group(function () {
         Route::put('/settings', [\App\Http\Controllers\Api\MerchantSettingsController::class, 'update'])->middleware('merchant_permission:settings.update');
         Route::post('/products/{product}/sync', [ProductController::class, 'syncStock'])->middleware('merchant_permission:products.manage_stock');
+        Route::get('/products/{product}/try-on', [VirtualTryOnController::class, 'merchantConfig'])->middleware('merchant_permission:products.view,products.update');
+        Route::post('/products/{product}/try-on/assets', [VirtualTryOnController::class, 'uploadAsset'])->middleware('merchant_permission:products.update');
+        Route::patch('/products/{product}/try-on', [VirtualTryOnController::class, 'updateConfig'])->middleware('merchant_permission:products.update');
+        Route::delete('/products/{product}/try-on/assets/{asset}', [VirtualTryOnController::class, 'deleteAsset'])->middleware('merchant_permission:products.update');
         Route::post('/dispatch/{order}/intercity', [DispatchController::class, 'intercity'])->middleware('merchant_permission:orders.dispatch');
         Route::post('/dispatch/{order}/local', [DispatchController::class, 'local'])->middleware('merchant_permission:orders.dispatch');
         Route::get('/content-items', [MerchantContentController::class, 'index'])->middleware('merchant_permission:digital_products.view');
@@ -304,6 +324,20 @@ Route::middleware('auth:sanctum')->group(function () {
         // Settings & Platform Overview
         Route::get('/settings', [AdminSettingsController::class, 'index']);
         Route::put('/settings', [AdminSettingsController::class, 'update']);
+        Route::get('/ai', [AdminAiController::class, 'index']);
+        Route::get('/ai/usage', [AdminAiAnalyticsController::class, 'index']);
+        Route::post('/ai/credentials', [AdminAiController::class, 'storeCredential']);
+        Route::patch('/ai/credentials/{credential}', [AdminAiController::class, 'updateCredential']);
+        Route::delete('/ai/credentials/{credential}', [AdminAiController::class, 'destroyCredential']);
+        Route::post('/ai/models', [AdminAiController::class, 'storeModel']);
+        Route::patch('/ai/models/{model}', [AdminAiController::class, 'updateModel']);
+        Route::delete('/ai/models/{model}', [AdminAiController::class, 'destroyModel']);
+        Route::patch('/ai/tasks/{taskRoute}', [AdminAiController::class, 'updateTask']);
+        Route::post('/ai/plans', [AdminAiController::class, 'storePlan']);
+        Route::patch('/ai/plans/{aiPlan}', [AdminAiController::class, 'updatePlan']);
+        Route::post('/ai/subscriptions', [AdminAiController::class, 'storeSubscription']);
+        Route::put('/ai/plans/{aiPlan}/limits/{taskKey}', [AdminAiController::class, 'upsertPlanLimit']);
+        Route::delete('/ai/plans/{aiPlan}/limits/{taskKey}', [AdminAiController::class, 'destroyPlanLimit']);
 
         // Users & Merchants
         Route::get('/users', [AdminSettingsController::class, 'users']);

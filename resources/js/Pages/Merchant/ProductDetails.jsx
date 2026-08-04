@@ -4,7 +4,7 @@ import { Head, router } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/Dialog';
-import { ArrowLeft, Eye, ShoppingCart, Pencil, Trash2, Package, Boxes, Loader2, MapPin, Link as LinkIcon, FileText, PlayCircle, CalendarClock, Users, Send, CheckCircle2, XCircle, Clock, Save } from 'lucide-react';
+import { ArrowLeft, Eye, ShoppingCart, Pencil, Trash2, Package, Boxes, Loader2, MapPin, Link as LinkIcon, FileText, PlayCircle, CalendarClock, Users, Send, CheckCircle2, XCircle, Clock, Save, Sparkles, Upload, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import VideoPlayer from '@/Components/VideoPlayer';
@@ -23,6 +23,10 @@ export default function ProductDetails({ merchantUsername, productId }) {
     const [liveEventLoading, setLiveEventLoading] = useState(false);
     const [liveEventSaving, setLiveEventSaving] = useState(false);
     const [liveEventBusyOrder, setLiveEventBusyOrder] = useState(null);
+    const [tryOnConfig, setTryOnConfig] = useState(null);
+    const [tryOnLoading, setTryOnLoading] = useState(false);
+    const [tryOnSaving, setTryOnSaving] = useState(false);
+    const [tryOnUploading, setTryOnUploading] = useState(false);
     const [now, setNow] = useState(Date.now());
     const [liveEventForm, setLiveEventForm] = useState({
         live_event_starts_at: '',
@@ -51,6 +55,66 @@ export default function ProductDetails({ merchantUsername, productId }) {
     useEffect(() => {
         loadProduct();
     }, [productId]);
+
+    const loadTryOn = async () => {
+        setTryOnLoading(true);
+        try {
+            const response = await axios.get(`/merchant/products/${productId}/try-on`);
+            setTryOnConfig(response.data || null);
+        } catch (error) {
+            setTryOnConfig(null);
+        } finally {
+            setTryOnLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (product?.id) loadTryOn();
+    }, [product?.id, productId]);
+
+    const updateTryOnEnabled = async (enabled) => {
+        setTryOnSaving(true);
+        try {
+            const response = await axios.patch(`/merchant/products/${productId}/try-on`, { enabled });
+            setTryOnConfig((previous) => ({ ...(previous || {}), enabled: Boolean(response.data?.enabled) }));
+            toast.success(response.data?.message || copy('Virtual try-on updated.', 'Virtual try-on imesasishwa.'));
+            loadProduct();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || copy('Could not update virtual try-on.', 'Imeshindikana kusasisha virtual try-on.'));
+        } finally {
+            setTryOnSaving(false);
+        }
+    };
+
+    const uploadTryOnGarment = async (file) => {
+        if (!file || !product || product.type !== 'physical') return;
+        setTryOnUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('garment', file);
+            const response = await axios.post(`/merchant/products/${productId}/try-on/assets`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data', Accept: 'application/json' },
+            });
+            setTryOnConfig((previous) => ({ ...(previous || {}), assets: [response.data.asset, ...(previous?.assets || [])] }));
+            toast.success(copy('Garment image saved. Enable virtual try-on when ready.', 'Picha ya nguo imehifadhiwa. Washa virtual try-on ukiwa tayari.'));
+            loadProduct();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || copy('Could not upload the garment image.', 'Imeshindikana kupakia picha ya nguo.'));
+        } finally {
+            setTryOnUploading(false);
+        }
+    };
+
+    const removeTryOnGarment = async (assetId) => {
+        try {
+            await axios.delete(`/merchant/products/${productId}/try-on/assets/${assetId}`);
+            setTryOnConfig((previous) => ({ ...(previous || {}), assets: (previous?.assets || []).filter((asset) => asset.id !== assetId) }));
+            toast.success(copy('Garment image removed.', 'Picha ya nguo imeondolewa.'));
+            loadProduct();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || copy('Could not remove the garment image.', 'Imeshindikana kuondoa picha ya nguo.'));
+        }
+    };
 
     useEffect(() => {
         const timer = setInterval(() => setNow(Date.now()), 30000);
@@ -525,6 +589,71 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                 )}
                             </CardContent>
                         </Card>
+
+                        {product.type === 'physical' && (
+                            <Card className="border-brand-200">
+                                <CardContent className="p-4 space-y-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="flex items-center gap-2 text-sm font-black">
+                                                <Sparkles className="h-4 w-4 text-brand-600" />
+                                                {copy('Photo virtual try-on', 'Virtual try-on kwa picha')}
+                                            </p>
+                                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                                {copy('Let shoppers upload a portrait and preview this garment before buying.', 'Waruhusu wateja kupakia portrait na kuona preview ya nguo kabla ya kununua.')}
+                                            </p>
+                                        </div>
+                                        <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-black">
+                                            <input
+                                                type="checkbox"
+                                                checked={Boolean(tryOnConfig?.enabled)}
+                                                disabled={tryOnLoading || tryOnSaving || !tryOnConfig?.assets?.length}
+                                                onChange={(event) => updateTryOnEnabled(event.target.checked)}
+                                                className="h-4 w-4 rounded border-input text-brand-600"
+                                            />
+                                            {tryOnConfig?.enabled ? copy('Enabled', 'Imewashwa') : copy('Off', 'Imezimwa')}
+                                        </label>
+                                    </div>
+
+                                    <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-xs leading-5 text-blue-900">
+                                        <p className="flex items-center gap-1.5 font-black"><ShieldCheck className="h-4 w-4" /> {copy('Merchant setup guidance', 'Mwongozo wa kuweka merchant')}</p>
+                                        <p className="mt-1">{copy('Use a front-facing transparent PNG of the garment where possible. Photo try-on is an approximation, not a fit guarantee.', 'Tumia PNG yenye background transparent ya nguo ikiwa inawezekana. Photo try-on ni makadirio, si dhamana ya fitting.')}</p>
+                                    </div>
+
+                                    <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-brand-300 bg-brand-50/40 px-3 text-sm">
+                                        <span className="flex items-center gap-2 font-black text-brand-800"><Upload className="h-4 w-4" /> {tryOnUploading ? copy('Uploading garment...', 'Inapakia nguo...') : copy('Upload garment image', 'Pakia picha ya nguo')}</span>
+                                        <span className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-bold text-white">PNG/JPG</span>
+                                        <input
+                                            type="file"
+                                            accept="image/jpeg,image/png,image/webp"
+                                            className="sr-only"
+                                            disabled={tryOnUploading}
+                                            onChange={(event) => {
+                                                uploadTryOnGarment(event.target.files?.[0]);
+                                                event.target.value = '';
+                                            }}
+                                        />
+                                    </label>
+
+                                    {(tryOnConfig?.assets || []).length > 0 && (
+                                        <div className="space-y-2">
+                                            {tryOnConfig.assets.filter((asset) => asset.is_active !== false).map((asset) => (
+                                                <div key={asset.id} className="flex items-center gap-3 rounded-xl border border-slate-200 p-2">
+                                                    <img src={asset.preview_url} alt={asset.original_name || 'Try-on garment'} className="h-16 w-16 rounded-lg bg-slate-100 object-contain" />
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-xs font-black">{asset.original_name || copy('Garment image', 'Picha ya nguo')}</p>
+                                                        <p className="mt-1 text-[11px] text-muted-foreground">{asset.variant_name || copy('Product-wide asset', 'Asset ya bidhaa nzima')}</p>
+                                                    </div>
+                                                    <Button type="button" variant="outline" size="sm" className="rounded-xl text-red-600" onClick={() => removeTryOnGarment(asset.id)}>
+                                                        {copy('Remove', 'Ondoa')}
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
 
                         {stockPerLocation.length > 0 && (
                             <Card>

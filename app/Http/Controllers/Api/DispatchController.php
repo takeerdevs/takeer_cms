@@ -7,18 +7,21 @@ use App\Models\Delivery;
 use App\Models\Merchant;
 use App\Models\Order;
 use App\Services\ForwarderShipmentService;
+use App\Services\AiCreditService;
 use App\Services\SmsService;
 use App\Services\WaybillOcrService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class DispatchController extends Controller
 {
     public function __construct(
         private SmsService $smsService,
-        private WaybillOcrService $waybillOcrService
+        private WaybillOcrService $waybillOcrService,
+        private AiCreditService $aiCredits
     )
     {
     }
@@ -29,7 +32,7 @@ class DispatchController extends Controller
      */
     public function intercity(Request $request, Order $order): JsonResponse
     {
-        $this->authorizeMerchantOrder($request, $order);
+        $merchant = $this->authorizeMerchantOrder($request, $order);
         $this->ensurePhysicalOrder($order);
         $this->ensurePaidDispatchableOrder($order);
 
@@ -50,8 +53,32 @@ class DispatchController extends Controller
         $ocr = null;
 
         if ($trackingNumber === '' || $busCompany === '') {
+            $access = $this->aiCredits->accessFor($request->user(), 'waybill_ocr', $merchant);
+            if (! $access['allowed']) {
+                return response()->json([
+                    'message' => 'Waybill OCR needs a business AI plan or more credits.',
+                    'code' => 'ai_access_required',
+                    'access' => $access,
+                ], 402);
+            }
+
+            $reservation = $this->aiCredits->reserveTask(
+                $request->user(),
+                'waybill_ocr',
+                'waybill-ocr:'.Str::uuid(),
+                $merchant,
+            );
             try {
-                $ocr = $this->waybillOcrService->extractFromReceipt($photoUrl);
+                $ocr = $this->waybillOcrService->extractFromReceipt($photoUrl, [
+                    'user_id' => $request->user()->id,
+                    'actor_user_id' => $request->user()->id,
+                    'merchant_id' => $merchant->id,
+                    'scope_type' => 'merchant',
+                    'billable_units' => 1,
+                    'unit_type' => 'document',
+                    'charged_credits' => $reservation->amount,
+                ]);
+                $this->aiCredits->settle($reservation);
                 if ($busCompany === '' && !empty($ocr['bus_company'])) {
                     $busCompany = (string) $ocr['bus_company'];
                 }
@@ -59,6 +86,7 @@ class DispatchController extends Controller
                     $trackingNumber = (string) $ocr['waybill_tracking_number'];
                 }
             } catch (\Throwable $e) {
+                $this->aiCredits->release($reservation, ['reason' => 'provider_failure']);
                 Log::warning('Waybill OCR extraction failed', [
                     'order_id' => $order->id,
                     'error' => $e->getMessage(),
