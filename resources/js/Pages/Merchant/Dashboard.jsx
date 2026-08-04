@@ -7,7 +7,7 @@ import {
     Package, ShoppingBag, Video, UploadCloud,
     TrendingUp, Store, ChevronRight, Truck, ShieldCheck,
     AlertTriangle, FileCheck, CheckCircle2, Settings, BookOpenText, Boxes, Crown, Download, CalendarClock, MapPin, MessageSquare,
-    Users, ClipboardList, BarChart3, Calculator, UserCog, Utensils, BedDouble, Clock3, Megaphone, LayoutGrid, Layers
+    Users, ClipboardList, BarChart3, UserCog, Utensils, BedDouble, Clock3, Megaphone, LayoutGrid, Layers
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
@@ -214,7 +214,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
         { key: 'communications', label: copy('Communications', 'Mawasiliano'), description: copy('Follow-ups, reminders, updates, and contact logs.', 'Ufuatiliaji, vikumbusho, masasisho na kumbukumbu za mawasiliano.'), icon: MessageSquare, href: `/merchant/${merchantSlug}/communications`, permissions: ['marketing.view', 'orders.view', 'services.view'], modules: ['communications'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
         { key: 'marketing', label: copy('Marketing', 'Masoko'), description: copy('Campaigns, coupons, referrals, SMS, social DMs, and WhatsApp.', 'Kampeni, kuponi, referrals, SMS, DM za kijamii na WhatsApp.'), icon: Megaphone, href: `/merchant/${merchantSlug}/marketing`, permissions: ['marketing.view'], modules: ['marketing'], modes: [] },
         { key: 'reports', label: copy('Business overview', 'Muhtasari wa biashara'), description: copy('Revenue, customers, bookings, catalog, team, and operations.', 'Mapato, wateja, booking, katalogi, timu na shughuli.'), icon: BarChart3, href: `/merchant/${merchantSlug}/overview`, permissions: ['dashboard.view', 'orders.view', 'bookkeeping.view'], modules: ['reports'], modes: [] },
-        { key: 'bookkeeping', label: copy('Bookkeeping', 'Utunzaji wa vitabu'), description: copy('Revenue, expenses, statements, audit support, and tax readiness.', 'Mapato, matumizi, statements, msaada wa audit na utayari wa kodi.'), icon: Calculator, href: `/merchant/${merchantSlug}/retail/bookkeeping`, permissions: ['bookkeeping.view'], modules: ['bookkeeping'], modes: [], requiresModules: ['retail_ops'] },
+        // Bookkeeping is intentionally hidden until the launch-phase workflow is complete.
         { key: 'team', label: copy('Team', 'Timu'), description: copy('Staff roles, workplace access, PINs, and permissions.', 'Majukumu ya wafanyakazi, ufikiaji, PIN na ruhusa.'), icon: UserCog, href: `/merchant/${merchantSlug}/team`, permissions: ['team.view'], modules: ['team', 'retail_ops'], modes: [] },
         { key: 'retail_ops', label: copy('Retail / POS', 'Rejareja / POS'), description: copy('POS, inventory, transfers, storekeeper tools, and counters.', 'POS, inventory, uhamisho, zana za storekeeper na kaunta.'), icon: Store, href: `/merchant/${merchantSlug}/retail/dashboard`, permissions: ['retail.dashboard', 'retail.pos', 'retail.inventory'], modules: ['retail_ops'], modes: [] },
     ]

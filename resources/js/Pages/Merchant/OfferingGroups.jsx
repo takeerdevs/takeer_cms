@@ -25,8 +25,8 @@ const labelFromKey = (value, copy = (english) => english) => {
     };
     if (labels[value]) return copy(...labels[value]);
     return String(value || '')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
 };
 
 const templateLabel = (key, template, copy) => {
@@ -443,7 +443,7 @@ export default function OfferingGroups({ merchantUsername }) {
                                                     <div>
                                                         <p className="text-sm font-black text-slate-950">{group.title}</p>
                                                         <p className="mt-1 text-xs font-semibold text-slate-500">
-                                                    {templateLabel(group.template_key, template, copy)} · {layout ? `${labelFromKey(layout, copy)} · ` : ''}{group.items_count || 0} {copy(Number(group.items_count || 0) === 1 ? 'item' : 'items', Number(group.items_count || 0) === 1 ? 'bidhaa' : 'bidhaa')} · {copy(group.status, group.status === 'published' ? 'imechapishwa' : group.status === 'archived' ? 'imehifadhiwa' : 'rasimu')}
+                                                            {templateLabel(group.template_key, template, copy)} · {layout ? `${labelFromKey(layout, copy)} · ` : ''}{group.items_count || 0} {copy(Number(group.items_count || 0) === 1 ? 'item' : 'items', Number(group.items_count || 0) === 1 ? 'bidhaa' : 'bidhaa')} · {copy(group.status, group.status === 'published' ? 'imechapishwa' : group.status === 'archived' ? 'imehifadhiwa' : 'rasimu')}
                                                         </p>
                                                         {group.description && (
                                                             <p className="mt-1 text-xs leading-5 text-slate-500">{group.description}</p>
@@ -818,7 +818,7 @@ export default function OfferingGroups({ merchantUsername }) {
                         <DialogHeader>
                             <DialogTitle>{copy('Create offering group', 'Unda kundi la ofa')}</DialogTitle>
                             <DialogDescription>
-                                {copy('Choose the merchant-facing template now. Items and nested groups will be added from the builder.', 'Chagua kiolezo kinachoonekana kwa mfanyabiashara. Bidhaa na makundi ya ndani yataongezwa kwenye mjenzi.')}
+                                {copy('Choose the merchant-facing template now. Items and nested groups will be added from the builder.', 'Chagua kiolezo kinachoonekana kwa mfanyabiashara. Bidhaa na makundi ya ndani yataongezwa baada ya kutengeneza hii.')}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="mt-4 space-y-4">

@@ -1015,14 +1015,15 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
 
 function FreightTrackingSummary({ metadata = {}, trackingNumber = '', compact = false, className = '' }) {
     const { copy } = useLocale();
+    const safeMetadata = metadata && typeof metadata === 'object' ? metadata : {};
     const rows = [
-        ['Carrier/cargo', metadata.carrier_name],
-        ['Tracking', trackingNumber || metadata.tracking_number],
-        ['Reference', metadata.transport_reference],
-        ['ETA / next movement', metadata.eta_text],
+        ['Carrier/cargo', safeMetadata.carrier_name],
+        ['Tracking', trackingNumber || safeMetadata.tracking_number],
+        ['Reference', safeMetadata.transport_reference],
+        ['ETA / next movement', safeMetadata.eta_text],
     ].filter(([, value]) => value);
 
-    if (rows.length === 0 && !metadata.tracking_url) return null;
+    if (rows.length === 0 && !safeMetadata.tracking_url) return null;
 
     return (
         <div className={`${compact ? 'grid gap-1 rounded-xl border border-slate-100 bg-white px-2 py-2' : 'rounded-2xl border border-sky-100 bg-sky-50 p-3'} ${className}`}>
@@ -1033,9 +1034,9 @@ function FreightTrackingSummary({ metadata = {}, trackingNumber = '', compact = 
                         {value}
                     </span>
                 ))}
-                {metadata.tracking_url && (
+                {safeMetadata.tracking_url && (
                     <a
-                        href={metadata.tracking_url}
+                        href={safeMetadata.tracking_url}
                         target="_blank"
                         rel="noreferrer"
                         className={`${compact ? 'text-[11px]' : 'rounded-xl bg-white px-3 py-2 text-xs'} inline-flex items-center gap-1 font-black text-brand-700 underline decoration-brand-200 underline-offset-4`}

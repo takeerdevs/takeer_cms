@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\FeePolicy;
 use App\Models\Currency;
 use App\Models\ExchangeRateHistory;
+use App\Models\Merchant;
 use App\Models\Order;
 
 class FeePolicyService

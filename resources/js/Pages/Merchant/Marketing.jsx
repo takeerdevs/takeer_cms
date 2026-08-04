@@ -763,7 +763,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
             };
 
             if (!payload.product_id || !payload.title || payload.campaign_price < 0 || payload.goal_quantity < 2 || !payload.ends_at) {
-            toast.error(copy('Choose a product, title, price, target quantity, and deadline.', 'Chagua bidhaa, title, bei, target quantity, na deadline.'));
+                toast.error(copy('Choose a product, title, price, target quantity, and deadline.', 'Chagua bidhaa, title, bei, target quantity, na deadline.'));
                 return;
             }
 
@@ -1046,7 +1046,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                     });
                     setWhatsappAccounts((current) => [res.data?.account, ...current.filter((account) => account.id !== res.data?.account?.id)].filter(Boolean));
                     setWhatsappTest((current) => ({ ...current, account_id: res.data?.account?.id || current.account_id }));
-                toast.success(copy('WhatsApp Business connected.', 'WhatsApp Business imeunganishwa.'));
+                    toast.success(copy('WhatsApp Business connected.', 'WhatsApp Business imeunganishwa.'));
                     await loadMarketing();
                 } catch (error) {
                     toast.error(error.response?.data?.message || copy('Failed to complete WhatsApp signup.', 'Imeshindwa kukamilisha usajili wa WhatsApp.'));
@@ -1087,7 +1087,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
             };
 
             if (payload.trigger_keywords.length === 0 || !payload.name || !payload.response_message) {
-            toast.error(copy('Add a name, trigger word, and response message.', 'Ongeza jina, trigger word, na ujumbe wa majibu.'));
+                toast.error(copy('Add a name, trigger word, and response message.', 'Ongeza jina, trigger word, na ujumbe wa majibu.'));
                 return;
             }
 
@@ -1265,7 +1265,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                                             <Icon className="h-5 w-5 text-brand-600" />
                                         </div>
                                         <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-600">
-                            {marketingCopy(copy, status)}
+                                            {marketingCopy(copy, status)}
                                         </span>
                                     </div>
                                     <p className="mt-4 font-black">{marketingCopy(copy, title)}</p>
@@ -1331,19 +1331,19 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                             </div>
 
                             <div className="grid gap-3 md:grid-cols-2">
-                                <Field label={copy('Minimum order', 'Oda ya chini')} hint={copy('Lowest cart total before this code can be used. Leave blank for no minimum.', 'Jumla ndogo ya kikapu kabla ya kutumia msimbo. Acha wazi ikiwa hakuna kiwango cha chini.') }>
+                                <Field label={copy('Minimum order', 'Oda ya chini')} hint={copy('Lowest cart total before this code can be used. Leave blank for no minimum.', 'Jumla ndogo ya kikapu kabla ya kutumia msimbo. Acha wazi ikiwa hakuna kiwango cha chini.')}>
                                     <Input type="number" value={form.minimum_order_amount || ''} onChange={(e) => setForm((prev) => ({ ...prev, minimum_order_amount: e.target.value }))} placeholder={copy('Optional', 'Hiari')} className="h-12 rounded-xl" />
                                 </Field>
-                                <Field label={copy('Max discount', 'Punguzo la juu')} hint={copy('Caps percent discounts so large orders do not discount too much. Leave blank for no cap.', 'Weka kikomo cha punguzo la asilimia ili oda kubwa zisipunguziwe sana. Acha wazi bila kikomo.') }>
+                                <Field label={copy('Max discount', 'Punguzo la juu')} hint={copy('Caps percent discounts so large orders do not discount too much. Leave blank for no cap.', 'Weka kikomo cha punguzo la asilimia ili oda kubwa zisipunguziwe sana. Acha wazi bila kikomo.')}>
                                     <Input type="number" value={form.maximum_discount_amount || ''} onChange={(e) => setForm((prev) => ({ ...prev, maximum_discount_amount: e.target.value }))} placeholder={copy('Optional', 'Hiari')} className="h-12 rounded-xl" />
                                 </Field>
                             </div>
 
                             <div className="grid gap-3 md:grid-cols-2">
-                                <Field label={copy('Total usage limit', 'Kikomo cha matumizi yote')} hint={copy('How many times this code can be used by all customers combined. Leave blank for unlimited.', 'Idadi ya matumizi ya msimbo huu na wateja wote. Acha wazi bila kikomo.') }>
+                                <Field label={copy('Total usage limit', 'Kikomo cha matumizi yote')} hint={copy('How many times this code can be used by all customers combined. Leave blank for unlimited.', 'Idadi ya matumizi ya msimbo huu na wateja wote. Acha wazi bila kikomo.')}>
                                     <Input type="number" value={form.usage_limit || ''} onChange={(e) => setForm((prev) => ({ ...prev, usage_limit: e.target.value }))} placeholder={copy('Optional', 'Hiari')} className="h-12 rounded-xl" />
                                 </Field>
-                                <Field label={copy('Per customer limit', 'Kikomo kwa mteja')} hint={copy('How many times one customer can use this code. Usually 1 for launch offers.', 'Idadi ya matumizi ya mteja mmoja. Mara nyingi ni 1 kwa ofa za uzinduzi.') }>
+                                <Field label={copy('Per customer limit', 'Kikomo kwa mteja')} hint={copy('How many times one customer can use this code. Usually 1 for launch offers.', 'Idadi ya matumizi ya mteja mmoja. Mara nyingi ni 1 kwa ofa za uzinduzi.')}>
                                     <Input type="number" value={form.usage_limit_per_customer || ''} onChange={(e) => setForm((prev) => ({ ...prev, usage_limit_per_customer: e.target.value }))} placeholder={copy('Optional', 'Hiari')} className="h-12 rounded-xl" />
                                 </Field>
                             </div>
@@ -1461,7 +1461,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
 
                                 <div className="rounded-2xl border bg-white p-4 space-y-3">
                                     <div className="grid gap-3 md:grid-cols-2">
-                                        <Field label={copy('Product', 'Bidhaa')} hint={copy('Choose the physical or digital product this campaign is validating.', 'Chagua bidhaa ya kawaida au kidijitali ambayo kampeni hii inapima.') }>
+                                        <Field label={copy('Product', 'Bidhaa')} hint={copy('Choose the physical or digital product this campaign is validating.', 'Chagua bidhaa ya kawaida au kidijitali ambayo kampeni hii inapima.')}>
                                             <select value={groupSaleForm.product_id || ''} onChange={(e) => setGroupSaleForm((prev) => ({ ...prev, product_id: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
                                                 <option value="">{copy('Choose product...', 'Chagua bidhaa...')}</option>
                                                 {productTargetOptions.map((target) => (
@@ -1474,7 +1474,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                                         </Field>
                                     </div>
 
-                                    <Field label={copy('Description', 'Maelezo')} hint={copy('Short public pitch shown on the group-sale page.', 'Ujumbe mfupi wa umma unaoonyeshwa kwenye ukurasa wa mauzo ya kikundi.') }>
+                                    <Field label={copy('Description', 'Maelezo')} hint={copy('Short public pitch shown on the group-sale page.', 'Ujumbe mfupi wa umma unaoonyeshwa kwenye ukurasa wa mauzo ya kikundi.')}>
                                         <Textarea value={groupSaleForm.description || ''} onChange={(e) => setGroupSaleForm((prev) => ({ ...prev, description: e.target.value }))} placeholder={copy('Join before the deadline. If enough people reserve, we release the offer...', 'Jiunge kabla ya mwisho. Watu wa kutosha wakiweka nafasi, tutatoa ofa...')} className="min-h-20 rounded-xl" />
                                     </Field>
 
@@ -1487,10 +1487,10 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                                                 </p>
                                             )}
                                         </Field>
-                                        <Field label={copy('Regular price', 'Bei ya kawaida')} hint={copy('Optional comparison price.', 'Bei ya kulinganisha, si lazima.') }>
+                                        <Field label={copy('Regular price', 'Bei ya kawaida')} hint={copy('Optional comparison price.', 'Bei ya awali, si lazima.')}>
                                             <Input type="number" min="0" value={groupSaleForm.regular_price || ''} onChange={(e) => setGroupSaleForm((prev) => ({ ...prev, regular_price: e.target.value }))} placeholder="35000" className="h-12 rounded-xl" />
                                         </Field>
-                                        <Field label={copy('Target buyers', 'Walengwa wanunuzi')} hint={copy('Campaign succeeds when reservations reach this number.', 'Kampeni inafanikiwa nafasi zilizowekwa zikifikia idadi hii.') }>
+                                        <Field label={copy('Target buyers', 'Walengwa wanunuzi')} hint={copy('Campaign succeeds when reservations reach this number.', 'Kampeni inafanikiwa nafasi zilizowekwa zikifikia idadi hii.')}>
                                             <Input type="number" min="2" value={groupSaleForm.goal_quantity || ''} onChange={(e) => setGroupSaleForm((prev) => ({ ...prev, goal_quantity: e.target.value }))} placeholder="100" className="h-12 rounded-xl" />
                                         </Field>
                                     </div>
@@ -1558,7 +1558,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                                                 <p className="mt-1 text-xs text-muted-foreground">{campaign.product_title || copy('Product', 'Bidhaa')} · TZS {Number(campaign.campaign_price || 0).toLocaleString()}{campaign.unit_label ? ` / ${campaign.unit_label}` : ''} · {copy('deadline', 'mwisho')} {campaign.ends_at ? new Date(campaign.ends_at).toLocaleString() : '-'}</p>
                                                 <div className="mt-3">
                                                     <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-widest text-slate-500">
-                                                    <span>{Number(campaign.reserved_quantity || 0).toLocaleString()} / {Number(campaign.goal_quantity || 0).toLocaleString()} {copy('reserved', 'imewekwa nafasi')}</span>
+                                                        <span>{Number(campaign.reserved_quantity || 0).toLocaleString()} / {Number(campaign.goal_quantity || 0).toLocaleString()} {copy('reserved', 'imewekwa nafasi')}</span>
                                                         <span>{campaign.progress_percent || 0}%</span>
                                                     </div>
                                                     <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
@@ -1715,7 +1715,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                                                 </div>
                                                 {link.commission_orders?.length > 0 && (
                                                     <div className="mt-3 rounded-xl border bg-slate-50/80 p-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Recent referred orders', 'Orders za referral za hivi karibuni')}</p>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{copy('Recent referred orders', 'Orders za referral za hivi karibuni')}</p>
                                                         <div className="mt-2 space-y-1.5">
                                                             {link.commission_orders.slice(0, 3).map((order) => (
                                                                 <div key={order.id} className="flex items-center justify-between gap-3 text-xs">
@@ -2060,7 +2060,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                                             </div>
                                             <div className="flex flex-wrap gap-1">
                                                 {campaign.destination_url && (
-                                                <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => copyText(campaign.destination_url, copy('Destination copied.', 'Lengwa limenakiliwa.'))}>
+                                                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => copyText(campaign.destination_url, copy('Destination copied.', 'Lengwa limenakiliwa.'))}>
                                                         <Copy className="h-4 w-4" />
                                                     </Button>
                                                 )}
@@ -2081,8 +2081,8 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                             <CardHeader>
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
-                                <CardTitle className="text-base font-black uppercase tracking-wider">{copy('WhatsApp Cloud API', 'WhatsApp Cloud API')}</CardTitle>
-                                <CardDescription>{copy('Webhook URL:', 'URL ya webhook:')} {whatsappConnector.webhook_url || '/api/webhooks/whatsapp'}</CardDescription>
+                                        <CardTitle className="text-base font-black uppercase tracking-wider">{copy('WhatsApp Cloud API', 'WhatsApp Cloud API')}</CardTitle>
+                                        <CardDescription>{copy('Webhook URL:', 'URL ya webhook:')} {whatsappConnector.webhook_url || '/api/webhooks/whatsapp'}</CardDescription>
                                     </div>
                                     <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${whatsappConnector.configured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                                         {whatsappConnector.configured ? copy('Configured', 'Imesanidiwa') : copy('Needs credentials', 'Inahitaji vitambulisho')}
@@ -2441,8 +2441,8 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                             <CardHeader>
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
-                                <CardTitle className="text-base font-black uppercase tracking-wider">{copy('SMS campaign', 'Kampeni ya SMS')}</CardTitle>
-                                <CardDescription>{copy('Provider-ready workflow for customer broadcasts and launch alerts.', 'Workflow iliyo tayari kwa provider kwa matangazo ya wateja na alerts za uzinduzi.')}</CardDescription>
+                                        <CardTitle className="text-base font-black uppercase tracking-wider">{copy('SMS campaign', 'Kampeni ya SMS')}</CardTitle>
+                                        <CardDescription>{copy('Provider-ready workflow for customer broadcasts and launch alerts.', 'Workflow iliyo tayari kwa provider kwa matangazo ya wateja na alerts za uzinduzi.')}</CardDescription>
                                     </div>
                                     <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
                                         {copy('Simulated', 'Simulation')}
@@ -2489,7 +2489,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                                                 onChange={(e) => setSmsForm((prev) => ({ ...prev, audience_ref_id: e.target.value }))}
                                                 className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground"
                                             >
-                                            <option value="">{copy('Choose target...', 'Chagua lengwa...')}</option>
+                                                <option value="">{copy('Choose target...', 'Chagua lengwa...')}</option>
                                                 {targetOptions.map((target) => (
                                                     <option key={target.id} value={target.id}>
                                                         {target.label} · {target.meta}

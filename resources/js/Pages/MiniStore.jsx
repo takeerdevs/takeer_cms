@@ -223,7 +223,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
             { key: 'featured', title: copy('Featured', 'Zinazoangaziwa'), items: [], href: null },
             { key: 'memberships', title: copy('Creator Club', 'Klabu ya mbunifu'), items: sectionItemList('memberships', subscriptionPlans), href: `/m/${merchantSlug}/memberships` },
             { key: 'events', title: copy('Live Events', 'Matukio mubashara'), items: sectionItemList('events', events), href: `/m/${merchantSlug}/downloads` },
-            { key: 'premium_media', title: copy('Premium Media', 'Media ya malipo'), items: sectionItemList('premium_media', premiumMedia), href: `/m/${merchantSlug}/downloads` },
+            { key: 'premium_media', title: copy('Premium Media', 'Media za malipo'), items: sectionItemList('premium_media', premiumMedia), href: `/m/${merchantSlug}/downloads` },
             { key: 'commissions', title: copy('Custom Work', 'Kazi maalum'), items: sectionItemList('commissions', commissions), href: `/m/${merchantSlug}/downloads` },
             { key: 'products', title: copy('Products', 'Bidhaa'), items: sectionItemList('products', products), href: `/m/${merchantSlug}/products` },
             { key: 'downloads', title: copy('Downloads', 'Vipakuliwa'), items: sectionItemList('downloads', downloads), href: `/m/${merchantSlug}/downloads` },
@@ -712,7 +712,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                             {section.href && (
                                                 <div className="mt-2">
                                                     <Link href={section.href} className="text-xs font-bold text-brand-600">
-                                                                {copy('Open', 'Fungua')}
+                                                        {copy('Open', 'Fungua')}
                                                     </Link>
                                                 </div>
                                             )}
@@ -959,7 +959,7 @@ function ProductOfferCard({
                             <div className="mt-3 flex items-center justify-between gap-3">
                                 <div className="text-base font-black text-brand-600">{productPriceLabel(product)}</div>
                                 <span className="inline-flex h-9 items-center justify-center rounded-xl bg-brand-600 px-4 text-xs font-black text-white">
-                                                        {copy('Open', 'Fungua')}
+                                    {copy('Open', 'Fungua')}
                                 </span>
                             </div>
                         </div>

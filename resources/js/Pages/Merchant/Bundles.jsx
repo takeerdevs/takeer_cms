@@ -110,7 +110,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
     const bundleTypeFilters = [
         { key: 'all', label: copy('All', 'Zote') },
-        { key: 'physical', label: copy('Physical', 'Kimwili') },
+        { key: 'physical', label: copy('Physical', 'Kushikika') },
         { key: 'digital', label: copy('Digital', 'Kidijitali') },
         { key: 'service', label: copy('Service', 'Huduma') },
         { key: 'content', label: copy('Content', 'Maudhui') },
@@ -187,7 +187,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         if (type === 'content') return copy('Content', 'Maudhui');
         if (type === 'digital') return copy('Digital', 'Kidijitali');
         if (type === 'service') return copy('Service', 'Huduma');
-        return copy('Physical', 'Kimwili');
+        return copy('Physical', 'Kushikika');
     };
 
     const typeBadgeClass = (option) => {
@@ -1175,7 +1175,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                     </button>
                                 </div>
                                 <select className="h-11 w-full rounded-xl border border-emerald-100 bg-white px-3 text-sm font-bold text-emerald-800" value={bundleForm.shipping_profile_id} onChange={(e) => setBundleForm({ ...bundleForm, shipping_profile_id: e.target.value })}>
-                                    <option value="">{copy('Use first physical item/default profile', 'Tumia item ya kwanza ya kimwili/profile ya kawaida')}</option>
+                                    <option value="">{copy('Use first physical item/default profile', 'Tumia item ya kwanza ya kushikika/profile ya kawaida')}</option>
                                     {shippingProfiles.map(profile => (
                                         <option key={profile.id} value={profile.id}>{profile.name}{profile.is_default ? ` (${copy('Default', 'Chaguo-msingi')})` : ''}</option>
                                     ))}
@@ -1453,7 +1453,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                 addCourseListItem('course_requirements_text', courseRequirementDraft, setCourseRequirementDraft, copy('Add a requirement first.', 'Andika requirement kwanza.'));
                                                             }
                                                         }}
-                                                                    placeholder={copy('E.g. Basic smartphone skills', 'Mf. Ujuzi wa msingi wa simu janja')}
+                                                        placeholder={copy('E.g. Basic smartphone skills', 'Mf. Ujuzi wa msingi wa simu janja')}
                                                     />
                                                     <Button
                                                         type="button"
@@ -1635,7 +1635,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                     </div>
 
                                                                     <div className="space-y-1.5">
-                                                                            <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Lesson summary', 'Muhtasari wa somo')}</label>
+                                                                        <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{copy('Lesson summary', 'Muhtasari wa somo')}</label>
                                                                         <Textarea
                                                                             rows={2}
                                                                             value={lesson.summary || ''}
@@ -1664,7 +1664,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                                 onChange={(e) => updateCourseLesson(module.id, lesson.id, { unlock_after_days: e.target.value })}
                                                                                 placeholder="0"
                                                                             />
-                                                                                <p className="text-[10px] text-muted-foreground">{copy('Use 0 to unlock immediately after purchase.', 'Tumia 0 kufungua mara moja baada ya ununuzi.')}</p>
+                                                                            <p className="text-[10px] text-muted-foreground">{copy('Use 0 to unlock immediately after purchase.', 'Tumia 0 kufungua mara moja baada ya ununuzi.')}</p>
                                                                         </div>
                                                                     </div>
                                                                     {['cohort', 'live'].includes(bundleForm.course_format) && (
@@ -1810,7 +1810,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                     {copy('Add lesson', 'Ongeza somo')}
                                                                 </Button>
                                                             </div>
-                                                                <p className="mt-2 text-[11px] leading-5 text-blue-800/75">{copy('Use this to create a new lesson from an authored post, digital download, or content item. Physical products and services stay out of lessons so the course remains clear for students.', 'Tumia hii kuunda somo kutoka kwenye post, digital download, au content item. Bidhaa za kimwili na huduma hazitawekwa kwenye masomo ili kozi ibaki wazi kwa wanafunzi.')}</p>
+                                                            <p className="mt-2 text-[11px] leading-5 text-blue-800/75">{copy('Use this to create a new lesson from an authored post, digital download, or content item. Physical products and services stay out of lessons so the course remains clear for students.', 'Tumia hii kuunda somo kutoka kwenye post, digital download, au content item. Bidhaa za kushikika na huduma hazitawekwa kwenye masomo ili kozi ibaki wazi kwa wanafunzi.')}</p>
                                                             <div className="mt-3 rounded-xl border border-blue-100 bg-white p-3">
                                                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                                     <div>
@@ -2005,7 +2005,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                 <Input
                                                                     value={selectedItem?.lesson_title || ''}
                                                                     onChange={(e) => updateSelectedCourseItem(option, { lesson_title: e.target.value })}
-                                                                placeholder={copy('Lesson title', 'Kichwa cha somo')}
+                                                                    placeholder={copy('Lesson title', 'Kichwa cha somo')}
                                                                 />
                                                             </div>
                                                             <Textarea
@@ -2020,17 +2020,17 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                     min="1"
                                                                     value={selectedItem?.lesson_duration_minutes ?? ''}
                                                                     onChange={(e) => updateSelectedCourseItem(option, { lesson_duration_minutes: e.target.value })}
-                                                                placeholder={copy('Duration (min)', 'Muda (dak)')}
+                                                                    placeholder={copy('Duration (min)', 'Muda (dak)')}
                                                                 />
                                                                 <Input
                                                                     type="number"
                                                                     min="0"
                                                                     value={selectedItem?.unlock_after_days ?? 0}
                                                                     onChange={(e) => updateSelectedCourseItem(option, { unlock_after_days: e.target.value })}
-                                                                placeholder={copy('Unlock after days', 'Fungua baada ya siku')}
+                                                                    placeholder={copy('Unlock after days', 'Fungua baada ya siku')}
                                                                 />
                                                                 <label className="rounded-xl border border-input bg-background px-3 py-2 flex items-center justify-between gap-2">
-                                                            <span className="text-xs font-bold text-muted-foreground">{copy('Preview lesson', 'Hakiki somo')}</span>
+                                                                    <span className="text-xs font-bold text-muted-foreground">{copy('Preview lesson', 'Hakiki somo')}</span>
                                                                     <input
                                                                         type="checkbox"
                                                                         className="h-4 w-4"
@@ -2063,7 +2063,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                         })}
                                         {bundleVisibleItems.length === 0 && (
                                             <p className="text-xs text-muted-foreground rounded-xl border border-dashed border-border px-3 py-2">
-                                                                {copy('No items found for your search.', 'Hakuna items zilizopatikana kwa utafutaji wako.')}
+                                                {copy('No items found for your search.', 'Hakuna items zilizopatikana kwa utafutaji wako.')}
                                             </p>
                                         )}
                                     </div>

@@ -7,7 +7,7 @@ import { Input } from '@/Components/ui/Input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/Components/ui/Dialog';
 import {
     User, Shield, Settings, LogOut, Store, ExternalLink, ChevronRight, Plus, ChevronDown, ChevronUp, BarChart3, Package, DownloadCloud, Briefcase,
-    Wallet, CreditCard, Link as LinkIcon, Truck, TrendingUp, Banknote, AlertTriangle, FileCheck, CheckCircle2, ShieldCheck, BookOpenText, Boxes, Crown, CalendarClock, ShoppingBag,
+    Wallet, CreditCard, Link as LinkIcon, Truck, TrendingUp, AlertTriangle, FileCheck, CheckCircle2, ShieldCheck, BookOpenText, Boxes, Crown, CalendarClock, ShoppingBag,
     Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive, Megaphone, Layers,
     Search, Loader2, KeyRound, MapPin, Globe, Ship
 } from 'lucide-react';
@@ -678,7 +678,6 @@ export default function Profile({
                                             <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
                                                 <PayoutMetric label={t('profileUi.providerPayoutCompleted')} value={formatMoney(creatorMonetization.payouts?.provider_payouts_completed || 0)} icon={FileCheck} tone="emerald" />
                                                 <PayoutMetric label={t('profileUi.awaitingProviderPayout')} value={formatMoney(creatorMonetization.payouts?.provider_payouts_pending || 0)} icon={ShieldCheck} tone="blue" />
-                                                <PayoutMetric label={t('profileUi.settlementOperations')} value={t('profileUi.providerControlled')} icon={Banknote} tone="amber" href={`/merchant/${merchantSlug}/overview`} actionLabel={t('profileUi.viewEarnings')} />
                                             </div>
                                             <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
                                                 <div className="min-w-0 rounded-2xl border border-white bg-white/80 p-3">

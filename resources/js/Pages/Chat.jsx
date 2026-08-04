@@ -262,7 +262,7 @@ const orderItemMeta = (item = {}, order = null, translate = (english) => english
     if (type === 'service') {
         return {
             label: translate('Service order', 'Order ya huduma'),
-            detail: translate('Shown in Orders; no physical pickup unless the service requires it.', 'Inaonekana kwenye Orders; hakuna pickup ya kimwili isipokuwa huduma inahitaji.'),
+            detail: translate('Shown in Orders; no physical pickup unless the service requires it.', 'Inaonekana kwenye Orders; hakuna pickup ya kushikika isipokuwa huduma inahitaji.'),
             Icon: Wrench,
             tone: 'text-indigo-700 bg-indigo-50 border-indigo-100',
         };
@@ -2611,7 +2611,7 @@ export default function Chat({
                                                                 <Icon className="h-4 w-4" />
                                                             </div>
                                                             <div className="min-w-0 flex-1">
-                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">{copy('Pickup Agreement', 'Makubaliano ya pickup')}</p>
+                                                                <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">{copy('Pickup Agreement', 'Makubaliano ya pickup')}</p>
                                                                 <h4 className="mt-0.5 text-sm font-black uppercase tracking-wide">{title}</h4>
                                                                 <p className="mt-1 text-sm font-bold leading-relaxed opacity-90">{body}</p>
                                                                 {msg.payload?.reason && (
@@ -3220,7 +3220,7 @@ export default function Chat({
                                 </div>
                             )}
 
-                    {['pending_fulfillment', 'release_eligible'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && pickupReadyForRelease && order?.delivery?.pickup_pin && (
+                            {['pending_fulfillment', 'release_eligible'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && pickupReadyForRelease && order?.delivery?.pickup_pin && (
                                 <div className="mx-auto flex w-full max-w-lg flex-col">
                                     <PickupPinCard
                                         pickupPin={order?.delivery?.pickup_pin}
@@ -3359,85 +3359,85 @@ export default function Chat({
                             {order?.is_inquiry && order?.inquiry_status === 'pending' && order?.payment_status === 'pending' && (
                                 serviceOrder || digitalOrder || (order?.delivery?.delivery_type !== 'self_pickup' && order?.shipping_fee === null)
                             ) && (
-                                <div className={cn(
-                                    "p-4 rounded-[2rem] bg-brand-50/80 border shadow-sm transition-colors",
-                                    isWaitingForShippingFee ? "border-red-300 ring-2 ring-red-100" : "border-brand-200"
-                                )}>
-                                    <div className="flex items-center gap-2 mb-3">
-                                        {physicalOrder ? <Truck className="h-5 w-5 text-brand-600" /> : <IntentIcon className="h-5 w-5 text-brand-600" />}
-                                        <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">
-                                            {serviceOrder ? copy('Service offer enquiry', 'Ombi la ofa ya huduma') : (digitalOrder ? copy('Digital work enquiry', 'Ombi la kazi ya digitali') : (isForwarderOrder ? copy('Forwarder drop-off quote', 'Quote ya kupeleka kwa forwarder') : copy('Shipping quote enquiry', 'Ombi la quote ya usafiri')))}
-                                        </h4>
-                                    </div>
-                                    {physicalOrder && (
-                                        <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">
-                                                {isForwarderOrder ? copy('Forwarder warehouse:', 'Ghala la forwarder:') : copy('Customer address:', 'Anwani ya mteja:')}
-                                            </p>
-                                            <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || copy('Address not provided', 'Anwani haikuwekwa')}</p>
+                                    <div className={cn(
+                                        "p-4 rounded-[2rem] bg-brand-50/80 border shadow-sm transition-colors",
+                                        isWaitingForShippingFee ? "border-red-300 ring-2 ring-red-100" : "border-brand-200"
+                                    )}>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            {physicalOrder ? <Truck className="h-5 w-5 text-brand-600" /> : <IntentIcon className="h-5 w-5 text-brand-600" />}
+                                            <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">
+                                                {serviceOrder ? copy('Service offer enquiry', 'Ombi la ofa ya huduma') : (digitalOrder ? copy('Digital work enquiry', 'Ombi la kazi ya digitali') : (isForwarderOrder ? copy('Forwarder drop-off quote', 'Quote ya kupeleka kwa forwarder') : copy('Shipping quote enquiry', 'Ombi la quote ya usafiri')))}
+                                            </h4>
+                                        </div>
+                                        {physicalOrder && (
+                                            <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">
+                                                    {isForwarderOrder ? copy('Forwarder warehouse:', 'Ghala la forwarder:') : copy('Customer address:', 'Anwani ya mteja:')}
+                                                </p>
+                                                <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || copy('Address not provided', 'Anwani haikuwekwa')}</p>
 
-                                            {!isForwarderOrder && closestLocation && (
-                                                <div className="mt-3 p-2 rounded-xl bg-brand-50/50 border border-brand-100 flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-7 w-7 rounded-lg bg-white flex items-center justify-center text-brand-600 shadow-sm">
-                                                            <Store className="h-4 w-4" />
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-[9px] font-black uppercase text-brand-700 tracking-tight">{copy('From:', 'Kutoka:')} {closestLocation.name}</p>
-                                                            <p className="text-[10px] font-black text-brand-900 tracking-tight">{copy('Distance:', 'Umbali:')} {closestLocation.distance.toFixed(1)} km</p>
+                                                {!isForwarderOrder && closestLocation && (
+                                                    <div className="mt-3 p-2 rounded-xl bg-brand-50/50 border border-brand-100 flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="h-7 w-7 rounded-lg bg-white flex items-center justify-center text-brand-600 shadow-sm">
+                                                                <Store className="h-4 w-4" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[9px] font-black uppercase text-brand-700 tracking-tight">{copy('From:', 'Kutoka:')} {closestLocation.name}</p>
+                                                                <p className="text-[10px] font-black text-brand-900 tracking-tight">{copy('Distance:', 'Umbali:')} {closestLocation.distance.toFixed(1)} km</p>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                )}
 
-                                            {isForwarderOrder && (
-                                                <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-900">
-                                                    {copy('Use domestic courier, cargo, or warehouse drop-off details. After payment, update status to Dispatched to forwarder and attach courier/waybill details there.', 'Tumia courier wa ndani, cargo, au maelezo ya ghala. Baada ya malipo, sasisha hali kuwa imetumwa kwa forwarder na ambatisha maelezo ya courier/waybill hapo.')}
-                                                </div>
-                                            )}
+                                                {isForwarderOrder && (
+                                                    <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-900">
+                                                        {copy('Use domestic courier, cargo, or warehouse drop-off details. After payment, update status to Dispatched to forwarder and attach courier/waybill details there.', 'Tumia courier wa ndani, cargo, au maelezo ya ghala. Baada ya malipo, sasisha hali kuwa imetumwa kwa forwarder na ambatisha maelezo ya courier/waybill hapo.')}
+                                                    </div>
+                                                )}
 
-                                            {!isForwarderOrder && order?.delivery?.latitude && (
-                                                <a
-                                                    href={`https://www.google.com/maps/dir/${closestLocation?.latitude || ''},${closestLocation?.longitude || ''}/${order.delivery.latitude},${order.delivery.longitude}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-brand-600 hover:text-brand-700 underline"
-                                                >
-                                                    <MapPin className="h-3 w-3" /> {copy('OPEN IN MAPS', 'FUNGUA KWENYE RAMANI')}
-                                                </a>
-                                            )}
-                                        </div>
-                                    )}
-                                    {!physicalOrder && (
-                                        <div className="mb-3 rounded-2xl border border-brand-100 bg-white/80 p-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">
-                                                {serviceOrder ? copy('Service agreement', 'Makubaliano ya huduma') : copy('Digital order agreement', 'Makubaliano ya digital order')}
-                                            </p>
-                                            <p className="text-sm font-bold leading-5 text-brand-900">
-                                                {copy('Use chat to agree on scope, deliverables, deadline, revisions, and price before the buyer pays.', 'Tumia chat kukubaliana scope, deliverables, deadline, revisions, na bei kabla ya mteja kulipa.')}
-                                            </p>
-                                        </div>
-                                    )}
-                                    <form onSubmit={submitQuote} className="flex gap-2">
-                                        <Input
-                                            type="number"
-                                            placeholder={serviceOrder ? copy('Enter service offer (TZS)', 'Weka offer ya huduma (TZS)') : (digitalOrder ? copy('Enter digital work offer (TZS)', 'Weka offer ya digital work (TZS)') : (isForwarderOrder ? copy('Forwarder drop-off cost (TZS)', 'Gharama ya kupeleka kwa forwarder (TZS)') : copy('Enter cost (TZS)', 'Weka gharama (TZS)')))}
-                                            value={shippingFeeInput}
-                                            onChange={e => setShippingFeeInput(e.target.value)}
-                                            className={cn(
-                                                "flex-1 font-bold h-12 rounded-xl",
-                                                isWaitingForShippingFee && "border-red-400 bg-red-50/40 focus-visible:ring-red-200"
-                                            )}
-                                            required
-                                        />
-                                        <Button type="submit" disabled={quoteSubmitting || !shippingFeeInput} className="h-12 rounded-xl px-6 bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
-                                            {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />} {copy('SEND', 'TUMA')}
-                                        </Button>
-                                    </form>
-                                </div>
-                            )}
+                                                {!isForwarderOrder && order?.delivery?.latitude && (
+                                                    <a
+                                                        href={`https://www.google.com/maps/dir/${closestLocation?.latitude || ''},${closestLocation?.longitude || ''}/${order.delivery.latitude},${order.delivery.longitude}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-brand-600 hover:text-brand-700 underline"
+                                                    >
+                                                        <MapPin className="h-3 w-3" /> {copy('OPEN IN MAPS', 'FUNGUA KWENYE RAMANI')}
+                                                    </a>
+                                                )}
+                                            </div>
+                                        )}
+                                        {!physicalOrder && (
+                                            <div className="mb-3 rounded-2xl border border-brand-100 bg-white/80 p-3">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">
+                                                    {serviceOrder ? copy('Service agreement', 'Makubaliano ya huduma') : copy('Digital order agreement', 'Makubaliano ya digital order')}
+                                                </p>
+                                                <p className="text-sm font-bold leading-5 text-brand-900">
+                                                    {copy('Use chat to agree on scope, deliverables, deadline, revisions, and price before the buyer pays.', 'Tumia chat kukubaliana scope, deliverables, deadline, revisions, na bei kabla ya mteja kulipa.')}
+                                                </p>
+                                            </div>
+                                        )}
+                                        <form onSubmit={submitQuote} className="flex gap-2">
+                                            <Input
+                                                type="number"
+                                                placeholder={serviceOrder ? copy('Enter service offer (TZS)', 'Weka offer ya huduma (TZS)') : (digitalOrder ? copy('Enter digital work offer (TZS)', 'Weka offer ya digital work (TZS)') : (isForwarderOrder ? copy('Forwarder drop-off cost (TZS)', 'Gharama ya kupeleka kwa forwarder (TZS)') : copy('Enter cost (TZS)', 'Weka gharama (TZS)')))}
+                                                value={shippingFeeInput}
+                                                onChange={e => setShippingFeeInput(e.target.value)}
+                                                className={cn(
+                                                    "flex-1 font-bold h-12 rounded-xl",
+                                                    isWaitingForShippingFee && "border-red-400 bg-red-50/40 focus-visible:ring-red-200"
+                                                )}
+                                                required
+                                            />
+                                            <Button type="submit" disabled={quoteSubmitting || !shippingFeeInput} className="h-12 rounded-xl px-6 bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
+                                                {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />} {copy('SEND', 'TUMA')}
+                                            </Button>
+                                        </form>
+                                    </div>
+                                )}
 
-                    {order?.product?.type === 'physical' && order?.payment_status === 'pending_fulfillment' && order?.delivery?.delivery_type !== 'self_pickup' && !isForwarderOrder && (
+                            {order?.product?.type === 'physical' && order?.payment_status === 'pending_fulfillment' && order?.delivery?.delivery_type !== 'self_pickup' && !isForwarderOrder && (
                                 <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
                                     <div className="flex items-center gap-2 mb-3">
                                         <Truck className="h-5 w-5 text-brand-600" />
@@ -3940,7 +3940,7 @@ export default function Chat({
                                                                     disabled={!actionPayload.amount || actionPayload.amount <= 0}
                                                                     className="w-full h-16 rounded-[2rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-widest text-sm shadow-xl shadow-brand-600/30 transition-all active:scale-[0.98]"
                                                                 >
-                                                                        {copy('ADD DISCOUNT', 'WEKA PUNGUZO')}
+                                                                    {copy('ADD DISCOUNT', 'WEKA PUNGUZO')}
                                                                 </Button>
                                                             </div>
                                                         </div>
@@ -3948,7 +3948,7 @@ export default function Chat({
 
                                                     {activeAction === 'shipping_cost' && (
                                                         <div className="space-y-2">
-                                                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">{copy('What TZS charge?', 'Ushaji wa TZS gani?')}</label>
+                                                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">{copy('What TZS charge?', 'Ushaji wa TZS gani?')}</label>
                                                             <div className="relative group">
                                                                 <Input type="number" value={actionPayload.amount} onChange={e => setActionPayload(p => ({ ...p, amount: Number(e.target.value) }))} className="h-16 rounded-2xl text-2xl font-black bg-slate-50 border-2 border-transparent transition-all focus:bg-white focus:border-brand-200 outline-none pl-6 shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" placeholder="0.00" />
                                                                 <div className="absolute right-6 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-brand-200 transition-colors">TZS</div>
@@ -4488,7 +4488,7 @@ export default function Chat({
                             <Button
                                 onClick={async () => {
                                     if (paymentMethod === 'card') {
-                    toast.info(copy('Please use mobile money payment for now.', 'Tafadhali tumia malipo ya simu kwa sasa.'));
+                                        toast.info(copy('Please use mobile money payment for now.', 'Tafadhali tumia malipo ya simu kwa sasa.'));
                                         return;
                                     }
                                     setIsPaying(true);

@@ -419,7 +419,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                                 <div className="space-y-3">
                                     <div>
                                         <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Included access', 'Ufikiaji uliojumuishwa')}</p>
-                                        <p className="text-xs text-muted-foreground mt-1">{copy('Creator Club tiers unlock posts/articles, digital products, live events, and digital/course bundles. Physical products stay outside memberships.', 'Madara ya Creator Club hufungua machapisho/makala, bidhaa za kidijitali, matukio ya moja kwa moja na vifurushi vya kidijitali/kozi. Bidhaa za kawaida hazijumuishwi kwenye uanachama.')}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">{copy('Creator Club tiers unlock posts/articles, digital products, live events, and digital/course bundles. Physical products stay outside memberships.', 'Madaraja ya Creator Club hufungua machapisho/makala, bidhaa za kidijitali, matukio ya moja kwa moja na vifurushi vya kidijitali/kozi. Bidhaa za kawaida hazijumuishwi kwenye uanachama.')}</p>
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Search items', 'Tafuta vipengele')}</label>
@@ -499,7 +499,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
 
                     <Card className="rounded-[24px]">
                         <CardHeader>
-                            <CardTitle className="text-lg font-black">{copy('Creator Club ladder', 'Madara ya Creator Club')}</CardTitle>
+                            <CardTitle className="text-lg font-black">{copy('Creator Club ladder', 'Madaraja ya Creator Club')}</CardTitle>
                             <CardDescription>{copy('Your membership and recurring access offers.', 'Ofa zako za uanachama na ufikiaji wa mara kwa mara.')}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">

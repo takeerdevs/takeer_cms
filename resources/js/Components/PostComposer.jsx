@@ -218,6 +218,25 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     const textRef = useRef(null);
     const merchantApiBase = selectedProfile?.username ? `/merchant/${selectedProfile.username}` : '/merchant';
     const merchantPayload = selectedProfile?.id ? { merchant_id: selectedProfile.id } : {};
+    const canCreateProduct = selectedProfile
+        ? ['products.create', 'digital_products.create', 'services.create'].some((permission) => (
+            hasMerchantPermission(selectedProfile.permissions || [], permission)
+        ))
+        : false;
+
+    const openProductUpload = () => {
+        if (!selectedProfile?.username) {
+            toast.error(copy('Choose an account before adding a product.', 'Chagua akaunti kabla ya kuongeza bidhaa.'));
+            return;
+        }
+
+        if (!canCreateProduct) {
+            toast.error(copy('This account does not have access to add products.', 'Akaunti hii haina ruhusa ya kuongeza bidhaa.'));
+            return;
+        }
+
+        router.visit(`/merchant/${encodeURIComponent(selectedProfile.username)}/upload`);
+    };
 
     const parsePriceValue = (value) => {
         if (value === '' || value === null || value === undefined) return null;
@@ -598,36 +617,36 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                     ) : (
                                         <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 justify-center sm:justify-start">
                                             {postableProfiles.map((profile) => {
-                                            const active = selectedProfile?.id === profile.id;
-                                            return (
-                                                <button
-                                                    key={profile.id}
-                                                    onClick={() => setSelectedProfile(profile)}
-                                                    className="flex flex-col items-center gap-2 shrink-0 transition-transform active:scale-95 p-2"
-                                                >
-                                                    <div className={cn(
-                                                        "h-16 w-16 rounded-full p-0.5 transition-all shadow-sm",
-                                                        active ? "bg-gradient-to-tr from-brand-500 to-brand-700 scale-105" : "bg-transparent grayscale-[0.5] opacity-60"
-                                                    )}>
-                                                        <div className="h-full w-full rounded-full border-[3px] border-background bg-card flex items-center justify-center overflow-hidden">
-                                                            {profile.avatar_url ? (
-                                                                <img src={profile.avatar_url} className="h-full w-full object-cover" alt="" />
-                                                            ) : (
-                                                                <span className="font-black text-brand-600 text-xl">{profile.display_name[0].toUpperCase()}</span>
-                                                            )}
+                                                const active = selectedProfile?.id === profile.id;
+                                                return (
+                                                    <button
+                                                        key={profile.id}
+                                                        onClick={() => setSelectedProfile(profile)}
+                                                        className="flex flex-col items-center gap-2 shrink-0 transition-transform active:scale-95 p-2"
+                                                    >
+                                                        <div className={cn(
+                                                            "h-16 w-16 rounded-full p-0.5 transition-all shadow-sm",
+                                                            active ? "bg-gradient-to-tr from-brand-500 to-brand-700 scale-105" : "bg-transparent grayscale-[0.5] opacity-60"
+                                                        )}>
+                                                            <div className="h-full w-full rounded-full border-[3px] border-background bg-card flex items-center justify-center overflow-hidden">
+                                                                {profile.avatar_url ? (
+                                                                    <img src={profile.avatar_url} className="h-full w-full object-cover" alt="" />
+                                                                ) : (
+                                                                    <span className="font-black text-brand-600 text-xl">{profile.display_name[0].toUpperCase()}</span>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                    <span className={cn(
-                                                        "text-[10px] font-bold tracking-tight max-w-[70px] truncate transition-colors",
-                                                        active ? "text-brand-600" : "text-muted-foreground"
-                                                    )}>
-                                                        @{profile.username}
-                                                    </span>
-                                                    <span className="text-[8px] uppercase tracking-tighter font-black opacity-60">
-                                                        {profile.type === 'personal' ? copy('Personal', 'Binafsi') : copy('Business', 'Biashara')}
-                                                    </span>
-                                                </button>
-                                            );
+                                                        <span className={cn(
+                                                            "text-[10px] font-bold tracking-tight max-w-[70px] truncate transition-colors",
+                                                            active ? "text-brand-600" : "text-muted-foreground"
+                                                        )}>
+                                                            @{profile.username}
+                                                        </span>
+                                                        <span className="text-[8px] uppercase tracking-tighter font-black opacity-60">
+                                                            {profile.type === 'personal' ? copy('Personal', 'Binafsi') : copy('Business', 'Biashara')}
+                                                        </span>
+                                                    </button>
+                                                );
                                             })}
                                         </div>
                                     )}
@@ -971,6 +990,19 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                             </div>
 
                             <PolicyNotice />
+
+                            <div className="flex flex-col items-center gap-3 py-2">
+                                <span className="text-sm font-black uppercase tracking-[0.35em] text-brand-600">{copy('OR', 'AU')}</span>
+                                <button
+                                    type="button"
+                                    onClick={openProductUpload}
+                                    disabled={!selectedProfile}
+                                    className="inline-flex min-h-12 items-center gap-2 rounded-2xl border-2 border-brand-600 px-5 text-sm font-black text-brand-600 transition-colors hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <ShoppingBag className="h-5 w-5" />
+                                    {copy('Post new product', 'Post bidhaa mpya')}
+                                </button>
+                            </div>
                         </div>
 
                         {/* Promotion Previews (Only for standalone product) */}
@@ -985,7 +1017,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-1.5">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-600/80 px-1.5 py-0.5 bg-brand-500/10 rounded-md">{copy('Promoted product', 'Bidhaa iliyokuzwa')}</span>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-brand-600/80 px-1.5 py-0.5 bg-brand-500/10 rounded-md">{copy('Promoted product', 'Bidhaa iliyokuzwa')}</span>
                                         </div>
                                         <p className="font-bold text-[14px] truncate text-foreground">{promotedProduct.title}</p>
                                         <p className="text-brand-600 font-black text-[12px]">TZS {Number(promotedProduct.price).toLocaleString()}</p>
@@ -1005,14 +1037,14 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                     className="overflow-hidden bg-card/60 backdrop-blur-md border border-border/50 p-4 rounded-3xl shadow-lg mb-4 space-y-3"
                                 >
                                     <div className="flex items-center justify-between">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">{copy('Select product to promote', 'Chagua bidhaa ya kukuzwa')}</label>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">{copy('Select product to promote', 'Chagua bidhaa ya kutangaza')}</label>
                                         <button onClick={() => setShowProducts(false)} className="text-[10px] text-muted-foreground font-bold hover:text-foreground">{copy('Done', 'Imekamilika')}</button>
                                     </div>
                                     <div className="grid gap-2 max-h-[220px] overflow-y-auto pr-1 no-scrollbar pt-1">
                                         {promotablesLoading ? (
                                             <p className="text-xs text-muted-foreground italic py-4">{copy('Checking catalog...', 'Inakagua katalogi...')}</p>
                                         ) : promotables.products.length === 0 ? (
-                                            <p className="text-[11px] text-muted-foreground py-6 text-center">{copy('No products found to promote.', 'Hakuna bidhaa za kukuzwa zilizopatikana.')}</p>
+                                            <p className="text-[11px] text-muted-foreground py-6 text-center">{copy('No products found to promote.', 'Huna bidhaa ya kuambatisha kwenye post.')}</p>
                                         ) : (
                                             promotables.products.map(item => (
                                                 <button

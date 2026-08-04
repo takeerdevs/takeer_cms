@@ -38,6 +38,8 @@ import ServiceLocationAreasEditor from '@/Components/Merchant/ServiceLocationAre
 import ServiceRelatedProductsEditor from '@/Components/Merchant/ServiceRelatedProductsEditor';
 import { KNOWN_UPLOAD_MODULE_KEYS, getUploadModuleConfig, publishModuleKey } from '@/lib/uploadModules';
 import { useLocale } from '@/lib/i18n';
+import { hasMerchantPermission } from '@/lib/merchantPermissions';
+import ProfileSwitcher from '@/Components/ProfileSwitcher';
 import { RepeatableTextList, ServiceModuleCreateFields } from '@/Components/Merchant/ServiceModuleCreateFields';
 
 const CATEGORIES = ['Nguo', 'Viatu', 'Simu na Vifaa', 'Chakula', 'Nyumba na Bustani', 'Michezo', 'Watoto', 'Afya & Uzuri', 'Nyingine'];
@@ -269,6 +271,7 @@ const SERVICE_MODULE_PICKER = [
         englishDescription: 'Add food, drinks, combos, add-ons, preparation time, food tags, and menu sections.',
         tone: 'orange',
     },
+    /*
     {
         key: 'rooms',
         icon: BedDouble,
@@ -277,7 +280,7 @@ const SERVICE_MODULE_PICKER = [
         description: 'Weka aina ya chumba, vitanda, idadi ya wageni, huduma zilizopo, muda wa kuingia/kutoka, na sheria za nyumba.',
         englishDescription: 'Add room type, beds, guest capacity, amenities, check-in/check-out times, and house rules.',
         tone: 'purple',
-    },
+    },*/
     {
         key: 'tour_departures',
         icon: Landmark,
@@ -416,8 +419,17 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const draftMediaSyncTimerRef = useRef(null);
     const lastDraftMediaSyncRef = useRef('');
     const { auth } = usePage().props;
+    const merchantProfiles = auth?.user?.merchant_profiles ?? [];
+    const uploadableProfiles = merchantProfiles.filter((profile) => (
+        ['products.create', 'digital_products.create', 'services.create'].some((permission) => (
+            hasMerchantPermission(profile.permissions || [], permission)
+        ))
+    ));
     const currentMerchant = auth?.user?.merchant_profiles?.find(m => m.username === merchantUsername)
         || auth?.user?.merchant_profiles?.[0] || {};
+    const uploadSwitchRedirect = (merchant) => (
+        `/merchant/${encodeURIComponent(merchant.username)}/upload${typeof window !== 'undefined' ? window.location.search : ''}`
+    );
     const liveEventTimezoneOptions = useMemo(() => {
         const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         return Array.from(new Set([
@@ -1864,7 +1876,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     onClick={() => setDeliveryPromiseOverrideEnabled(prev => !prev)}
                     className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${deliveryPromiseOverrideEnabled ? 'border-emerald-200 bg-white text-emerald-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}
                 >
-                            {deliveryPromiseOverrideEnabled ? copy('Override on', 'Override imewashwa') : copy('Use profile', 'Tumia profile')}
+                    {deliveryPromiseOverrideEnabled ? copy('Override on', 'Override imewashwa') : copy('Use profile', 'Tumia profile')}
                 </button>
             </div>
             {deliveryPromiseOverrideEnabled && (
@@ -2022,8 +2034,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         return (
             <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                 <div>
-                    <p className="text-xs font-black uppercase tracking-wider text-slate-700">{copy('Which shops should have this item?', 'Inapatikana kwenye shop gani?')}</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Make it available in all shops, or choose specific branches.', 'Acha ipatikane shops zote, au chagua matawi maalum.')}</p>
+                    <p className="text-xs font-black uppercase tracking-wider text-slate-700">{copy('Which business area/branch should have this item?', 'Inapatikana eneo gani/tawi la biashara?')}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Make it available in all business areas, or choose specific branches.', 'Acha ipatikane maeneo yote, au chagua maeneo maalum.')}</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                     <button
@@ -2031,7 +2043,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${mode === 'all' ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
                         onClick={() => setAvailabilityLocationIds([])}
                     >
-                        {copy('All active shops', 'Shops zote zinazofanya kazi')}
+                        {copy('All active business areas', 'Maeneo yote yanayofanya kazi')}
                     </button>
                     <button
                         type="button"
@@ -2719,6 +2731,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             return;
         }
 
+        if (step === 'physical' && uploadModule === 'menu') {
+            setUploadModule(null);
+            setProductType('physical');
+            setShowManualForm(false);
+            setManualStepCompleted(false);
+        }
+
         setStep('select');
     };
 
@@ -3004,6 +3023,15 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const isUploadingMedia = images.some(img => img.isUploading);
     const isUploadingProductDetailSectionImage = productDetailSections.some((section) => section.is_uploading_image);
     const activeUploadModule = getUploadModuleConfig(uploadModule);
+    const activeUploadModulePicker = SERVICE_MODULE_PICKER.find((module) => module.key === uploadModule);
+    const activeUploadModuleTitle = activeUploadModulePicker
+        ? copy(activeUploadModulePicker.englishTitle, activeUploadModulePicker.title)
+        : activeUploadModule
+            ? copy(activeUploadModule.translations?.en?.title || activeUploadModule.title, activeUploadModule.title)
+            : '';
+    const serviceTitlePlaceholder = activeUploadModule?.titlePlaceholder
+        ? copy(activeUploadModule.englishTitlePlaceholder || activeUploadModule.titlePlaceholder, activeUploadModule.titlePlaceholder)
+        : copy('E.g. 2-hour home cleaning service', 'Mf. Huduma ya usafi wa nyumba ya saa 2');
     const isMenuUpload = activeUploadModule?.key === 'menu' && step === 'physical';
     const isModuleServiceUpload = step === 'service' && activeUploadModule?.type === 'service';
     const isOnlineLiveEventService = isModuleServiceUpload && uploadModule === 'online_live_events';
@@ -3626,19 +3654,19 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         }
         if (step === 'digital') {
             if (digitalDeliveryMode === 'upload' && !digitalFile) {
-            toast.error(copy('Upload your product file.', 'Tafadhali pakia faili la bidhaa yako.'));
+                toast.error(copy('Upload your product file.', 'Tafadhali pakia faili la bidhaa yako.'));
                 return;
             }
             if (digitalDeliveryMode === 'video_stream' && !paidVideoFile) {
-            toast.error(copy('Upload the full premium video.', 'Tafadhali pakia full premium video.'));
+                toast.error(copy('Upload the full premium video.', 'Tafadhali pakia full premium video.'));
                 return;
             }
             if (digitalDeliveryMode === 'audio_stream' && !paidAudioFile) {
-            toast.error(copy('Upload the premium audio.', 'Tafadhali pakia premium audio.'));
+                toast.error(copy('Upload the premium audio.', 'Tafadhali pakia premium audio.'));
                 return;
             }
             if (digitalDeliveryMode === 'gallery_pack' && paidGalleryItems.filter(item => item.url && !item.error).length === 0) {
-            toast.error(copy('Upload the gallery pack images.', 'Tafadhali pakia picha za gallery pack.'));
+                toast.error(copy('Upload the gallery pack images.', 'Tafadhali pakia picha za gallery pack.'));
                 return;
             }
             if (digitalDeliveryMode === 'live_event') {
@@ -4066,7 +4094,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     const submitManual = async () => {
         if (!manualTitle) {
-            toast.error(copy('Enter the product name.', 'Tafadhali weka jina la bidhaa.'));
+            toast.error(isFocusedPhysicalModule
+                ? copy('Enter the menu item name.', 'Tafadhali weka jina la menu item.')
+                : copy('Enter the product name.', 'Tafadhali weka jina la bidhaa.'));
             return;
         }
         if (isFocusedPhysicalModule) {
@@ -4367,7 +4397,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 sm:p-5">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                        <h2 className="text-base font-black text-slate-950">{copy('Create a standard service', 'Tengeneza huduma ya kawaida')}</h2>
+                                <h2 className="text-base font-black text-slate-950">{copy('Create a standard service', 'Tengeneza huduma ya kawaida')}</h2>
                                 <p className="mt-1 text-sm font-medium text-slate-500">
                                     {copy('Use the standard form if none of the service types above matches your service.', 'Tumia fomu ya kawaida kama hakuna aina hapo juu inayofanana na huduma yako.')}
                                 </p>
@@ -4392,34 +4422,24 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     if (step === 'select') {
         return (
             <AppLayout>
-                <Head title={uploadModule === 'menu' ? `${copy('Add menu item', 'Ongeza menu item')} | Takeer` : `${copy('Choose product type', 'Chagua aina ya bidhaa')} | Takeer`} />
+                <Head title={`${copy('Choose product type', 'Chagua aina ya bidhaa')} | Takeer`} />
                 <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-8 pb-24">
                     <div className="flex flex-col items-center justify-center space-y-6">
-                        {/* ── Merchant Identity ── */}
+                        {/* ── Merchant account ── */}
                         <div className="flex flex-col items-center gap-2 mt-4">
-                            {currentMerchant.avatar_url ? (
-                                <img
-                                    src={currentMerchant.avatar_url}
-                                    alt={currentMerchant.display_name}
-                                    className="h-20 w-20 rounded-full object-cover ring-4 ring-brand-100 shadow-md p-1.5"
-                                />
-                            ) : (
-                                <div className="h-20 w-20 rounded-full bg-brand-50 flex items-center justify-center ring-4 ring-brand-100 shadow-md">
-                                    <Store className="h-10 w-10 text-brand-600" />
-                                </div>
-                            )}
-                            <div className="text-center">
-                                <p className="font-black text-lg text-foreground">{currentMerchant.display_name || currentMerchant.username || 'Biashara Yangu'}</p>
-                                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">@{currentMerchant.username || 'biasharayangu'}</p>
-                            </div>
+                            <ProfileSwitcher
+                                variant="hero"
+                                profiles={uploadableProfiles}
+                                switchRedirect={uploadSwitchRedirect}
+                            />
                         </div>
 
                         {/* ── Title ── */}
                         <div className="text-center space-y-2">
                             <h1 className="text-3xl font-black tracking-tight flex items-center justify-center gap-2">
-                                {uploadModule === 'menu' ? copy('What are you adding to the menu?', 'Ongeza nini kwenye menu?') : copy('What do you want to sell today?', 'Unataka uuze nini leo?')} <Sparkles className="h-6 w-6 text-brand-600" />
+                                {copy('What do you want to sell today?', 'Unataka uuze nini leo?')} <Sparkles className="h-6 w-6 text-brand-600" />
                             </h1>
-                            <p className="text-muted-foreground">{uploadModule === 'menu' ? copy('Use the product flow to add food, drinks, add-ons, or combos.', 'Tumia product flow kuongeza chakula, kinywaji, add-on, au combo.') : copy('Choose a product type.', 'Chagua aina ya bidhaa.')}</p>
+                            <p className="text-muted-foreground">{copy('Choose a product type.', 'Chagua aina ya bidhaa.')}</p>
                         </div>
                     </div>
 
@@ -4487,10 +4507,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     </button>
                     <div>
                         <h1 className="text-2xl font-black flex items-center gap-2">
-                            {step === 'physical' ? (uploadModule === 'menu' ? copy('New menu item', 'Menu item mpya') : copy('New product', 'Bidhaa mpya')) : step === 'digital' ? copy('Digital product', 'Bidhaa ya digitali') : copy('New service', 'Huduma mpya')}
+                            {step === 'physical' ? (uploadModule === 'menu' ? copy('Menu item', 'Menu item') : copy('New product', 'Bidhaa mpya')) : step === 'digital' ? copy('Digital product', 'Bidhaa ya digitali') : copy('New service', 'Huduma mpya')}
                         </h1>
                         <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold opacity-60">
-                            {(step || '').toUpperCase()} FLOW
+                            {uploadModule === 'menu' ? 'MENU FLOW' : `${(step || '').toUpperCase()} FLOW`}
                         </p>
                     </div>
                 </div>
@@ -4585,26 +4605,32 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             />
                         </div>
                     </div>
-                    <p className="text-[10px] text-muted-foreground italic font-medium px-1">{copy('Tip: Click an image to add interactive hotspots. Videos appear as playable media on post details.', 'Tip: Bofya picha kuongeza hotspots. Video zitaonekana kama media zinazoweza kuchezwa kwenye maelezo ya post.')}</p>
+                    <p className="text-[10px] text-muted-foreground italic font-medium px-1">
+                        {isMenuUpload
+                            ? copy('Tip: Use a clear photo of the food or drink so customers can recognize it quickly.', 'Tip: Tumia picha iliyo wazi ya chakula au kinywaji ili mteja akitambue haraka.')
+                            : copy('Tip: Click an image to add interactive hotspots. Videos appear as playable media on post details.', 'Tip: Bofya picha kuongeza hotspots. Hotspots inaruhusu kuweka taarifa katika sehemu ya picha. Video zitaonekana kama media zinazoweza kuchezwa kwenye maelezo ya post.')}
+                    </p>
                 </div>
 
                 {step === 'physical' && (
                     <>
-                        <div className="text-center">
-                            <button
-                                className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1.5 mx-auto transition-colors"
-                                onClick={() => setShowManualForm(true)}
-                            >
-                                <PenLine className="h-4 w-4" />
-                                {copy('Or enter details manually without a photo', 'Au ingiza maelezo mwenyewe bila picha')}
-                            </button>
-                        </div>
+                        {!isMenuUpload && (
+                            <div className="text-center">
+                                <button
+                                    className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1.5 mx-auto transition-colors"
+                                    onClick={() => setShowManualForm(true)}
+                                >
+                                    <PenLine className="h-4 w-4" />
+                                    {copy('Or enter details manually without a photo', 'Au ingiza maelezo mwenyewe bila picha')}
+                                </button>
+                            </div>
+                        )}
 
                         {showManualForm && (
                             <Card className="animate-in fade-in slide-in-from-bottom-4">
                                 <div className="bg-amber-50 p-4 border-b flex items-center gap-2 text-amber-800">
                                     <PenLine className="h-5 w-5" />
-                                    <h3 className="font-bold">{copy('Enter details manually', 'Ingiza maelezo mwenyewe')}</h3>
+                                    <h3 className="font-bold">{isMenuUpload ? copy('Menu item details', 'Maelezo ya menu item') : copy('Enter details manually', 'Ingiza maelezo mwenyewe')}</h3>
                                 </div>
                                 <CardContent className="p-5 space-y-4">
                                     <div className="space-y-1.5">
@@ -4686,13 +4712,15 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         </div>
                                     )}
                                     <div className="flex gap-3">
-                                        <Button variant="outline" className="flex-1" onClick={() => setShowManualForm(false)}>{copy('Back', 'Rudi')}</Button>
+                                        <Button variant="outline" className="flex-1" onClick={isMenuUpload ? handleUploadBack : () => setShowManualForm(false)}>
+                                            {isMenuUpload ? copy('Back to upload types', 'Rudi kwenye aina za upload') : copy('Back', 'Rudi')}
+                                        </Button>
                                         <Button
                                             className="flex-1 bg-brand-600 hover:bg-brand-700 text-white"
                                             onClick={submitManual}
                                             disabled={variantAxisAttributes.length > 0 && variantDecision === null}
                                         >
-                                            {copy('Continue', 'Endelea')}
+                                            {isMenuUpload ? copy('Continue to menu setup', 'Endelea kwenye menu setup') : copy('Continue', 'Endelea')}
                                         </Button>
                                     </div>
                                 </CardContent>
@@ -4704,7 +4732,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 <Card className="border-slate-200 shadow-sm overflow-hidden rounded-[2rem]">
                                     <div className="bg-slate-50 p-4 border-b flex items-center gap-2 text-slate-800">
                                         <CheckCircle2 className="h-5 w-5" />
-                                        <h3 className="font-bold uppercase tracking-widest text-xs">{isMenuUpload ? copy('Menu setup', 'Menu setup') : copy('Facets & specifications', 'Facets na specifications')}</h3>
+                                        <h3 className="font-bold uppercase tracking-widest text-xs">{isMenuUpload ? copy('Food & menu setup', 'Mpangilio wa chakula na menu') : copy('Facets & specifications', 'Facets na specifications')}</h3>
                                     </div>
                                     <CardContent className="p-5 space-y-4">
                                         {showGenericPhysicalCatalog && (
@@ -4799,7 +4827,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         {showGenericPhysicalCatalog && selectedSchemaBrands.length > 0 && (
                                             <div className="grid sm:grid-cols-2 gap-3">
                                                 <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Brand', 'Brand')}</label>
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Brand', 'Brand')}</label>
                                                     <select
                                                         className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
                                                         value={selectedBrandId}
@@ -5027,9 +5055,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                         {step === 'physical' && physicalDetailsReady && (
                                             <div className="space-y-1.5">
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Product description *', 'Maelezo ya bidhaa *')}</label>
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isMenuUpload ? copy('Menu item description *', 'Maelezo ya menu item *') : copy('Product description *', 'Maelezo ya bidhaa *')}</label>
                                                 <Textarea
-                                                    placeholder={copy('Briefly describe the quality, use, benefits, and important buyer details.', 'Elezea bidhaa yako kwa kifupi: ubora, matumizi, faida, na maelezo muhimu kwa mnunuzi.')}
+                                                    placeholder={isMenuUpload
+                                                        ? copy('Describe the ingredients, portion, taste, and anything customers should know before ordering.', 'Elezea viungo, kiasi, ladha, na jambo lolote mteja anapaswa kujua kabla ya kuagiza.')
+                                                        : copy('Briefly describe the quality, use, benefits, and important buyer details.', 'Elezea bidhaa yako kwa kifupi: ubora, matumizi, faida, na maelezo muhimu kwa mnunuzi.')}
                                                     value={description}
                                                     onChange={(e) => setDescription(e.target.value)}
                                                     className="min-h-[110px] rounded-2xl bg-white border-border"
@@ -5041,7 +5071,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         {step === 'physical' && physicalDetailsReady && uploadModule === 'menu' && (
                                             <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-4 space-y-4">
                                                 <div>
-                                                    <p className="text-xs font-black uppercase tracking-wider text-orange-800">{copy('Menu details', 'Maelezo ya menu')}</p>
+                                                    <p className="text-xs font-black uppercase tracking-wider text-orange-800">{copy('Food item details', 'Maelezo ya chakula')}</p>
                                                     <p className="text-xs text-orange-700 mt-1">{copy('These details determine how the food or drink appears on the customer menu.', 'Maelezo haya yanaamua chakula au kinywaji kitaonekanaje kwenye menu kwa wateja.')}</p>
                                                 </div>
 
@@ -5192,8 +5222,6 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             <h3 className="font-bold uppercase tracking-widest text-xs">{copy('Menu pricing', 'Bei ya menu')}</h3>
                                         </div>
                                         <CardContent className="p-5 space-y-4">
-                                            {renderWholesaleEditor()}
-                                            {renderProductDetailSectionsEditor()}
                                             {retailPriceEnabled ? (
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                     <div className="space-y-1.5">
@@ -5201,13 +5229,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         <Input type="number" placeholder={copy('E.g. 12000', 'Mf. 12000')} className="h-12 text-lg font-black bg-white border-orange-200" value={price} onChange={e => setPrice(e.target.value)} />
                                                     </div>
                                                     <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Original price', 'Bei ya awali')}</label>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{copy('Original price', 'Bei ya awali ya kukatwa')}</label>
                                                         <Input type="number" placeholder={copy('E.g. 15000', 'Mf. 15000')} className="h-12 text-lg font-black border-dashed bg-white" value={comparePrice} onChange={e => setComparePrice(e.target.value)} />
                                                     </div>
                                                 </div>
                                             ) : (
                                                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-xs font-semibold leading-5 text-emerald-900">
-                                                            {copy('Wholesale-only product. Customer pricing comes from pricing tiers and the PSP proforma.', 'Bidhaa ya jumla pekee. Bei ya mteja itatoka kwenye pricing tiers na proforma ya PSP.')}
+                                                    {copy('Wholesale-only product. Customer pricing comes from pricing tiers and the PSP proforma.', 'Bidhaa ya jumla pekee. Bei ya mteja itatoka kwenye pricing tiers na proforma ya PSP.')}
                                                 </div>
                                             )}
                                             <PhysicalPublishPanel
@@ -5216,7 +5244,6 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 shippingProfiles={shippingProfiles}
                                                 selectedShippingProfileId={selectedShippingProfileId}
                                                 setSelectedShippingProfileId={setSelectedShippingProfileId}
-                                                faqEditor={renderProductFaqEditor()}
                                                 onPublish={publishProduct}
                                                 disabledReason={physicalPublishDisabledReason}
                                             />
@@ -5425,6 +5452,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             <div>
                                 <h2 className="text-lg sm:text-xl font-black">{step === 'digital' ? copy('Digital product details', 'Taarifa za digital') : copy('Service details', 'Taarifa za huduma')}</h2>
                                 <p className="text-xs sm:text-sm opacity-80">{copy('Enter the details, then publish it to the marketplace.', 'Jaza maelezo kisha weka sokoni.')}</p>
+                                {step === 'service' && activeUploadModuleTitle && (
+                                    <p className="mt-2 inline-flex rounded-full bg-white/15 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
+                                        {copy('Creating', 'Unatengeneza')}: {activeUploadModuleTitle}
+                                    </p>
+                                )}
                             </div>
                         </div>
 
@@ -5433,7 +5465,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{step === 'digital' ? copy('Product name', 'Jina la bidhaa') : copy('Service name', 'Jina la huduma')}</label>
                                 <Input
-                                    placeholder={step === 'digital' ? copy('E.g. cooking e-book', 'Mf. E-book ya kupika') : copy('E.g. business consulting', 'Mf. ushauri wa biashara')}
+                                    placeholder={step === 'digital' ? copy('E.g. cooking e-book', 'Mf. E-book ya kupika') : serviceTitlePlaceholder}
                                     value={manualTitle} // Using manualTitle for consistency, could be a separate state if needed
                                     onChange={e => setManualTitle(e.target.value)}
                                     className="h-12 font-semibold text-base"
@@ -5695,8 +5727,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             )}
                                             <label className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-white px-4 py-3">
                                                 <span>
-                                                        <span className="block text-sm font-black text-foreground">{copy('Allow buyer download', 'Ruhusu mnunuzi kupakua')}</span>
-                                                        <span className="block text-[11px] text-muted-foreground">{copy('Off by default. Buyers can watch inside Takeer.', 'Imezimwa kwa default. Wanunuzi wanaweza kutazama ndani ya Takeer.')}</span>
+                                                    <span className="block text-sm font-black text-foreground">{copy('Allow buyer download', 'Ruhusu mnunuzi kupakua')}</span>
+                                                    <span className="block text-[11px] text-muted-foreground">{copy('Off by default. Buyers can watch inside Takeer.', 'Imezimwa kwa default. Wanunuzi wanaweza kutazama ndani ya Takeer.')}</span>
                                                 </span>
                                                 <input
                                                     type="checkbox"
@@ -5746,8 +5778,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             )}
                                             <label className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-white px-4 py-3">
                                                 <span>
-                                                <span className="block text-sm font-black text-foreground">{copy('Allow buyer download', 'Ruhusu mnunuzi kupakua')}</span>
-                                                <span className="block text-[11px] text-muted-foreground">{copy('Off by default. Buyers can listen inside Takeer.', 'Imezimwa kwa default. Wanunuzi wanaweza kusikiliza ndani ya Takeer.')}</span>
+                                                    <span className="block text-sm font-black text-foreground">{copy('Allow buyer download', 'Ruhusu mnunuzi kupakua')}</span>
+                                                    <span className="block text-[11px] text-muted-foreground">{copy('Off by default. Buyers can listen inside Takeer.', 'Imezimwa kwa default. Wanunuzi wanaweza kusikiliza ndani ya Takeer.')}</span>
                                                 </span>
                                                 <input
                                                     type="checkbox"
@@ -5951,7 +5983,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                         site_url: 'https://example.com',
                                                                     }, null, 2), 'Example payload copied.')}
                                                                     className="h-8 w-8 rounded-lg bg-slate-50 text-slate-700 flex items-center justify-center"
-                                                                title={copy('Copy example payload', 'Nakili mfano wa payload')}
+                                                                    title={copy('Copy example payload', 'Nakili mfano wa payload')}
                                                                 >
                                                                     <Copy className="h-4 w-4" />
                                                                 </button>
@@ -6046,7 +6078,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                                     type="button"
                                                                                     onClick={() => copyLicenseKey(license.key)}
                                                                                     className="h-9 w-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center"
-                                                                                        title={copy('Copy license key', 'Nakili license key')}
+                                                                                    title={copy('Copy license key', 'Nakili license key')}
                                                                                 >
                                                                                     <Copy className="h-4 w-4" />
                                                                                 </button>
@@ -6055,7 +6087,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                                     onClick={() => updateLicenseKeyStatus(license.id, 'regenerate')}
                                                                                     disabled={licenseKeyBusy === `regenerate-${license.id}`}
                                                                                     className="h-9 w-9 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center disabled:opacity-50"
-                                                                                        title={copy('Regenerate license key', 'Tengeneza license key upya')}
+                                                                                    title={copy('Regenerate license key', 'Tengeneza license key upya')}
                                                                                 >
                                                                                     {licenseKeyBusy === `regenerate-${license.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                                                                                 </button>
@@ -6076,7 +6108,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                             <div className="rounded-xl bg-slate-50 p-2 space-y-1">
                                                                                 {license.activations.slice(0, 3).map((activation) => (
                                                                                     <p key={activation.id} className="truncate text-[11px] font-semibold text-slate-600">
-                                                                                    {activation.device_id || copy('Device', 'Kifaa')}{activation.app_version ? ` · v${activation.app_version}` : ''}{activation.site_url ? ` · ${activation.site_url}` : ''}
+                                                                                        {activation.device_id || copy('Device', 'Kifaa')}{activation.app_version ? ` · v${activation.app_version}` : ''}{activation.site_url ? ` · ${activation.site_url}` : ''}
                                                                                     </p>
                                                                                 ))}
                                                                             </div>
@@ -6304,7 +6336,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         >
                                                             <option value="">{copy('No category', 'Hakuna category')}</option>
                                                             {serviceCategoryOptions.map((option) => (
-                                                        <option key={option.label} value={option.label}>{localizeUploadOption(copy, option.label)}</option>
+                                                                <option key={option.label} value={option.label}>{localizeUploadOption(copy, option.label)}</option>
                                                             ))}
                                                         </select>
                                                     </div>
@@ -6624,7 +6656,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         </label>
                                                         <label className="space-y-1.5">
                                                             <span className="text-[11px] font-semibold text-slate-700">{copy('Capacity', 'Uwezo')}</span>
-                                                                                    <Input type="number" min="1" className="h-11 bg-white" placeholder={copy('Optional', 'Si lazima')} value={serviceDetails.workshop_capacity ?? ''} onChange={(e) => updateServiceDetail('workshop_capacity', e.target.value)} />
+                                                            <Input type="number" min="1" className="h-11 bg-white" placeholder={copy('Optional', 'Si lazima')} value={serviceDetails.workshop_capacity ?? ''} onChange={(e) => updateServiceDetail('workshop_capacity', e.target.value)} />
                                                         </label>
                                                         <label className="space-y-1.5">
                                                             <span className="text-[11px] font-semibold text-slate-700">{copy('Level', 'Kiwango')}</span>
@@ -7212,7 +7244,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     <>
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                {step === 'service' ? copy('Full customer price (TZS)', 'Bei Kamili Mteja Atalipa (TZS)') : copy('Retail price (TZS)', 'Bei ya Reja Reja (TZS)')}
+                                                {step === 'service' ? copy('Full customer price (TZS)', 'Bei ya sasa Mteja Atalipa (TZS)') : copy('Retail price (TZS)', 'Bei ya Reja Reja (TZS)')}
                                             </label>
                                             <Input
                                                 type="number"
@@ -7230,7 +7262,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         <div className="space-y-1.5">
                                             <div className="flex items-center justify-between gap-3">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                    {step === 'service' ? copy('Comparison price', 'Bei ya kulinganisha') : copy('Original price', 'Bei ya awali')}
+                                                    {step === 'service' ? copy('Comparison price', 'Bei ya awali ya kukatwa') : copy('Original price', 'Bei ya awali ya kukatwa')}
                                                 </label>
                                                 <button
                                                     type="button"
@@ -7264,7 +7296,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     onClick={() => setShowComparePrice(true)}
                                                     className="h-14 w-full rounded-xl border border-dashed border-slate-200 bg-white text-sm font-bold text-slate-500 hover:border-brand-200 hover:text-brand-700"
                                                 >
-                                                    {copy('No comparison price', 'Hakuna bei ya kulinganisha')}
+                                                    {copy('No comparison price', 'Hakuna bei ya awali ya kukatwa')}
                                                 </button>
                                             )}
                                         </div>
@@ -7321,7 +7353,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 >
                                     <img
                                         src={images[currentImageIndex]?.localUrl}
-                                                alt={copy('Editor', 'Mhariri')}
+                                        alt={copy('Editor', 'Mhariri')}
                                         className="w-full h-full object-cover select-none pointer-events-none"
                                     />
 

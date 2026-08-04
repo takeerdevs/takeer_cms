@@ -24,8 +24,7 @@ import {
     Phone,
     CreditCard,
     Banknote,
-    Clock,
-    BookOpenCheck
+    Clock
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
@@ -51,7 +50,6 @@ export default function Dashboard({ merchant }) {
     const canRetailSettings = can('retail.settings');
     const canRetailCustomers = can('retail.customers');
     const canRetailApproveSale = can('retail.approve_sale');
-    const canBookkeepingView = can('bookkeeping.view');
     const canTeamView = can('team.view');
     const canOrdersView = can('orders.view');
     const canTrustSafetyView = canAny(['retail.settings', 'settings.view']);
@@ -374,18 +372,7 @@ export default function Dashboard({ merchant }) {
                                 <span className="text-base font-black">{copy('Inventory', 'Stock')}</span>
                             </Button>
                         )}
-                        {canBookkeepingView && (
-                            <Button
-                                variant="outline"
-                                className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
-                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/bookkeeping`)}
-                            >
-                                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
-                                    <BookOpenCheck className="h-5 w-5" />
-                                </span>
-                                <span className="text-base font-black">{copy('Bookkeeping', 'Utunzaji wa Vitabu')}</span>
-                            </Button>
-                        )}
+                        {/* Bookkeeping is intentionally hidden until the launch-phase workflow is complete. */}
                         {canRetailInventory && (
                             <Button
                                 variant="outline"

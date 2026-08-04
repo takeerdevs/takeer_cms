@@ -23,6 +23,8 @@ export const UPLOAD_MODULES = {
         subcategory: 'Hotel',
         serviceTemplateKey: 'stay',
         serviceSubtypeKey: 'room',
+        titlePlaceholder: 'Mf. Chumba cha watu wawili kwa usiku 1',
+        englishTitlePlaceholder: 'E.g. double room for 1 night',
         defaults: {
             servicePriceDisplay: 'nightly',
             serviceMode: 'book_appointment',
@@ -41,6 +43,8 @@ export const UPLOAD_MODULES = {
         category: 'Travel & Recreation',
         subcategory: 'Tour package',
         serviceTemplateKey: 'tour',
+        titlePlaceholder: 'Mf. Safari ya siku 3 ya Serengeti',
+        englishTitlePlaceholder: 'E.g. 3-day Serengeti safari',
         defaults: {
             servicePriceDisplay: 'per_person',
             serviceMode: 'book_appointment',
@@ -59,6 +63,8 @@ export const UPLOAD_MODULES = {
         category: 'Other',
         subcategory: 'Other',
         serviceTemplateKey: 'orderable_service',
+        titlePlaceholder: 'Mf. Keki ya birthday iliyotengenezwa kwa oda',
+        englishTitlePlaceholder: 'E.g. custom birthday cake',
         defaults: {
             servicePriceDisplay: 'quote_only',
             serviceMode: 'request_quote',
@@ -77,6 +83,8 @@ export const UPLOAD_MODULES = {
         category: 'Professional Services',
         subcategory: 'Consulting',
         serviceTemplateKey: 'appointment_or_quote',
+        titlePlaceholder: 'Mf. Ushauri wa biashara wa saa 1',
+        englishTitlePlaceholder: 'E.g. 1-hour business consultation',
         defaults: {
             servicePriceDisplay: 'starts_from',
             serviceMode: 'book_appointment',
@@ -97,6 +105,8 @@ export const UPLOAD_MODULES = {
         category: 'Events & Hospitality',
         subcategory: 'Venue',
         serviceTemplateKey: 'space_booking',
+        titlePlaceholder: 'Mf. Ukumbi wa harusi wa watu 100',
+        englishTitlePlaceholder: 'E.g. wedding venue for 100 guests',
         defaults: {
             servicePriceDisplay: 'hidden',
             serviceMode: 'book_appointment',
@@ -117,6 +127,8 @@ export const UPLOAD_MODULES = {
         category: 'Transport & Hire',
         subcategory: 'Equipment hire',
         serviceTemplateKey: 'rental',
+        titlePlaceholder: 'Mf. Kukodisha Toyota Noah kwa siku 1',
+        englishTitlePlaceholder: 'E.g. Toyota Noah rental for 1 day',
         defaults: {
             servicePriceDisplay: 'daily',
             serviceMode: 'book_appointment',
@@ -137,6 +149,8 @@ export const UPLOAD_MODULES = {
         category: 'Education & Training',
         subcategory: 'Workshop',
         serviceTemplateKey: 'learning',
+        titlePlaceholder: 'Mf. Darasa la ujasiriamali la siku 2',
+        englishTitlePlaceholder: 'E.g. 2-day entrepreneurship workshop',
         defaults: {
             servicePriceDisplay: 'per_session',
             serviceMode: 'book_appointment',
@@ -157,6 +171,8 @@ export const UPLOAD_MODULES = {
         category: 'Education & Training',
         subcategory: 'Workshop',
         serviceTemplateKey: 'learning',
+        titlePlaceholder: 'Mf. Webinar ya masoko ya kidijitali',
+        englishTitlePlaceholder: 'E.g. digital marketing webinar',
         defaults: {
             servicePriceDisplay: 'per_session',
             serviceMode: 'book_appointment',
@@ -182,6 +198,8 @@ export const UPLOAD_MODULES = {
         category: 'Transport & Hire',
         subcategory: 'Import logistics',
         serviceTemplateKey: 'orderable_service',
+        titlePlaceholder: 'Mf. Usafirishaji wa mzigo Dar es Salaam hadi Dubai',
+        englishTitlePlaceholder: 'E.g. Dar es Salaam to Dubai cargo forwarding',
         defaults: {
             servicePriceDisplay: 'quote_only',
             serviceMode: 'request_quote',

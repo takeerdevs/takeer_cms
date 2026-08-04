@@ -28,7 +28,7 @@ export default function ServiceRelatedProductsEditor({
                 </div>
             ) : physicalMerchantProducts.length === 0 ? (
                 <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
-                    {copy('No published physical products yet. Publish products first, then attach them here.', 'Bado hakuna bidhaa za kimwili zilizochapishwa. Chapisha bidhaa kwanza, kisha zambatanishe hapa.')}
+                    {copy('No published physical products yet. Publish products first, then attach them here.', 'Bado hakuna bidhaa za kushikika zilizochapishwa. Chapisha bidhaa kwanza, kisha zambatanishe hapa.')}
                 </div>
             ) : (
                 <div className="space-y-3">

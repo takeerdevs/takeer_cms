@@ -129,6 +129,7 @@ export default function MerchantPulse({ merchant }) {
 }
 
 function PulseRow({ event }) {
+    const { copy } = useLocale();
     const iconMap = {
         alert: AlertTriangle,
         calendar: CalendarClock,

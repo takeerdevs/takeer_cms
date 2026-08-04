@@ -183,6 +183,7 @@ function ProfileAvatar({ name, avatarUrl }) {
 }
 
 function ShareProfileButton({ slug }) {
+    const { t, copy } = useLocale();
     const shareProfile = async () => {
         const url = `${window.location.origin}/u/${slug}`;
         if (navigator.share) {
@@ -195,7 +196,7 @@ function ShareProfileButton({ slug }) {
         }
         try {
             await navigator.clipboard.writeText(url);
-        } catch {}
+        } catch { }
     };
 
     return (

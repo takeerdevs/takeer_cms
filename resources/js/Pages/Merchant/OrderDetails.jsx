@@ -83,8 +83,8 @@ function maskPhone(value) {
 
 function typeMeta(kind, translate = (english) => english) {
     const map = {
-        physical_product: { label: translate('Physical Product', 'Bidhaa ya kimwili'), icon: ShoppingBag, cls: 'bg-amber-100 text-amber-700' },
-        physical_bundle: { label: translate('Physical Bundle', 'Kifurushi cha kimwili'), icon: Boxes, cls: 'bg-amber-100 text-amber-700' },
+        physical_product: { label: translate('Physical Product', 'Bidhaa ya kushikika'), icon: ShoppingBag, cls: 'bg-amber-100 text-amber-700' },
+        physical_bundle: { label: translate('Physical Bundle', 'Kifurushi cha kushikika'), icon: Boxes, cls: 'bg-amber-100 text-amber-700' },
         bundle: { label: translate('Bundle', 'Kifurushi'), icon: Boxes, cls: 'bg-sky-100 text-sky-700' },
         offering_group: { label: translate('Offering Group', 'Kundi la ofa'), icon: Layers, cls: 'bg-teal-100 text-teal-700' },
         course_bundle: { label: translate('Course Bundle', 'Kifurushi cha kozi'), icon: BookOpenText, cls: 'bg-indigo-100 text-indigo-700' },
@@ -1503,7 +1503,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                         <Input
                                                             type="number"
                                                             min="0"
-                                                                placeholder={copy('E.g. 5000', 'Mf. 5000')}
+                                                            placeholder={copy('E.g. 5000', 'Mf. 5000')}
                                                             value={shippingFeeInput}
                                                             onChange={e => setShippingFeeInput(e.target.value)}
                                                             className={`font-bold rounded-xl h-11 ${isWaitingForShippingFee ? 'border-red-400 bg-red-50/40 focus-visible:ring-red-200' : ''}`}
@@ -1755,43 +1755,43 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-brand-600 text-white shadow-xl shadow-brand-600/25">
                                                 <Store className="h-8 w-8" />
                                             </div>
-	                                            <div>
+                                            <div>
                                                 <h3 className="text-2xl font-black tracking-tight text-slate-950">{copy('Confirm customer pickup', 'Thibitisha mteja amechukua')}</h3>
-	                                                <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">
+                                                <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">
                                                     {copy('When the customer arrives, ask for the Pickup PIN from their chat. After you verify it, the order becomes release-eligible and the PSP payout request follows provider rules.', 'Mteja akifika, omba Pickup PIN aliyopewa kwenye chat yake. Ukithibitisha PIN, order itakuwa release-eligible na PSP payout itaombwa kulingana na provider rules.')}
-	                                                </p>
-	                                            </div>
-	                                            {order.pickup_deadline_at && (
-	                                                <div className="w-full rounded-2xl border border-amber-100 bg-amber-50/70 p-4 text-left">
+                                                </p>
+                                            </div>
+                                            {order.pickup_deadline_at && (
+                                                <div className="w-full rounded-2xl border border-amber-100 bg-amber-50/70 p-4 text-left">
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">{copy('Pickup agreement', 'Makubaliano ya kuchukua')}</p>
-	                                                    <p className="mt-1 text-sm font-black text-amber-950">
+                                                    <p className="mt-1 text-sm font-black text-amber-950">
                                                         {copy('Collect before', 'Chukua kabla ya')} {formatDateTime(order.pickup_deadline_at)}
-	                                                    </p>
-	                                                    {order.pickup_policy_snapshot?.instructions && (
-	                                                        <p className="mt-2 whitespace-pre-line text-xs font-semibold leading-5 text-slate-600">
-	                                                            {order.pickup_policy_snapshot.instructions}
-	                                                        </p>
-	                                                    )}
-	                                                    {canMarkPickupNoShow && (
-	                                                        <Button
-	                                                            type="button"
-	                                                            variant="outline"
-	                                                            onClick={markPickupNoShow}
-	                                                            disabled={pickupNoShowSubmitting}
-	                                                            className="mt-3 h-10 rounded-xl border-amber-200 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-amber-800 hover:bg-amber-100"
-	                                                        >
-	                                                            {pickupNoShowSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CircleAlert className="mr-2 h-4 w-4" />}
+                                                    </p>
+                                                    {order.pickup_policy_snapshot?.instructions && (
+                                                        <p className="mt-2 whitespace-pre-line text-xs font-semibold leading-5 text-slate-600">
+                                                            {order.pickup_policy_snapshot.instructions}
+                                                        </p>
+                                                    )}
+                                                    {canMarkPickupNoShow && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            onClick={markPickupNoShow}
+                                                            disabled={pickupNoShowSubmitting}
+                                                            className="mt-3 h-10 rounded-xl border-amber-200 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-amber-800 hover:bg-amber-100"
+                                                        >
+                                                            {pickupNoShowSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CircleAlert className="mr-2 h-4 w-4" />}
                                                             {copy('Mark buyer no-show', 'Weka mteja hakutokea')}
-	                                                        </Button>
-	                                                    )}
-	                                                    {order.pickup_no_show_marked_at && (
-	                                                        <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-amber-800">
+                                                        </Button>
+                                                    )}
+                                                    {order.pickup_no_show_marked_at && (
+                                                        <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-amber-800">
                                                             {copy('No-show marked', 'Mteja hakutokea')} {formatDateTime(order.pickup_no_show_marked_at)}
-	                                                        </p>
-	                                                    )}
-	                                                </div>
-	                                            )}
-	                                            <form onSubmit={verifyPickupPin} className="w-full space-y-3">
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+                                            <form onSubmit={verifyPickupPin} className="w-full space-y-3">
                                                 <Input
                                                     inputMode="numeric"
                                                     placeholder="0000"

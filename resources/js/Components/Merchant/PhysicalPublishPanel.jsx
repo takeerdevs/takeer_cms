@@ -44,6 +44,7 @@ export default function PhysicalPublishPanel({
     onPublish,
     disabledReason,
 }) {
+    const { copy } = useLocale()
     const content = (
         <>
             {summary}

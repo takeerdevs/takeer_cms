@@ -5,10 +5,16 @@ import { ChevronDown, Store, User, Plus, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLocale } from '@/lib/i18n';
 
-export default function ProfileSwitcher({ className, onCreateBusiness, variant = 'compact' }) {
+export default function ProfileSwitcher({
+    className,
+    onCreateBusiness,
+    variant = 'compact',
+    profiles: profileOverride = null,
+    switchRedirect = '/profile',
+}) {
     const { t } = useLocale();
     const { auth, activeMerchant: sharedActiveMerchant } = usePage().props;
-    const merchants = auth?.user?.merchant_profiles ?? [];
+    const merchants = profileOverride ?? auth?.user?.merchant_profiles ?? [];
     const [isOpen, setIsOpen] = useState(false);
     const isHero = variant === 'hero';
 
@@ -16,8 +22,8 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
     const pathParts = window.location.pathname.split('/');
     const merchantFromUrl = pathParts[1] === 'merchant' ? pathParts[2] : null;
 
-    const activeMerchant = sharedActiveMerchant
-        || merchants.find(m => m.username === merchantFromUrl)
+    const activeMerchant = merchants.find(m => m.username === merchantFromUrl)
+        || merchants.find(m => m.id === sharedActiveMerchant?.id)
         || merchants.find(m => m.is_default)
         || merchants[0];
 
@@ -46,7 +52,7 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                             : <Store className={cn("text-brand-600", isHero ? "h-6 w-6" : "h-4 w-4")} />
                     )}
                 </div>
-                <div className={cn("flex min-w-0 flex-col items-start", isHero ? "max-w-[200px]" : "max-w-[120px]")}>
+                <div className={cn("flex flex-col items-start", isHero ? "max-w-[200px]" : "max-w-[120px]")}>
                     <span className={cn("font-black text-foreground truncate leading-tight", isHero ? "text-lg tracking-tight" : "text-[11px]")}>
                         {activeMerchant?.display_name}
                     </span>
@@ -54,7 +60,15 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                         {activeMerchant?.type || t('components.business')}
                     </span>
                 </div>
-                <ChevronDown className={cn("shrink-0 text-muted-foreground transition-transform duration-300", isHero ? "h-4 w-4" : "h-4 w-4", isOpen && "rotate-180")} />
+                <ChevronDown
+                    aria-hidden="true"
+                    strokeWidth={2.75}
+                    className={cn(
+                        "shrink-0 transition-transform duration-300",
+                        isHero ? "ml-1 h-5 w-5 self-center text-slate-500 dark:text-slate-400" : "h-4 w-4 text-muted-foreground",
+                        isOpen && "rotate-180"
+                    )}
+                />
             </button>
 
             <AnimatePresence>
@@ -88,9 +102,12 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                                             key={merchant.id}
                                             onClick={() => {
                                                 setIsOpen(false);
+                                                const destination = typeof switchRedirect === 'function'
+                                                    ? switchRedirect(merchant)
+                                                    : switchRedirect;
                                                 router.post(`/merchant/switch/${merchant.username}`, {}, {
                                                     onSuccess: () => {
-                                                        router.visit('/profile');
+                                                        router.visit(destination || '/profile');
                                                     }
                                                 });
                                             }}
@@ -110,7 +127,7 @@ export default function ProfileSwitcher({ className, onCreateBusiness, variant =
                                                 <p className={cn("font-bold text-sm truncate", isActive ? "text-brand-600" : "text-foreground")}>
                                                     {merchant.display_name}
                                                 </p>
-                                                    <p className="text-[10px] text-muted-foreground truncate">
+                                                <p className="text-[10px] text-muted-foreground truncate">
                                                     @{merchant.username} · {merchant.access_type === 'staff' ? (merchant.job_title || merchant.role || t('components.team')) : t('components.owner')}
                                                 </p>
                                             </div>

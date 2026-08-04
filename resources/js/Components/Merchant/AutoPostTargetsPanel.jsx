@@ -8,6 +8,7 @@ const AUTO_POST_CHANNELS = [
         hint: 'Post to your Takeer feed after publishing.',
         connected: true,
     },
+    /*
     {
         key: 'instagram',
         label: 'Instagram',
@@ -25,7 +26,7 @@ const AUTO_POST_CHANNELS = [
         label: 'X',
         hint: 'Connect X to enable auto-posting.',
         connected: false,
-    },
+    },*/
 ];
 
 export const defaultAutoPostTargets = {
@@ -39,7 +40,7 @@ export default function AutoPostTargetsPanel({
     value = defaultAutoPostTargets,
     onChange,
     title = 'Auto post',
-    description = 'Choose where this item is posted after publishing. These choices only affect this item.',
+    description = 'Choose where this item is posted after publishing. This choice only affect this item.',
 }) {
     const { copy } = useLocale();
     const targets = { ...defaultAutoPostTargets, ...(value || {}) };
@@ -57,10 +58,10 @@ export default function AutoPostTargetsPanel({
     return (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
             <div>
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">{title === 'Auto post' ? copy('Auto post', 'Chapisha kiotomatiki') : title}</h3>
-                {description && <p className="mt-1 text-xs text-muted-foreground">{description === 'Choose where this item is posted after publishing. These choices only affect this item.' ? copy('Choose where this item is posted after publishing. These choices only affect this item.', 'Chagua itachapishwa wapi baada ya kuchapisha. Chaguo hizi zinaathiri bidhaa hii tu.') : description}</p>}
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">{title === 'Auto post' ? copy('Auto post', 'Chapisha kiautomatiki') : title}</h3>
+                {description && <p className="mt-1 text-xs text-muted-foreground">{description === 'Choose where this item is posted after publishing. This choice only affect this item.' ? copy('Choose where this item is posted after publishing. This choice only affect this item.', 'Chagua itachapishwa wapi baada ya kuchapisha. Chaguo hii inaathiri bidhaa hii tu.') : description}</p>}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 gap-2">
                 {AUTO_POST_CHANNELS.map((channel) => {
                     const checked = Boolean(targets[channel.key]) && channel.connected;
 
@@ -70,13 +71,12 @@ export default function AutoPostTargetsPanel({
                             type="button"
                             disabled={!channel.connected}
                             onClick={() => toggleTarget(channel.key)}
-                            className={`min-h-[76px] rounded-xl border px-3 py-3 text-left transition ${
-                                channel.connected
-                                    ? checked
-                                        ? 'border-brand-500 bg-brand-50 text-brand-900'
-                                        : 'border-slate-200 bg-white text-slate-700 hover:border-brand-200'
-                                    : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
-                            }`}
+                            className={`min-h-[76px] rounded-xl border px-3 py-3 text-left transition ${channel.connected
+                                ? checked
+                                    ? 'border-brand-500 bg-brand-50 text-brand-900'
+                                    : 'border-slate-200 bg-white text-slate-700 hover:border-brand-200'
+                                : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                                }`}
                         >
                             <span className="flex items-center justify-between gap-2">
                                 <span className="text-sm font-black">{channel.label}</span>
@@ -85,7 +85,7 @@ export default function AutoPostTargetsPanel({
                                 </span>
                             </span>
                             <span className="mt-2 block text-[10px] font-semibold leading-snug opacity-80">
-                                {channel.connected ? copy(channel.hint, { takeer: 'Chapisha kwenye feed yako ya Takeer baada ya kuchapisha.', instagram: 'Unganisha Instagram ili kuwezesha auto-posting.', facebook: 'Unganisha Facebook ili kuwezesha auto-posting.', x: 'Unganisha X ili kuwezesha auto-posting.' }[channel.key]) : copy('Not connected yet.', 'Bado haijaunganishwa.')}
+                                {channel.connected ? copy(channel.hint, { takeer: 'Chapisha kwenye feed yako ya Takeer kama post.', instagram: 'Unganisha Instagram ili kuwezesha auto-posting.', facebook: 'Unganisha Facebook ili kuwezesha auto-posting.', x: 'Unganisha X ili kuwezesha auto-posting.' }[channel.key]) : copy('Not connected yet.', 'Bado haijaunganishwa.')}
                             </span>
                         </button>
                     );
