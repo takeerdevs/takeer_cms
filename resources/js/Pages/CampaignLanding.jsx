@@ -5,7 +5,7 @@ import { Button } from '@/Components/ui/Button';
 import { toast } from 'sonner';
 import { useLocale } from '@/lib/i18n';
 import { trackAttributionEvent } from '@/lib/attribution';
-import LanguageSwitcher from '@/Components/LanguageSwitcher';
+import PublicHeader from '@/Components/PublicHeader';
 
 export default function CampaignLanding({ campaign }) {
     const { t, copy } = useLocale();
@@ -43,18 +43,15 @@ export default function CampaignLanding({ campaign }) {
     return (
         <div className="min-h-screen bg-slate-50 text-slate-950">
             <Head title={`${campaign?.title || t('publicCommerce.campaign')} | Takeer`} />
-            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
+            <PublicHeader>
+                {merchant?.username && (
+                    <Link href={`/m/${merchant.username}`} className="inline-flex max-w-[48vw] items-center gap-2 rounded-full border bg-white px-3 py-2 text-xs font-black">
+                        <Store className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{merchant.display_name || merchant.username}</span>
+                    </Link>
+                )}
+            </PublicHeader>
             <main className="mx-auto max-w-5xl px-4 py-6 md:py-10">
-                <div className="mb-5 flex items-center justify-between gap-3">
-                    <Link href="/" className="text-lg font-black text-brand-700">Takeer</Link>
-                    {merchant?.username && (
-                        <Link href={`/m/${merchant.username}`} className="inline-flex items-center gap-2 rounded-full border bg-white px-4 py-2 text-xs font-black">
-                            <Store className="h-4 w-4" />
-                            {merchant.display_name || merchant.username}
-                        </Link>
-                    )}
-                </div>
-
                 <section className="overflow-hidden rounded-[32px] border bg-white shadow-sm">
                     <div className="grid gap-0 lg:grid-cols-[1.05fr_0.95fr]">
                         <div className="p-6 md:p-10">

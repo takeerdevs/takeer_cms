@@ -10,6 +10,7 @@ import {
 import CheckoutModal from '@/Components/CheckoutModal';
 import { useLocale } from '@/lib/i18n';
 import LanguageSwitcher from '@/Components/LanguageSwitcher';
+import BrandLogo from '@/Components/BrandLogo';
 
 export default function PublicPaymentPage({ page, merchant }) {
     const { locale, t, copy } = useLocale();
@@ -42,18 +43,13 @@ export default function PublicPaymentPage({ page, merchant }) {
                 <meta name="description" content={page.description || t('paymentPage.quickCheckout')} />
             </Head>
             <SeoHead />
-            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
 
             {/* Premium Header */}
             <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200">
                 <div className="max-w-2xl mx-auto px-4 h-16 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                        <div className="h-8 w-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-black text-xl italic shadow-lg shadow-brand-600/20">
-                            T
-                        </div>
-                        <span className="font-black text-slate-900 tracking-tighter">TAKEER</span>
-                    </div>
+                    <BrandLogo />
                     <div className="flex items-center gap-2">
+                        <LanguageSwitcher compact />
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:inline">{t('paymentPage.processedByPsp')}</span>
                         <ShieldCheck className="h-5 w-5 text-green-600" />
                     </div>

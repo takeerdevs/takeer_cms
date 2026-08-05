@@ -458,7 +458,6 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
     return (
         <div className="min-h-screen bg-background text-foreground selection:bg-sky-500/20">
             <Head title={`${product.title} - ${copy('Course player', 'Mchezaji wa kozi')}`} />
-            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
 
             {/* Header */}
             <header className="h-16 border-b border-border bg-background/95 backdrop-blur-md flex items-center justify-between px-4 lg:px-6 sticky top-0 z-50">
@@ -478,6 +477,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
                             Buy Full Course
                         </Button>
                     )}
+                    <LanguageSwitcher compact />
                     <button
                         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                         className="lg:hidden h-10 w-10 rounded-xl border border-border bg-card flex items-center justify-center"

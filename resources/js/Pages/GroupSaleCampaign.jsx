@@ -6,7 +6,7 @@ import { Loader2, Users, Clock, Store, CheckCircle2 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useLocale } from '@/lib/i18n';
-import LanguageSwitcher from '@/Components/LanguageSwitcher';
+import PublicHeader from '@/Components/PublicHeader';
 
 export default function GroupSaleCampaign({ campaign }) {
     const { t, copy } = useLocale();
@@ -48,18 +48,15 @@ export default function GroupSaleCampaign({ campaign }) {
     return (
         <div className="min-h-screen bg-slate-50 text-slate-950">
             <Head title={`${data.title || t('publicCommerce.groupPrice')} | Takeer`} />
-            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
+            <PublicHeader>
+                {data.merchant?.username && (
+                    <Link href={`/m/${data.merchant.username}`} className="inline-flex max-w-[48vw] items-center gap-2 rounded-full border bg-white px-3 py-2 text-xs font-black">
+                        <Store className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{data.merchant.display_name || data.merchant.username}</span>
+                    </Link>
+                )}
+            </PublicHeader>
             <main className="mx-auto max-w-5xl px-4 py-6 md:py-10">
-                <div className="mb-5 flex items-center justify-between gap-3">
-                    <Link href="/" className="text-lg font-black text-brand-700">Takeer</Link>
-                    {data.merchant?.username && (
-                        <Link href={`/m/${data.merchant.username}`} className="inline-flex items-center gap-2 rounded-full border bg-white px-4 py-2 text-xs font-black">
-                            <Store className="h-4 w-4" />
-                            {data.merchant.display_name || data.merchant.username}
-                        </Link>
-                    )}
-                </div>
-
                 <section className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
                     <div className="overflow-hidden rounded-[28px] border bg-white shadow-sm">
                         <div className="aspect-[16/10] bg-slate-100">

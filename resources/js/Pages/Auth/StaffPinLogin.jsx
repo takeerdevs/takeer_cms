@@ -6,7 +6,7 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { toast } from 'sonner';
 import { useLocale } from '@/lib/i18n';
-import LanguageSwitcher from '@/Components/LanguageSwitcher';
+import PublicHeader from '@/Components/PublicHeader';
 
 export default function StaffPinLogin({ merchant }) {
     const { t } = useLocale();
@@ -63,11 +63,12 @@ export default function StaffPinLogin({ merchant }) {
     };
 
     return (
-        <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4">
+        <div className="min-h-screen bg-[#f8fafc]">
             <Head title={t('staffTerminal.title', { merchant: merchant.display_name || merchant.username })} />
-            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
+            <PublicHeader className="border-transparent bg-transparent" />
             
-            <Card className="w-full max-w-md border-none shadow-2xl rounded-[32px] overflow-hidden bg-white">
+            <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4">
+                <Card className="w-full max-w-md border-none shadow-2xl rounded-[32px] overflow-hidden bg-white">
                 <CardHeader className="pt-12 pb-6 text-center flex flex-col items-center">
                     {merchant.avatar_url ? (
                         <div className="h-20 w-20 rounded-3xl overflow-hidden shadow-lg mb-6 border-4 border-white">
@@ -160,7 +161,8 @@ export default function StaffPinLogin({ merchant }) {
                         <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">{t('staffTerminal.poweredBy')}</p>
                     </div>
                 </CardContent>
-            </Card>
+                </Card>
+            </main>
         </div>
     );
 }

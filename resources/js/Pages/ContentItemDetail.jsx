@@ -6,7 +6,7 @@ import EditorJsRenderer from '@/Components/EditorJsRenderer';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useLocale } from '@/lib/i18n';
-import LanguageSwitcher from '@/Components/LanguageSwitcher';
+import PublicHeader from '@/Components/PublicHeader';
 
 export default function ContentItemDetail({ contentItem, hasAccess, previewBody }) {
     const { t, copy } = useLocale();
@@ -85,7 +85,7 @@ export default function ContentItemDetail({ contentItem, hasAccess, previewBody 
     return (
         <div className="min-h-screen bg-background text-foreground pb-20">
             <Head title={`${resolvedTitle} | Takeer`} />
-            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
+            <PublicHeader className="border-border bg-background/90" />
 
             <div className="max-w-4xl mx-auto px-4 md:px-8 py-8">
                 <Link href={merchant?.slug ? `/m/${merchant.slug}` : '/'} className="inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground">

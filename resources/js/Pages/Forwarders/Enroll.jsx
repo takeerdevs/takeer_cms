@@ -132,8 +132,7 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900">
             <Head title={`${copy('Freight application', 'Ombi la freight')} | Takeer`} />
-            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
-            <div className="border-b border-slate-200 bg-white">
+            <div className="safe-top border-b border-slate-200 bg-white">
                 <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
                     <Link href={merchantUsername ? '/profile' : '/'} className="flex items-center gap-3 text-sm font-black text-slate-900">
                         <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
@@ -141,9 +140,12 @@ export default function ForwarderEnroll({ countries = [], merchantUsername = nul
                         </span>
                         <span>{merchantName || 'Takeer Logistics'}</span>
                     </Link>
-                    <span className="rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-black text-brand-700">
-                        {mode === 'merchant_setup' ? copy('Freight application', 'Ombi la freight') : copy('Forwarder verification', 'Uhakiki wa forwarder')}
-                    </span>
+                    <div className="flex items-center gap-2">
+                        <span className="hidden rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-black text-brand-700 sm:inline-flex">
+                            {mode === 'merchant_setup' ? copy('Freight application', 'Ombi la freight') : copy('Forwarder verification', 'Uhakiki wa forwarder')}
+                        </span>
+                        <LanguageSwitcher compact />
+                    </div>
                 </div>
             </div>
 

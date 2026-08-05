@@ -4,11 +4,12 @@ import { Toaster } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, ShieldAlert, Users,
-    Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper,
+    Settings2, ChevronLeft, Store, Flag, Shapes, Newspaper,
     ShieldCheck, Globe, Percent, Crown, Calendar, Bell, BarChart3, LinkIcon,
     Tags, Ruler, Activity, Gauge, LifeBuoy, RefreshCcw
 } from 'lucide-react';
 import LanguageSwitcher from '@/Components/LanguageSwitcher';
+import BrandLogo from '@/Components/BrandLogo';
 import { useLocale } from '@/lib/i18n';
 
 const adminNav = [
@@ -56,21 +57,16 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased flex">
             <Toaster position="top-center" richColors />
-            <div className="fixed right-4 top-4 z-[60]">
-                <LanguageSwitcher />
-            </div>
 
             {/* Sidebar */}
             <aside className="w-64 shrink-0 flex flex-col border-r border-slate-200 bg-white h-screen sticky top-0">
                 {/* Brand */}
                 <div className="flex h-16 items-center gap-3 px-6 border-b border-slate-200">
-                    <div className="h-8 w-8 rounded-lg bg-brand-600 flex items-center justify-center">
-                        <ShoppingBag className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                        <p className="font-black text-slate-900 text-sm leading-none">Takeer</p>
-                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-widest mt-0.5">{copy('Admin Panel', 'Paneli ya msimamizi')}</p>
-                    </div>
+                    <BrandLogo
+                        href="/admin"
+                        subtitle={copy('Admin Panel', 'Paneli ya msimamizi')}
+                        className="w-full"
+                    />
                 </div>
 
                 {/* Nav */}
@@ -129,23 +125,26 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
 
             {/* Content */}
             <main className="flex-1 overflow-y-auto">
-                {!hideTopBar && (
-                    <div className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-8">
-                        <h1 className="text-sm font-semibold text-slate-700">{title}</h1>
-                        <Link
-                            href="/admin/attention"
-                            aria-label={t('admin.openAttention')}
-                            className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
-                        >
-                            <Bell className="h-4 w-4" />
-                            {attentionSummary.total > 0 && (
-                                <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">
-                                    {attentionSummary.total > 99 ? '99+' : attentionSummary.total}
-                                </span>
-                            )}
-                        </Link>
+                <div className="safe-top sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+                    <div className="flex min-h-14 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+                        <h1 className={cn('min-w-0 truncate text-sm font-semibold text-slate-700', hideTopBar && 'sr-only')}>{title}</h1>
+                        <div className="ml-auto flex items-center gap-2">
+                            <LanguageSwitcher compact />
+                            <Link
+                                href="/admin/attention"
+                                aria-label={t('admin.openAttention')}
+                                className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                            >
+                                <Bell className="h-4 w-4" />
+                                {attentionSummary.total > 0 && (
+                                    <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">
+                                        {attentionSummary.total > 99 ? '99+' : attentionSummary.total}
+                                    </span>
+                                )}
+                            </Link>
+                        </div>
                     </div>
-                )}
+                </div>
                 <div className="p-6 md:p-8 max-w-5xl animate-in fade-in duration-300">
                     {children}
                 </div>

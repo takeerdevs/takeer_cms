@@ -188,6 +188,11 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Shared shell spacing for notched mobile devices and the bottom tab bar. */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
   .app-wave-background {
     color: rgb(196, 76, 11);
     height: 100vh;

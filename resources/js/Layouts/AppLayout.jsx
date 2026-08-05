@@ -9,13 +9,12 @@ import PostComposer from '@/Components/PostComposer';
 import SearchOverlay from '@/Components/SearchOverlay';
 import CheckoutModal from '@/Components/CheckoutModal';
 import DigitalDownloadModal from '@/Components/DigitalDownloadModal';
-import ProfileSwitcher from '@/Components/ProfileSwitcher';
 import SeoHead from '@/Components/SeoHead';
 import axios from 'axios';
 import { trackPlatformEvent } from '@/lib/attribution';
 import { hasMerchantPermission } from '@/lib/merchantPermissions';
 import { useLocale } from '@/lib/i18n';
-import LanguageSwitcher from '@/Components/LanguageSwitcher';
+import AppHeader from '@/Components/AppHeader';
 
 export default function AppLayout({ children, hideTabBar = false }) {
     const page = usePage();
@@ -155,9 +154,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
         <div className="relative isolate min-h-screen overflow-x-clip bg-background text-foreground font-sans antialiased">
             <AmbientWaveBackground />
             <Toaster position="top-center" richColors />
-            <div className="fixed right-3 top-3 z-[60]">
-                <LanguageSwitcher />
-            </div>
+            <AppHeader onSearch={() => setSearchOpen(true)} />
 
             {/* ── Full-width content, no sidebar ── */}
             <main className={cn('relative z-10 min-h-screen', hideTabBar ? 'pb-0' : 'pb-20')}>
@@ -165,11 +162,10 @@ export default function AppLayout({ children, hideTabBar = false }) {
             </main>
             <SeoHead />
 
-            {/* ── Super Fluid Floating Tab Bar (Mobile) ──────────────────────── */}
             {/* ── Floating Tab Bar (all screen sizes) ─────────────────── */}
             {!hideTabBar && (
-                <nav className="fixed bottom-2 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2.5rem)] max-w-sm">
-                    <div className="flex h-14 items-center justify-around px-2 bg-background/80 backdrop-blur-2xl border-[0.5px] border-border/50 rounded-full shadow-[0_12px_40px_-12px_rgba(0,0,0,0.3)]">
+                <nav className="fixed bottom-2 left-1/2 z-50 w-[calc(100%-2.5rem)] max-w-sm -translate-x-1/2">
+                    <div className="flex h-14 items-center justify-around rounded-full border-[0.5px] border-border/50 bg-background/80 px-2 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
                         {navItems.map((item, i) => {
                             const Icon = item.icon;
                             if (item.isCreate) {

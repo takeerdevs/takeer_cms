@@ -12,7 +12,7 @@ import {
     deliveryStepsFor,
 } from '@/Components/DeliveryFlowTimeline';
 import { useLocale } from '@/lib/i18n';
-import LanguageSwitcher from '@/Components/LanguageSwitcher';
+import PublicHeader from '@/Components/PublicHeader';
 
 export default function RiderDelivery({ token, delivery: initialDelivery }) {
     const { copy, locale } = useLocale();
@@ -344,10 +344,10 @@ export default function RiderDelivery({ token, delivery: initialDelivery }) {
     return (
         <div className="min-h-screen bg-slate-100 text-slate-950">
             <Head title={`${copy('Delivery details', 'Taarifa za Mzigo')} | Takeer`} />
-            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
+            <PublicHeader className="border-slate-200" />
             <Toaster richColors position="top-center" />
 
-            <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col bg-white shadow-xl">
+            <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl flex-col bg-white shadow-xl">
                 <section className="bg-sky-700 px-6 pb-8 pt-10 text-white">
                     <div className="flex items-center gap-3">
                         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15">

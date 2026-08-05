@@ -102,9 +102,8 @@ export default function RetailCreditPayment({ order, merchant, paymentLinksDisab
             <Head title={`${t('retailCredit.title')} | ${merchant?.display_name || 'Takeer'}`}>
                 <meta name="description" content={t('retailCredit.description')} />
             </Head>
-            <div className="fixed right-3 top-3 z-[60]"><LanguageSwitcher /></div>
 
-            <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+            <header className="safe-top sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
                 <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
                         <div className="h-9 w-9 rounded-xl bg-amber-600 text-white grid place-items-center font-black">
@@ -116,6 +115,7 @@ export default function RetailCreditPayment({ order, merchant, paymentLinksDisab
                         </div>
                     </div>
                     <div className="flex items-center gap-2 text-slate-600">
+                        <LanguageSwitcher compact />
                         <ShieldCheck className="h-5 w-5" />
                         <span className="hidden sm:inline text-[10px] font-black uppercase tracking-widest">{t('retailCredit.posRecord')}</span>
                     </div>
