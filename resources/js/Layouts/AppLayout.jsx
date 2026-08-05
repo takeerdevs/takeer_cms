@@ -154,7 +154,12 @@ export default function AppLayout({ children, hideTabBar = false }) {
         <div className="relative isolate min-h-screen overflow-x-clip bg-background text-foreground font-sans antialiased">
             <AmbientWaveBackground />
             <Toaster position="top-center" richColors />
-            <AppHeader onSearch={() => setSearchOpen(true)} />
+            <AppHeader
+                onCompose={openComposerForCurrentUser}
+                profile={auth?.user?.merchant_profiles?.find((profile) => profile.is_default) || auth?.user?.merchant_profiles?.[0] || null}
+                isAuthenticated={Boolean(auth?.user)}
+                isCreating={creatingProfile}
+            />
 
             {/* ── Full-width content, no sidebar ── */}
             <main className={cn('relative z-10 min-h-screen', hideTabBar ? 'pb-0' : 'pb-20')}>

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, usePage } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
-import { BadgeCheck, ChevronRight, DownloadCloud, Image, ImagePlus, Loader2, Music, PenLine, Play, Plus, ShieldCheck, ShoppingBag, Sparkles, Store } from 'lucide-react';
+import { BadgeCheck, ChevronRight, DownloadCloud, Image, Loader2, Music, PenLine, Play, ShieldCheck, ShoppingBag, Sparkles, Store } from 'lucide-react';
 import PostCard from '@/Components/PostCard';
 import { DiscoveryRailSection, useDiscoveryRails } from '@/Components/DiscoveryRails';
 import { productCardPriceLabel } from '@/lib/productUnits';
@@ -65,8 +65,6 @@ export default function Feed({ initialPosts = [], initialFeed = null }) {
                 <FeedLeftRail rails={rails} profile={defaultProfile} isAuthenticated={Boolean(auth?.user)} />
 
                 <div className="mx-auto w-full max-w-[680px] divide-y divide-border/60 bg-background/88 xl:bg-background/72 xl:backdrop-blur-[1px]">
-                    <FeedComposerPrompt profile={defaultProfile} isAuthenticated={Boolean(auth?.user)} />
-
                     {railsLoaded && rails.length > 0 && (
                         <div className="border-b border-border/60 bg-white/65 px-4 py-5 sm:px-5">
                             <div>
@@ -111,76 +109,6 @@ export default function Feed({ initialPosts = [], initialFeed = null }) {
                 <FeedRightRail rails={rails} posts={posts} profile={defaultProfile} isAuthenticated={Boolean(auth?.user)} />
             </div>
         </AppLayout>
-    );
-}
-
-function FeedComposerPrompt({ profile = null, isAuthenticated = false }) {
-    const { t } = useLocale();
-    const mediaInputRef = useRef(null);
-    const openComposer = (options = {}) => {
-        if (typeof window === 'undefined') return;
-        if (window.__openComposerForCurrentUser) {
-            window.__openComposerForCurrentUser(options);
-            return;
-        }
-        window.__openComposer?.({ mode: 'short', ...options });
-    };
-    const handleMediaPicked = (event) => {
-        const files = Array.from(event.target.files || []);
-        if (files.length > 0) {
-            openComposer({ mode: 'short', mediaFiles: files });
-        }
-        event.target.value = '';
-    };
-
-    if (!isAuthenticated) {
-        return (
-            <div className="border-b border-border/60 bg-white/70 px-4 py-4 sm:px-5">
-                <Link href="/merchant/register" className="group flex items-center gap-3 rounded-2xl bg-white px-3 py-3 ring-1 ring-slate-200/80 transition-all hover:ring-brand-200">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-                        <Plus className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold text-slate-950">{t('feed.joinPrompt')}</p>
-                        <p className="truncate text-xs font-semibold text-slate-500">{t('feed.joinDescription')}</p>
-                    </div>
-                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-brand-500" />
-                </Link>
-            </div>
-        );
-    }
-
-    return (
-        <div className="border-b border-border/60 bg-white/70 px-4 py-4 sm:px-5">
-            <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-brand-300 to-brand-600 text-sm font-black text-white ring-2 ring-white">
-                    {profile?.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : merchantInitial(profile)}
-                </div>
-                <button
-                    type="button"
-                    onClick={() => openComposer({ mode: 'short' })}
-                    className="flex h-11 flex-1 items-center rounded-full bg-slate-100 px-4 text-left text-sm font-semibold text-slate-500 transition-colors hover:bg-slate-200/70"
-                >
-                    {t('feed.composerPrompt')}
-                </button>
-                <button
-                    type="button"
-                    onClick={() => mediaInputRef.current?.click()}
-                    className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-brand-600 sm:flex"
-                    aria-label={t('feed.addMedia')}
-                >
-                    <ImagePlus className="h-5 w-5" />
-                </button>
-                <input
-                    ref={mediaInputRef}
-                    type="file"
-                    multiple
-                    accept="image/*,video/*"
-                    className="hidden"
-                    onChange={handleMediaPicked}
-                />
-            </div>
-        </div>
     );
 }
 
