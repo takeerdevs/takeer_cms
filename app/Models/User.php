@@ -245,6 +245,11 @@ class User extends Authenticatable
         return $this->hasMany(Merchant::class);
     }
 
+    public function socialCommerceRequests(): HasMany
+    {
+        return $this->hasMany(SocialCommerceRequest::class, 'buyer_id');
+    }
+
     public function hasVerifiedPersonalProfile(): bool
     {
         return $this->merchantProfiles()

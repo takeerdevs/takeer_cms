@@ -891,7 +891,7 @@ class ProductResource extends JsonResource
     {
         return $request->input('customer_country_iso2')
             ?: $request->input('country_iso2')
-            ?: $request->session()->get('user_session_country.iso_alpha2');
+            ?: ($request->hasSession() ? $request->session()->get('user_session_country.iso_alpha2') : null);
     }
 
     private function displayPricing(string $merchantCurrencyCode, string $customerCurrencyCode, ?string $customerCountryCode, array $prices): array

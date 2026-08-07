@@ -14,6 +14,7 @@ use App\Models\ProductAttribute;
 use App\Models\User;
 use App\Services\AiCreditService;
 use App\Services\AiTaskRouter;
+use App\Search\SearchIndexWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -406,6 +407,7 @@ class AiControlPlaneTest extends TestCase
             'colors' => ['blue'],
             'material' => 'linen',
         ]);
+        app(SearchIndexWriter::class)->rebuild('product', $product->id);
 
         $plan = AiPlan::create([
             'key' => 'copilot-user',
@@ -442,7 +444,7 @@ class AiControlPlaneTest extends TestCase
                             'index' => 0,
                             'id' => 'call-products',
                             'type' => 'function',
-                            'function' => ['name' => 'search_products', 'arguments' => '{"query":"blue shirt","limit":2}'],
+                            'function' => ['name' => 'search_takeer', 'arguments' => '{"query":"blue shirt","limit":2}'],
                         ]],
                     ],
                     'finish_reason' => 'tool_calls',

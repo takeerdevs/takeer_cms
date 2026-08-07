@@ -256,14 +256,15 @@ When official access is unavailable, the feature remains fully usable through be
    - Desired quantity.
    - Variant, size, color, or condition notes.
    - Observed price, if any, marked as unconfirmed.
-   - Destination city/region and preferred delivery method.
-   - Optional seller business phone or contact note.
-8. The buyer signs in or completes phone OTP before submitting or contacting a seller.
+   - A saved Takeer delivery address or an exact delivery address/landmark entered manually; Takeer derives the delivery-area summary where possible.
+   - Preferred delivery method.
+   - Seller business phone from the public post/bio or buyer entry. This is required because Takeer must have a contact channel for the seller request.
+8. The buyer signs in and completes phone verification before submitting. Guests may inspect the public preview, but cannot create, invite, or track a request.
 9. Takeer creates the request with status `awaiting_seller` and displays a tracking page.
-10. The buyer chooses a contact method:
+10. The buyer chooses a contact method after the request is created:
     - Share invitation through Instagram or Messenger.
     - Copy invitation text and link.
-    - Send SMS after confirming the seller business number and the contact attestation.
+    - Send SMS after confirming the seller business number and the contact attestation. Request creation itself is blocked unless the seller phone is valid and attested, even when the buyer chooses share or copy instead.
 11. Takeer tracks invitation creation, send attempt, click, and claim.
 12. The buyer sees status changes and receives a notification when the seller claims, declines, or sends an offer.
 
@@ -791,15 +792,25 @@ The MVP must remain complete with options 1-4. Arbitrary outbound Meta DM is not
 
 If an authorized provider or public business-contact field suggests a phone number, Takeer may pre-fill it as an unverified suggestion. The buyer must confirm it before sending. Do not scrape arbitrary bio text and automatically send an SMS.
 
+Phone extraction must remain global. Use libphonenumber metadata rather than a
+Tanzania-specific regular expression: numbers with `+` or `00` country prefixes
+are normalized without a regional assumption, while national-format numbers
+are normalized only when a country context is known. Return candidates with
+country, confidence, source, and E.164 value; if there are multiple candidates,
+make the buyer choose one. Reject invalid values again at request creation and
+SMS dispatch, encrypt the selected number, and hash only the normalized value
+for suppression and deduplication. A detected number is observed public data,
+not verified seller identity.
+
 ### 13.2 Suggested invitation copy
 
 English:
 
-> A customer wants to buy your product through Takeer. Confirm the product, price, stock, and delivery, then send the customer a protected Takeer checkout link: {claim_url}. Do not request payment outside Takeer. Expires {expiry}.
+> A customer wants to buy the item in this original social post: {original_url}. The customer sent the request through Takeer. Confirm the product, price, stock, and delivery, then use the protected Takeer request link: {claim_url}. Do not request payment outside Takeer. Expires {expiry}.
 
 Swahili:
 
-> Mteja anataka kununua bidhaa yako kupitia Takeer. Thibitisha bidhaa, bei, stock na usafirishaji, kisha mtumie mteja link rasmi ya malipo ya Takeer: {claim_url}. Usiombe malipo nje ya Takeer. Link inaisha {expiry}.
+> Mteja anataka kununua bidhaa iliyo kwenye post hii ya awali: {original_url}. Ombi limetumwa kupitia Takeer. Thibitisha bidhaa, bei, stock na usafirishaji, kisha tumia link salama ya ombi ya Takeer: {claim_url}. Usiombe malipo nje ya Takeer. Link inaisha {expiry}.
 
 Do not include the buyer's exact address or unnecessary personal data.
 
@@ -823,7 +834,7 @@ Do not include the buyer's exact address or unnecessary personal data.
 
 The final product must be owned by the claimed merchant and pass the existing physical product publishing rules. External preview values can pre-fill the form but cannot bypass validation.
 
-The seller must upload or authorize final media. If the seller chooses to use an external image they own, record that attestation and ingest it through the normal media service. Buyer screenshots remain private request evidence and are removed under the retention policy.
+The seller must upload or authorize final media. If the seller chooses to use an external image they own, record that attestation and ingest it through the normal media service. Buyer screenshots remain private request evidence, are available only to the request buyer and authorized seller/admin, and are removed under the retention policy. For carousel posts, the buyer may attach a screenshot of the exact selected item from the same original post; this evidence is never treated as seller verification.
 
 ### 14.2 Offer snapshot
 

@@ -146,7 +146,11 @@ class AiTaskRouter
             );
         }
 
-        throw new \RuntimeException("No active AI model is configured for '{$taskKey}'.");
+        $capabilitySuffix = filled($requiredCapability)
+            ? " with required capability '{$requiredCapability}'"
+            : '';
+
+        throw new \RuntimeException("No active AI model{$capabilitySuffix} is configured for '{$taskKey}'.");
     }
 
     public function chatCompletions(array $messages, ?string $model = null, string $taskKey = 'generic'): array
@@ -245,7 +249,11 @@ class AiTaskRouter
             );
         }
 
-        throw new \RuntimeException("No active AI model is configured for '{$taskKey}'.");
+        $capabilitySuffix = filled($requiredCapability)
+            ? " with required capability '{$requiredCapability}'"
+            : '';
+
+        throw new \RuntimeException("No active AI model{$capabilitySuffix} is configured for '{$taskKey}'.");
     }
 
     /**

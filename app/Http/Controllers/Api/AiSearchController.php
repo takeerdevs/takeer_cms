@@ -3,10 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\ProductResource;
-use App\Models\Product;
-use App\Models\ProductEmbedding;
 use App\Models\AiUsageRecord;
+use App\Search\UnifiedSearchService;
 use App\Services\AiCreditService;
 use App\Services\AiSearchSystemPrompt;
 use App\Services\AiSearchToolRegistry;
@@ -23,6 +21,7 @@ class AiSearchController extends Controller
         private OpenRouterService $ai,
         private AiCreditService $credits,
         private AiSearchToolRegistry $tools,
+        private UnifiedSearchService $search,
     )
     {
     }
@@ -263,7 +262,7 @@ class AiSearchController extends Controller
     {
         $message = strtolower($exception->getMessage());
 
-        if (str_contains($message, 'no active ai model') || str_contains($message, 'route succeeded')) {
+        if (str_contains($message, 'no active ai model')) {
             return 'model_route_unavailable';
         }
 
@@ -335,27 +334,23 @@ class AiSearchController extends Controller
             $content = str_replace(['```json', '```'], '', $content);
             $parsedIntent = json_decode(trim($content), true);
 
-            // 2. Query Builder based on parsed intent
-            $query = Product::with(['attributes', 'merchant'])->where('in_stock', true);
-
-            if (!empty($parsedIntent['category'])) {
-                // Approximate search via Postgres ILIKE on json properties
-                $query->whereRaw("attributes->>'category' ILIKE ?", ['%' . $parsedIntent['category'] . '%'])
-                    ->orWhere('title', 'ILIKE', '%' . $parsedIntent['category'] . '%');
-            }
-
-            if (!empty($parsedIntent['max_price'])) {
-                $query->where('price', '<=', $parsedIntent['max_price']);
-            }
-
-            $products = $query->take(10)->get();
+            $searchText = trim($userQuery.' '.(string) ($parsedIntent['category'] ?? '').' '.implode(' ', $parsedIntent['colors'] ?? []));
+            $results = $this->search->search([
+                'q' => $searchText,
+                'max_price' => $parsedIntent['max_price'] ?? null,
+                'attributes' => empty($parsedIntent['colors']) ? null : ['color' => $parsedIntent['colors']],
+                'available_only' => true,
+                'mode' => 'hybrid',
+                'per_page' => 10,
+            ], $request);
 
             return response()->json([
-                'ai_reply' => count($products) > 0
-                    ? "Hizi hapa bidhaa nilizokutafutia kulingana na ulivyoomba."
-                    : "Samahani, sijapata bidhaa yenye vigezo hivyo sasa hivi.",
+                'ai_reply' => count($results['data']) > 0
+                    ? 'Haya hapa matokeo nilizokutafutia kutoka Takeer.'
+                    : 'Samahani, sijapata matokeo yenye vigezo hivyo sasa hivi.',
                 'intent_extracted' => $parsedIntent,
-                'products' => ProductResource::collection($products)->response()->getData(true)['data'],
+                'results' => $results['data'],
+                'meta' => $results['meta'],
             ]);
 
         } catch (Throwable $e) {
@@ -428,19 +423,18 @@ class AiSearchController extends Controller
             $keywords = explode(',', $response['choices'][0]['message']['content']);
             $keywords = array_map('trim', $keywords);
 
-            // 2. Basic ILIKE matching on keywords (Since we mocked the pgvector `nearestTo` for now)
-            $query = Product::with(['attributes', 'merchant'])->where('in_stock', true);
-            foreach ($keywords as $keyword) {
-                $query->orWhere('title', 'ILIKE', '%' . $keyword . '%')
-                    ->orWhereRaw("attributes->>'category' ILIKE ?", ['%' . $keyword . '%']);
-            }
-
-            $products = $query->take(8)->get();
+            $results = $this->search->search([
+                'q' => implode(' ', $keywords),
+                'available_only' => true,
+                'mode' => 'hybrid',
+                'per_page' => 8,
+            ], $request);
 
             return response()->json([
                 'ai_reply' => 'Nimechanganua picha yako. Je, moja ya hizi ndizo unazotafuta?',
                 'keywords_extracted' => $keywords,
-                'products' => ProductResource::collection($products)->response()->getData(true)['data'],
+                'results' => $results['data'],
+                'meta' => $results['meta'],
             ]);
 
         } catch (Throwable $e) {

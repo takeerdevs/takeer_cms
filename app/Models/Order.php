@@ -18,6 +18,7 @@ class Order extends Model
         'user_address_id',
         'pickup_location_id',
         'merchant_id',
+        'social_commerce_request_id',
         'product_id',
         'variant_id',
         'variant_snapshot',
@@ -316,6 +317,11 @@ class Order extends Model
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class, 'merchant_id');
+    }
+
+    public function socialCommerceRequest(): BelongsTo
+    {
+        return $this->belongsTo(SocialCommerceRequest::class, 'social_commerce_request_id');
     }
 
     public function paymentProvider(): BelongsTo

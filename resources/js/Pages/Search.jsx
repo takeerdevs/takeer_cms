@@ -6,6 +6,7 @@ import axios from 'axios';
 import PostCard from '@/Components/PostCard';
 import MerchantSearchCard from '@/Components/MerchantSearchCard';
 import ProductSearchCard from '@/Components/ProductSearchCard';
+import GenericSearchCard from '@/Components/GenericSearchCard';
 import { trackPlatformEvent } from '@/lib/attribution';
 import { useLocale } from '@/lib/i18n';
 
@@ -103,7 +104,7 @@ export default function SearchPage() {
         let cancelled = false;
         setLoading(true);
 
-        axios.get('/api/search/unified/posts', {
+        axios.get('/api/search', {
             params: {
                 q,
                 page,
@@ -157,7 +158,7 @@ export default function SearchPage() {
         const nextPage = Number(meta.current_page || 1) + 1;
         setLoadingMore(true);
 
-        axios.get('/api/search/unified/posts', {
+        axios.get('/api/search', {
             params: {
                 q: meta.query || '',
                 page: nextPage,
@@ -169,8 +170,8 @@ export default function SearchPage() {
                 const data = res.data?.data || [];
                 const nextMeta = res.data?.meta || null;
                 setResults((current) => {
-                    const seen = new Set(current.map((item) => `${item.type}-${item.id}`));
-                    const fresh = data.filter((item) => !seen.has(`${item.type}-${item.id}`));
+                    const seen = new Set(current.map((item) => `${item.entity_type}-${item.entity_id}`));
+                    const fresh = data.filter((item) => !seen.has(`${item.entity_type}-${item.entity_id}`));
                     return [...current, ...fresh];
                 });
                 setMeta(nextMeta);
@@ -471,7 +472,7 @@ export default function SearchPage() {
                             if (item.type === 'product') {
                                 return <ProductSearchCard key={`product-${item.id}`} product={item.payload} />;
                             }
-                            return null;
+                            return <GenericSearchCard key={`${item.entity_type}-${item.entity_id}`} item={item} />;
                         })}
                     </div>
                 )}

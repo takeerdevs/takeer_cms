@@ -28,6 +28,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('marketing:abandoned-checkouts-dispatch')->everyFifteenMinutes()->withoutOverlapping();
         $schedule->command('analytics:prune')->dailyAt('02:40')->withoutOverlapping();
         $schedule->command('try-on:prune')->everyFifteenMinutes()->withoutOverlapping();
+        $schedule->command('social-commerce:send-reminders')->everyFifteenMinutes()->withoutOverlapping();
+        $schedule->command('social-commerce:expire-requests')->everyFifteenMinutes()->withoutOverlapping();
+        $schedule->command('social-commerce:prune-preview-media')->daily()->withoutOverlapping();
+        $schedule->command('search:index-drain-outbox')->everyMinute()->withoutOverlapping();
+        $schedule->command('search:index-reconcile --limit=2000')->dailyAt('02:15')->withoutOverlapping();
         $schedule->command('health:check')->everyFiveMinutes()->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {

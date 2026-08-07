@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\Product;
-use Illuminate\Support\Facades\DB;
+use App\Search\UnifiedSearchService;
 
 /**
  * The server-owned tool contract for Takeer's commerce copilot.
@@ -14,21 +14,25 @@ use Illuminate\Support\Facades\DB;
  */
 class AiSearchToolRegistry
 {
+    public function __construct(private UnifiedSearchService $unifiedSearch)
+    {
+    }
+
     public function definitions(): array
     {
         return [
             [
                 'type' => 'function',
                 'function' => [
-                    'name' => 'search_products',
-                    'description' => 'Search Takeer catalog products using the shopper request and optional price, color, or category filters. Use this for product discovery and recommendations.',
+                    'name' => 'search_takeer',
+                    'description' => 'Search all public Takeer content, including products, services, posts, articles, merchants, digital downloads, courses, memberships, packages, and freight routes. Supports structured budget and attribute filters.',
                     'parameters' => [
                         'type' => 'object',
                         'additionalProperties' => false,
                         'properties' => [
                             'query' => [
                                 'type' => 'string',
-                                'description' => 'Natural-language product request in the shopper language.',
+                                'description' => 'Natural-language discovery request in the shopper language.',
                             ],
                             'category' => [
                                 'type' => ['string', 'null'],
@@ -37,6 +41,16 @@ class AiSearchToolRegistry
                             'color' => [
                                 'type' => ['string', 'null'],
                                 'description' => 'Optional color preference.',
+                            ],
+                            'entity_types' => [
+                                'type' => ['array', 'null'],
+                                'items' => ['type' => 'string', 'enum' => ['merchant', 'post', 'content_item', 'product', 'service', 'bundle', 'subscription_plan', 'offering_group', 'forwarder_route']],
+                                'description' => 'Optional result entity types.',
+                            ],
+                            'content_types' => [
+                                'type' => ['array', 'null'],
+                                'items' => ['type' => 'string'],
+                                'description' => 'Optional detailed types such as physical_product, digital_download, service, article, course, or subscription.',
                             ],
                             'min_price' => [
                                 'type' => ['number', 'null'],
@@ -99,7 +113,7 @@ class AiSearchToolRegistry
     public function execute(string $name, array $arguments): array
     {
         return match ($name) {
-            'search_products' => $this->searchProducts($arguments),
+            'search_takeer' => $this->searchTakeer($arguments),
             'get_product_details' => $this->getProductDetails($arguments),
             'get_product_options' => $this->getProductOptions($arguments),
             default => [
@@ -112,101 +126,35 @@ class AiSearchToolRegistry
         };
     }
 
-    private function searchProducts(array $arguments): array
+    private function searchTakeer(array $arguments): array
     {
-        $query = trim((string) ($arguments['query'] ?? ''));
-        $category = trim((string) ($arguments['category'] ?? ''));
-        $color = trim((string) ($arguments['color'] ?? ''));
-        $minPrice = is_numeric($arguments['min_price'] ?? null) ? max(0, (float) $arguments['min_price']) : null;
-        $maxPrice = is_numeric($arguments['max_price'] ?? null) ? max(0, (float) $arguments['max_price']) : null;
-        $limit = min(8, max(1, (int) ($arguments['limit'] ?? 6)));
-        $driver = DB::connection()->getDriverName();
-        $operator = $driver === 'pgsql' ? 'ilike' : 'like';
-        $tokens = $this->tokens(trim($query.' '.$category));
-
-        $products = Product::query()
-            ->whereHas('merchant', function ($merchant): void {
-                $merchant->where('is_active', true)->where('is_suspended', false);
-            })
-            ->where(function ($available): void {
-                $available
-                    ->whereIn('type', ['digital', 'service'])
-                    ->orWhere('fulfillment_mode', 'supplier_sourced')
-                    ->orWhere('inventory_quantity', '>', 0)
-                    ->orWhere('inventory_count', '>', 0)
-                    ->orWhereHas('variants', function ($variant): void {
-                        $variant->where('is_active', true)
-                            ->where(function ($stock): void {
-                                $stock->where('inventory_quantity', '>', 0)->orWhere('inventory_count', '>', 0);
-                            });
-                    });
-            })
-            ->when($minPrice !== null, fn ($builder) => $builder->whereRaw(
-                'CASE WHEN discounted_price IS NOT NULL AND discounted_price > 0 THEN discounted_price ELSE price END >= ?',
-                [$minPrice]
-            ))
-            ->when($maxPrice !== null, fn ($builder) => $builder->whereRaw(
-                'CASE WHEN discounted_price IS NOT NULL AND discounted_price > 0 THEN discounted_price ELSE price END <= ?',
-                [$maxPrice]
-            ))
-            ->when($color !== '', function ($builder) use ($color, $driver, $operator): void {
-                $builder->whereHas('attributes', function ($attributes) use ($color, $driver, $operator): void {
-                    $like = '%'.$color.'%';
-                    if ($driver === 'pgsql') {
-                        $attributes->whereRaw('CAST(colors AS TEXT) '.$operator.' ?', [$like]);
-                    } else {
-                        $attributes->where('colors', $operator, $like);
-                    }
-                });
-            })
-            ->when($tokens !== [], function ($builder) use ($tokens, $driver, $operator): void {
-                $builder->where(function ($terms) use ($tokens, $driver, $operator): void {
-                    foreach ($tokens as $token) {
-                        $like = '%'.$token.'%';
-                        $terms->orWhere('title', $operator, $like)
-                            ->orWhereHas('attributes', function ($attributes) use ($like, $driver, $operator): void {
-                            $attributes->where('category', $operator, $like)
-                                ->orWhere('sub_category', $operator, $like)
-                                ->orWhere('material', $operator, $like)
-                                ->orWhere('style', $operator, $like)
-                                ->orWhere('detected_gender', $operator, $like)
-                                ->orWhere('suggested_description', $operator, $like);
-                            if ($driver === 'pgsql') {
-                                $attributes->orWhereRaw('CAST(colors AS TEXT) '.$operator.' ?', [$like]);
-                            } else {
-                                $attributes->orWhere('colors', $operator, $like);
-                            }
-                            });
-                    }
-                });
-            })
-            ->with([
-                'merchant:id,display_name,username,is_verified',
-                'attributes',
-                'images',
-                'variants',
-            ])
-            ->orderByDesc('views_count')
-            ->orderByDesc('id')
-            ->limit($limit * 4)
-            ->get()
-            ->filter(fn (Product $product): bool => $product->isInStock())
-            ->take($limit)
-            ->values();
-
-        $payload = $products->map(fn (Product $product): array => $this->compactProduct($product))->all();
+        $attributes = [];
+        if (filled($arguments['color'] ?? null)) {
+            $attributes['color'] = [(string) $arguments['color']];
+        }
+        $input = [
+            'q' => trim((string) ($arguments['query'] ?? '').' '.(string) ($arguments['category'] ?? '')),
+            'mode' => config('search.hybrid_enabled') ? 'hybrid' : 'lexical',
+            'entity_types' => $arguments['entity_types'] ?? [],
+            'content_types' => $arguments['content_types'] ?? [],
+            'min_price' => is_numeric($arguments['min_price'] ?? null) ? (float) $arguments['min_price'] : null,
+            'max_price' => is_numeric($arguments['max_price'] ?? null) ? (float) $arguments['max_price'] : null,
+            'attributes' => $attributes,
+            'per_page' => min(8, max(1, (int) ($arguments['limit'] ?? 6))),
+        ];
+        $results = $this->unifiedSearch->search($input);
 
         return [
             'model' => [
-                'type' => 'product_results',
-                'query' => $query,
-                'total' => count($payload),
-                'products' => $payload,
+                'type' => 'search_results',
+                'query' => $input['q'],
+                'total' => $results['meta']['total'] ?? count($results['data']),
+                'results' => $results['data'],
             ],
             'ui' => [
-                'type' => 'product_carousel',
-                'title' => count($payload) > 0 ? 'Products from Takeer' : 'No matching products found',
-                'products' => $payload,
+                'type' => 'search_results',
+                'title' => count($results['data']) > 0 ? 'Results from Takeer' : 'No matching results found',
+                'results' => $results['data'],
             ],
         ];
     }
@@ -337,19 +285,4 @@ class AiSearchToolRegistry
         return $payload;
     }
 
-    private function tokens(string $value): array
-    {
-        $stopWords = [
-            'a', 'an', 'and', 'for', 'from', 'in', 'is', 'it', 'me', 'na', 'ni', 'kwa', 'la', 'ya', 'za', 'wa',
-            'the', 'to', 'with', 'want', 'nina', 'nataka', 'tafuta', 'tafutie', 'please', 'bei', 'price',
-        ];
-
-        return collect(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($value)) ?: [])
-            ->map(fn ($token) => trim((string) $token))
-            ->filter(fn ($token) => mb_strlen($token) >= 2 && ! in_array($token, $stopWords, true))
-            ->unique()
-            ->take(8)
-            ->values()
-            ->all();
-    }
 }

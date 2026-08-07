@@ -16,6 +16,11 @@ class MediaUploadService
         return Storage::disk('s3')->putFile($path, $file, 'private');
     }
 
+    public function delete(string $diskName, string $path): void
+    {
+        Storage::disk($diskName)->delete($path);
+    }
+
     /**
      * Generate a temporary signed URL for viewing private S3 files.
      * Useful for Admin Dispute Review or Buyer Unboxing proof.

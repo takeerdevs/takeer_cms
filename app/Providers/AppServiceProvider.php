@@ -72,6 +72,41 @@ class AppServiceProvider extends ServiceProvider
         \App\Models\ProductVariant::observe(\App\Observers\InventoryObserver::class);
 
         foreach ([
+            \App\Models\Merchant::class,
+            \App\Models\MerchantLocation::class,
+            \App\Models\Product::class,
+            \App\Models\ProductVariant::class,
+            \App\Models\ProductAttribute::class,
+            \App\Models\ProductCategoryAttributeValue::class,
+            \App\Models\ProductImage::class,
+            \App\Models\ProductFaq::class,
+            \App\Models\ProductSpecification::class,
+            \App\Models\ProductDetailSection::class,
+            \App\Models\ProductPricingTier::class,
+            \App\Models\ProductLeadTimeTier::class,
+            \App\Models\ProductPackagingDetail::class,
+            \App\Models\ProductCustomizationOption::class,
+            \App\Models\ProductLocationInventory::class,
+            \App\Models\Post::class,
+            \App\Models\PostMedia::class,
+            \App\Models\PostProductTag::class,
+            \App\Models\ContentItem::class,
+            \App\Models\Bundle::class,
+            \App\Models\BundleItem::class,
+            \App\Models\BundleCourseModule::class,
+            \App\Models\BundleCourseLesson::class,
+            \App\Models\SubscriptionPlan::class,
+            \App\Models\SubscriptionPlanItem::class,
+            \App\Models\OfferingGroup::class,
+            \App\Models\OfferingGroupItem::class,
+            \App\Models\ForwarderRoute::class,
+            \App\Models\ForwarderRouteLocation::class,
+            \App\Models\ForwarderRouteTransportMode::class,
+        ] as $searchableModel) {
+            $searchableModel::observe(\App\Observers\SearchIndexObserver::class);
+        }
+
+        foreach ([
             \App\Models\Bundle::class,
             \App\Models\ContentItem::class,
             \App\Models\MerchantCoupon::class,

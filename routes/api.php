@@ -10,6 +10,12 @@ use App\Http\Controllers\Api\AiSearchController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\CheckoutController;
+use App\Http\Controllers\Api\SocialCommercePreviewController;
+use App\Http\Controllers\Api\SocialCommerceRequestController;
+use App\Http\Controllers\Api\SocialCommerceClaimController;
+use App\Http\Controllers\Api\MerchantSocialCommerceRequestController;
+use App\Http\Controllers\Api\AdminSocialCommerceRequestController;
+use App\Http\Controllers\Api\SocialCommerceFastPathController;
 use App\Http\Controllers\Api\LegalDocumentController;
 use App\Http\Controllers\Api\CommerceCatalogController;
 use App\Http\Controllers\Api\ContentReportModerationController;
@@ -37,8 +43,8 @@ use App\Http\Controllers\Api\RiderDeliveryController;
 use App\Http\Controllers\Api\SecureAccessController;
 use App\Http\Controllers\Api\ServiceCategoryController;
 use App\Http\Controllers\Api\ServiceRequestController;
+use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\SubscriptionController;
-use App\Http\Controllers\Api\UnifiedSearchController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\VirtualTryOnController;
 use App\Http\Controllers\Api\WaitlistController;
@@ -75,6 +81,10 @@ Route::get('/feed', [FeedController::class, 'index']);
 Route::get('/discovery/rails', [DiscoveryController::class, 'rails'])->middleware('throttle:45,1');
 Route::post('/marketing/events', [MarketingEventController::class, 'store'])->middleware('throttle:120,1');
 Route::post('/analytics/events', [MarketingEventController::class, 'store'])->middleware('throttle:120,1');
+Route::post('/social-commerce/previews', [SocialCommercePreviewController::class, 'store'])->middleware('throttle:30,1');
+Route::get('/social-commerce/previews/{preview}', [SocialCommercePreviewController::class, 'show'])->middleware('throttle:60,1');
+Route::post('/social-commerce/resolve', [SocialCommerceFastPathController::class, 'resolve'])->middleware('throttle:30,1');
+Route::post('/social-commerce/invitations/{invitation:public_id}/opt-out', [SocialCommerceFastPathController::class, 'optOut'])->middleware('throttle:5,10');
 Route::get('/posts/{post}/comments', [PostController::class, 'comments'])->withTrashed();
 Route::get('/pwa/product/{product}', [ProductController::class, 'show']);
 Route::post('/try-on/products/{product}/sessions', [VirtualTryOnController::class, 'store'])
@@ -118,7 +128,7 @@ Route::post('/ai/claim-free', [AiSearchController::class, 'claimFree'])->middlew
 Route::post('/ai/search/chat', [AiSearchController::class, 'chat'])->middleware('throttle:10,1');
 Route::post('/search/text', [AiSearchController::class, 'textSearch'])->middleware('throttle:10,1');
 Route::post('/search/visual', [AiSearchController::class, 'visualSearch'])->middleware('throttle:5,1');
-Route::get('/search/unified/posts', [UnifiedSearchController::class, 'posts'])->middleware('throttle:45,1');
+Route::get('/search', SearchController::class)->middleware('throttle:45,1');
 
 // ─── PROTECTED ROUTES ───────────────────────────────────────────────────────
 // Guest Checkout accessible without auth
@@ -132,6 +142,33 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', fn(Request $request) => $request->user());
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/profile/one-click/setup', [ProfileController::class, 'setupOneClick']);
+
+    // Social commerce Link Buy: request and offer boundary. These routes never start payment.
+    Route::post('/social-commerce/requests', [SocialCommerceRequestController::class, 'store'])->middleware('throttle:10,1');
+    Route::get('/social-commerce/requests', [SocialCommerceRequestController::class, 'index']);
+    Route::get('/social-commerce/requests/{socialRequest:public_id}', [SocialCommerceRequestController::class, 'show']);
+    Route::get('/social-commerce/requests/{socialRequest:public_id}/buyer-screenshot', [SocialCommerceRequestController::class, 'buyerScreenshot'])
+        ->name('api.social-commerce.request.screenshot');
+    Route::post('/social-commerce/requests/{socialRequest:public_id}/invitations', [SocialCommerceRequestController::class, 'invitation'])->middleware('throttle:10,1');
+    Route::post('/social-commerce/requests/{socialRequest:public_id}/cancel', [SocialCommerceRequestController::class, 'cancel']);
+    Route::post('/social-commerce/requests/{socialRequest:public_id}/offers/accept', [SocialCommerceRequestController::class, 'acceptOffer'])->middleware('throttle:10,1');
+    Route::post('/social-commerce/requests/{socialRequest:public_id}/offers/request-change', [SocialCommerceRequestController::class, 'requestChange']);
+    Route::post('/social-commerce/claims/{invitation:public_id}/accept', [SocialCommerceClaimController::class, 'accept'])->middleware('throttle:10,1');
+    Route::post('/merchant/social-commerce/product-links', [SocialCommerceFastPathController::class, 'map']);
+
+    Route::get('/merchant/social-commerce/requests', [MerchantSocialCommerceRequestController::class, 'index']);
+    Route::get('/merchant/social-commerce/requests/{socialRequest:public_id}', [MerchantSocialCommerceRequestController::class, 'show']);
+    Route::post('/merchant/social-commerce/requests/{socialRequest:public_id}/match-product', [MerchantSocialCommerceRequestController::class, 'matchProduct']);
+    Route::post('/merchant/social-commerce/requests/{socialRequest:public_id}/create-product', [MerchantSocialCommerceRequestController::class, 'createProduct']);
+    Route::post('/merchant/social-commerce/requests/{socialRequest:public_id}/offer', [MerchantSocialCommerceRequestController::class, 'offer']);
+    Route::post('/merchant/social-commerce/requests/{socialRequest:public_id}/send-offer', [MerchantSocialCommerceRequestController::class, 'sendOffer']);
+    Route::post('/merchant/social-commerce/requests/{socialRequest:public_id}/decline', [MerchantSocialCommerceRequestController::class, 'decline']);
+
+    Route::get('/admin/social-commerce/requests', [AdminSocialCommerceRequestController::class, 'index']);
+    Route::get('/admin/social-commerce/requests/{socialRequest:public_id}', [AdminSocialCommerceRequestController::class, 'show']);
+    Route::post('/admin/social-commerce/requests/{socialRequest:public_id}/block', [AdminSocialCommerceRequestController::class, 'block']);
+    Route::post('/admin/social-commerce/requests/{socialRequest:public_id}/resend', [AdminSocialCommerceRequestController::class, 'resend']);
+    Route::post('/admin/social-commerce/requests/{socialRequest:public_id}/revoke-claim', [AdminSocialCommerceRequestController::class, 'revokeClaim']);
     Route::post('/platform-notifications/dispatch', [PlatformNotificationController::class, 'dispatch'])
         ->middleware('throttle:30,1');
     Route::post('/forwarders/enroll', [\App\Http\Controllers\Api\ForwarderController::class, 'enroll'])

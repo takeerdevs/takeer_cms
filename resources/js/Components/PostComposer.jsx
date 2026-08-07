@@ -686,7 +686,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                         composerMode === 'short' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
                                     )}
                                 >
-                                    Short form
+                                    {copy('Short form', 'Post fupi')}
                                 </button>
                                 <button
                                     type="button"
@@ -697,7 +697,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                     )}
                                 >
                                     <BookOpenText className="h-4 w-4" />
-                                    Long form
+                                    {copy('Long form', 'Post ndefu')}
                                 </button>
                             </div>
 
@@ -925,7 +925,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
 
                                                 {/* Access Group Selection (Bundles / Subscriptions) */}
                                                 <div className="space-y-3">
-                                                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">{copy('Assign to access group', 'Weka kwenye kundi la ufikiaji')}</label>
+                                                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">{copy('Assign to access group', 'Weka kwenye kundi la Subscribers')}</label>
 
                                                     <div className="flex p-1 bg-background/50 rounded-2xl border border-border/50">
                                                         {['plan', 'bundle'].map((tab) => (
@@ -937,7 +937,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                                     activePromotionTab === tab ? "bg-background text-brand-600 shadow-sm" : "text-muted-foreground hover:text-foreground"
                                                                 )}
                                                             >
-                                                                {tab === 'plan' ? copy('Subscriptions', 'Usajili') : copy('Bundles', 'Vifurushi')}
+                                                                {tab === 'plan' ? copy('Subscriptions', 'Subscriptions') : copy('Bundles', 'Bundles')}
                                                             </button>
                                                         ))}
                                                     </div>
@@ -946,7 +946,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                         {promotablesLoading ? (
                                                             <div className="flex items-center justify-center py-8"><p className="text-xs text-muted-foreground italic">{copy('Loading groups...', 'Inapakia makundi...')}</p></div>
                                                         ) : promotables[activePromotionTab === 'plan' ? 'plans' : 'bundles'].length === 0 ? (
-                                                            <p className="text-[11px] text-muted-foreground text-center py-6 italic">{activePromotionTab === 'plan' ? copy('No subscriptions available for selection.', 'Hakuna usajili wa kuchagua.') : copy('No bundles available for selection.', 'Hakuna vifurushi vya kuchagua.')}</p>
+                                                            <p className="text-[11px] text-muted-foreground text-center py-6 italic">{activePromotionTab === 'plan' ? copy('No subscriptions available for selection.', 'Hakuna subscription ya kuchagua.') : copy('No bundles available for selection.', 'Hakuna bundles za kuchagua.')}</p>
                                                         ) : (
                                                             promotables[activePromotionTab === 'plan' ? 'plans' : 'bundles'].map(item => {
                                                                 const mappedType = activePromotionTab === 'plan' ? 'subscription_plan' : activePromotionTab;
@@ -997,7 +997,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                     type="button"
                                     onClick={openProductUpload}
                                     disabled={!selectedProfile}
-                                    className="inline-flex min-h-12 items-center gap-2 rounded-2xl border-2 border-brand-600 px-5 text-sm font-black text-brand-600 transition-colors hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="inline-flex min-h-12 items-center gap-2 rounded-2xl shadow-sm border border-border/50 backdrop-blur-sm bg-card/60 px-5 text-sm font-black text-brand-600 transition-colors hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     <ShoppingBag className="h-5 w-5" />
                                     {copy('Post new product', 'Post bidhaa mpya')}
@@ -1037,8 +1037,8 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                     className="overflow-hidden bg-card/60 backdrop-blur-md border border-border/50 p-4 rounded-3xl shadow-lg mb-4 space-y-3"
                                 >
                                     <div className="flex items-center justify-between">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">{copy('Select product to promote', 'Chagua bidhaa ya kutangaza')}</label>
-                                        <button onClick={() => setShowProducts(false)} className="text-[10px] text-muted-foreground font-bold hover:text-foreground">{copy('Done', 'Imekamilika')}</button>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-600">{copy('Select product to promote', 'Chagua bidhaa ya kuambatanisha')}</label>
+                                        <button onClick={() => setShowProducts(false)} className="text-[10px] text-muted-foreground font-bold hover:text-foreground">{copy('Done', 'Funga')}</button>
                                     </div>
                                     <div className="grid gap-2 max-h-[220px] overflow-y-auto pr-1 no-scrollbar pt-1">
                                         {promotablesLoading ? (

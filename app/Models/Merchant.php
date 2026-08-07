@@ -191,6 +191,16 @@ class Merchant extends Model
         return $this->hasMany(Product::class, 'merchant_id');
     }
 
+    public function socialCommerceRequests(): HasMany
+    {
+        return $this->hasMany(SocialCommerceRequest::class, 'claimed_merchant_id');
+    }
+
+    public function socialProductLinks(): HasMany
+    {
+        return $this->hasMany(SocialProductLink::class);
+    }
+
     public function offeringGroups(): HasMany
     {
         return $this->hasMany(OfferingGroup::class, 'merchant_id');

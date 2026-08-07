@@ -6,6 +6,7 @@ import axios from 'axios';
 import { cn } from '@/lib/utils';
 import { useLocale } from '@/lib/i18n';
 import AiProductCard from '@/Components/AiProductCard';
+import GenericSearchCard from '@/Components/GenericSearchCard';
 
 const statusCopy = (state, copy) => ({
     thinking: copy('Thinking through your request…', 'Nafikiria ombi lako…'),
@@ -25,6 +26,26 @@ function parseSseFrame(frame) {
     } catch {
         return null;
     }
+}
+
+function csrfHeaders() {
+    if (typeof document === 'undefined') return {};
+
+    const cookie = document.cookie
+        .split('; ')
+        .find((entry) => entry.startsWith('XSRF-TOKEN='));
+
+    if (cookie) {
+        const encodedToken = cookie.slice('XSRF-TOKEN='.length);
+        try {
+            return { 'X-XSRF-TOKEN': decodeURIComponent(encodedToken) };
+        } catch {
+            return { 'X-XSRF-TOKEN': encodedToken };
+        }
+    }
+
+    const metaToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    return metaToken ? { 'X-CSRF-TOKEN': metaToken } : {};
 }
 
 export default function SearchOverlay({ isOpen, onClose }) {
@@ -172,6 +193,7 @@ export default function SearchOverlay({ isOpen, onClose }) {
                     Accept: 'text/event-stream',
                     'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
+                    ...csrfHeaders(),
                 },
                 body: JSON.stringify({ message, history, conversation_id: conversationId }),
             });
@@ -397,13 +419,18 @@ export default function SearchOverlay({ isOpen, onClose }) {
                                                         <div className="mb-2 flex items-center justify-between px-1"><p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">{block.title}</p><span className="text-[11px] font-bold text-muted-foreground">{block.products?.length || 0} {copy('results', 'matokeo')}</span></div>
                                                         <div className="flex gap-3 overflow-x-auto pb-2">{(block.products || []).map((product) => <AiProductCard key={product.id} product={product} onView={openProduct} onBuy={buyProduct} />)}</div>
                                                     </div>
+                                                ) : block.type === 'search_results' ? (
+                                                    <div key={`${index}-${blockIndex}`} className="mt-3 space-y-2">
+                                                        <div className="flex items-center justify-between px-1"><p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">{block.title || copy('Takeer results', 'Matokeo ya Takeer')}</p><span className="text-[11px] font-bold text-muted-foreground">{block.results?.length || 0} {copy('results', 'matokeo')}</span></div>
+                                                        {(block.results || []).map((item) => <GenericSearchCard key={`${item.entity_type}-${item.entity_id}`} item={item} compact />)}
+                                                    </div>
                                                 ) : block.type === 'product_detail' ? (
                                                     <div key={`${index}-${blockIndex}`} className="mt-3 rounded-2xl border border-border bg-background p-4"><p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">{copy('Product details', 'Maelezo ya bidhaa')}</p><p className="mt-1 font-black text-foreground">{block.product?.title}</p><p className="mt-1 text-sm text-muted-foreground">{block.product?.description || copy('Details are available on the product page.', 'Maelezo zaidi yapo kwenye ukurasa wa bidhaa.')}</p><button type="button" onClick={() => openProduct(block.product)} className="mt-3 inline-flex items-center gap-1 text-xs font-black text-brand-700">{copy('Open product', 'Fungua bidhaa')} <ArrowRight className="h-3.5 w-3.5" /></button></div>
                                                 ) : null)}
                                             </div>
                                         </div>
                                     ))}
-                                    {toolStatus && <div className="pl-11 text-xs font-bold text-muted-foreground"><Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" /> {toolStatus === 'search_products' ? copy('Searching Takeer catalog…', 'Natafuta kwenye catalog ya Takeer…') : copy('Checking product details…', 'Naangalia maelezo ya bidhaa…')}</div>}
+                                    {toolStatus && <div className="pl-11 text-xs font-bold text-muted-foreground"><Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" /> {toolStatus === 'search_takeer' ? copy('Searching across Takeer…', 'Natafuta kwenye Takeer…') : copy('Checking details…', 'Naangalia maelezo…')}</div>}
                                     {status && streaming && <div className="pl-11 text-xs font-medium text-muted-foreground">{statusCopy(status, copy)}</div>}
                                     {errorMessage && <div className="ml-11 flex flex-wrap items-center gap-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"><CircleStop className="h-4 w-4 shrink-0" /> <span>{errorMessage}</span>{pendingQuery && <button type="button" onClick={retryMessage} className="font-black underline">{copy('Try again', 'Jaribu tena')}</button>}<button type="button" onClick={() => handleClassicSearch(pendingQuery)} className="font-black underline">{copy('Use classic search', 'Tumia search ya kawaida')}</button></div>}
                                 </div>

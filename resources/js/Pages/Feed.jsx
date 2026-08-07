@@ -130,10 +130,8 @@ function FeedLeftRail({ rails = [], profile = null, isAuthenticated = false }) {
                 <div className="rounded-2xl bg-white/78 p-4">
                     <div className="flex items-center justify-between gap-3">
                         <div>
-                            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-brand-500">{t('feed.digitalShelf')}</p>
                             <p className="mt-0.5 text-sm font-bold text-slate-950">{t('feed.buyOpenInstantly')}</p>
                         </div>
-                        <Sparkles className="h-5 w-5 text-amber-500" />
                     </div>
 
                     {featuredItem ? (
@@ -158,7 +156,7 @@ function FeedLeftRail({ rails = [], profile = null, isAuthenticated = false }) {
                 )}
 
                 <Link href={uploadHref} className="group block rounded-2xl border border-dashed border-brand-200 bg-brand-50/70 p-4 transition-colors hover:bg-brand-50">
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col items-center gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-brand-600 ring-1 ring-brand-100">
                             <DownloadCloud className="h-5 w-5" />
                         </div>
@@ -220,41 +218,6 @@ function FeedRightRail({ rails = [], posts = [], profile = null, isAuthenticated
                             ))}
                         </div>
                     )}
-
-                    <Link href={isAuthenticated ? '/orders' : '/login'} className="mt-4 flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 text-sm font-bold text-white transition-colors hover:bg-slate-800">
-                        <ShoppingBag className="h-4 w-4" />
-                        {isAuthenticated ? t('feed.viewOrders') : t('feed.login')}
-                    </Link>
-                </div>
-
-                <div className="rounded-2xl bg-white/60 px-4 py-4 ring-1 ring-slate-200/60 backdrop-blur-md">
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{t('feed.stores')}</p>
-                    <div className="mt-3 space-y-3">
-                        {storeEntries.length > 0 ? storeEntries.map((merchant, index) => (
-                            <Link key={`${merchant?.username || merchant?.id || index}`} href={merchantHref(merchant)} className="flex items-center gap-3">
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-brand-300 to-brand-600 text-sm font-black text-white ring-2 ring-white">
-                                    {merchant?.avatar_url ? <img src={merchant.avatar_url} alt="" className="h-full w-full object-cover" /> : merchantInitial(merchant)}
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="flex items-center gap-1 truncate text-sm font-bold text-slate-950">
-                                        {merchantName(merchant)}
-                                        {merchant?.is_verified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-blue-500" />}
-                                    </p>
-                                    <p className="truncate text-xs font-semibold text-slate-500">@{merchantHandle(merchant)}</p>
-                                </div>
-                            </Link>
-                        )) : (
-                            <Link href={isAuthenticated ? '/merchant/register' : '/login'} className="flex items-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-3">
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-brand-600 ring-1 ring-slate-200">
-                                    <Store className="h-4 w-4" />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="text-sm font-black text-slate-950">{t('feed.browseStores')}</p>
-                                    <p className="truncate text-xs font-semibold text-slate-500">{t('feed.newOffersAppear')}</p>
-                                </div>
-                            </Link>
-                        )}
-                    </div>
                 </div>
             </div>
 
@@ -313,7 +276,7 @@ function DigitalShelfRow({ item }) {
                 )}
             </div>
             <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-slate-950 group-hover:text-brand-700">{item.title || item.name}</p>
+                <p className="text-sm font-bold text-slate-950 group-hover:text-brand-700">{item.title || item.name}</p>
                 <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{digitalProductLabel(item, t)} · {priceLabel(item, t)}</p>
             </div>
         </Link>

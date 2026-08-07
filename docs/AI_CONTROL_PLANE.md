@@ -64,7 +64,7 @@ The search overlay is now a full conversational surface rather than a passive en
 
 The model receives only Takeer-owned, read-only tools:
 
-- `search_products` searches active merchant catalog records with bounded query, category, color, and price arguments.
+- `search_takeer` queries the unified `search_index` projection with bounded query, entity/content type, category, attribute, availability, and price arguments. It can return products, services, posts, public content, merchants, downloads, bundles/courses, subscriptions, offering groups, and approved freight routes through typed `search_results` UI blocks.
 - `get_product_details` reads the public details of a product returned by the catalog.
 - `get_product_options` reads public variant and availability information.
 

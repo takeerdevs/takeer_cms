@@ -30,6 +30,7 @@ use App\Services\LegalAcceptanceService;
 use App\Services\MoneyQuoteService;
 use App\Services\OfferingGroupCheckoutResolver;
 use App\Services\PickupAgreementService;
+use App\Services\PhysicalInquiryOrderService;
 use App\Services\SmsService;
 use App\Services\SubscriptionRenewalService;
 use App\Support\GeographyResolver;
@@ -49,6 +50,7 @@ class CheckoutController extends Controller
         private readonly SmsService $smsService,
         private readonly GeographyResolver $geography,
         private readonly LegalAcceptanceService $legalAcceptance,
+        private readonly PhysicalInquiryOrderService $physicalInquiryOrders,
     ) {
     }
 
@@ -2126,7 +2128,19 @@ class CheckoutController extends Controller
         $expiresAt = $this->pendingOrderExpiresAt($product ?? $bundle ?? $offeringGroup, $pickupRequestSnapshot, $isSelfPickup);
 
         $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $moneySnapshot, $unitMoneySnapshot, $shippingMoneySnapshot, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $isForwarderCheckout, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus, $resolvedHotspotId, $merchantId, $countryCode, $pickupRequestSnapshot, $expiresAt) {
-            $newOrder = Order::create([
+            $deliveryAttributes = !$isServiceInquiry ? [
+                'shipping_zone_id' => $isSelfPickup ? null : ($validated['delivery_zone_id'] ?? null),
+                'delivery_type' => $resolvedDeliveryType,
+                'physical_address' => $isSelfPickup ? null : ($validated['physical_address'] ?? null),
+                'shipping_hotspot_id' => $resolvedHotspotId ?? $validated['shipping_hotspot_id'] ?? null,
+                'latitude' => $validated['buyer_lat'] ?? null,
+                'longitude' => $validated['buyer_lng'] ?? null,
+                'delivery_status' => $isSelfPickup ? 'awaiting_pickup' : 'inquiry',
+                'pickup_pin' => (($isSelfPickup || $resolvedDeliveryType === 'intercity_bus' || $isForwarderCheckout) ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null),
+                'buyer_release_pin' => (($isSelfPickup || $resolvedDeliveryType === 'intercity_bus' || $isForwarderCheckout) ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT)),
+            ] : null;
+
+            $newOrder = $this->physicalInquiryOrders->createFromCheckout([
                 'buyer_id' => $buyer->id,
                 'user_address_id' => $validated['user_address_id'] ?? null,
                 'merchant_id' => $merchantId,
@@ -2225,27 +2239,8 @@ class CheckoutController extends Controller
                 'payment_phone' => $validated['account_phone'],
                 'country_code' => $countryCode,
                 'expires_at' => $expiresAt,
-                'pickup_policy_snapshot' => $pickupRequestSnapshot,
-            ]);
-
-            if (!$isServiceInquiry) {
-                $isIntercity = $resolvedDeliveryType === 'intercity_bus';
-
-                \App\Models\Delivery::create([
-                    'order_id' => $newOrder->id,
-                    'shipping_zone_id' => $isSelfPickup ? null : ($validated['delivery_zone_id'] ?? null),
-                    'delivery_type' => $resolvedDeliveryType,
-                    'physical_address' => $isSelfPickup ? null : ($validated['physical_address'] ?? null),
-                    'shipping_hotspot_id' => $resolvedHotspotId ?? $validated['shipping_hotspot_id'] ?? null,
-                    'latitude' => $validated['buyer_lat'] ?? null,
-                    'longitude' => $validated['buyer_lng'] ?? null,
-                    'delivery_status' => $isSelfPickup ? 'awaiting_pickup' : 'inquiry',
-                    'pickup_pin' => ($isSelfPickup || $isIntercity || $isForwarderCheckout) ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
-                    'buyer_release_pin' => ($isSelfPickup || $isIntercity || $isForwarderCheckout) ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
-                ]);
-            }
-
-            $this->initializeOrderChat($newOrder);
+                    'pickup_policy_snapshot' => $pickupRequestSnapshot,
+            ], $deliveryAttributes);
 
             return $newOrder;
         });

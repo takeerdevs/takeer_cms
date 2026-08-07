@@ -24,7 +24,7 @@ class LinkPreviewService
         return $url ? $this->previewForUrl($url) : null;
     }
 
-    public function previewForUrl(string $rawUrl): ?LinkPreview
+    public function previewForUrl(string $rawUrl, bool $refreshMissingImage = false): ?LinkPreview
     {
         $url = $this->normalizeUrl($rawUrl);
         if (! $url || ! $this->isSafePublicUrl($url)) {
@@ -38,7 +38,13 @@ class LinkPreviewService
             ->where('expires_at', '>', now())
             ->first();
 
-        if ($existing) {
+        $missingSocialImage = $existing
+            && $existing->status === 'success'
+            && !filled($existing->remote_image_url)
+            && !filled($existing->image_url);
+        $imageRetryDue = $existing?->updated_at?->lte(now()->subHours(self::FAILURE_TTL_HOURS));
+
+        if ($existing && (!$refreshMissingImage || !$missingSocialImage || ($existing->failure_reason === 'image_unavailable' && !$imageRetryDue))) {
             return $existing;
         }
 
@@ -93,6 +99,10 @@ class LinkPreviewService
             $finalUrl = (string) ($response->handlerStats()['url'] ?? $url);
             $contentType = strtolower((string) $response->header('Content-Type', ''));
             $html = (string) $response->body();
+
+            if (strlen($html) > (int) config('social_commerce.preview_max_html_bytes', 2_000_000)) {
+                return $this->markUnavailable($preview, $url, $finalUrl);
+            }
 
             if (! $response->successful() || $this->isCloudflareChallenge($html)) {
                 $solved = $this->resolveWithFlareSolverr($url);
@@ -473,7 +483,22 @@ class LinkPreviewService
             return false;
         }
 
-        $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            $ips = [$host];
+        } else {
+            // Reject numeric/encoded IP spellings before DNS resolution. This closes
+            // decimal, octal and mixed-format SSRF bypasses used by preview fetchers.
+            if (preg_match('/^[0-9]+$/', $host) || preg_match('/^0x[0-9a-f]+$/i', $host)) {
+                return false;
+            }
+            $ips = gethostbynamel($host) ?: [];
+            if (function_exists('dns_get_record')) {
+                foreach (@dns_get_record($host, DNS_AAAA) ?: [] as $record) {
+                    if (!empty($record['ipv6'])) $ips[] = $record['ipv6'];
+                }
+            }
+            $ips = array_values(array_unique($ips));
+        }
         if ($ips === []) {
             return false;
         }

@@ -195,7 +195,7 @@ class SmsService
         return $this->send($phone, $message, $userId);
     }
 
-    private function sendOnce(string $dedupeKey, string $phone, string $message, ?int $userId = null): bool
+    public function sendOnce(string $dedupeKey, string $phone, string $message, ?int $userId = null): bool
     {
         $alreadySent = NotificationLog::query()
             ->where('channel', 'sms')

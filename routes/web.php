@@ -71,6 +71,25 @@ Route::get('/health', [HealthController::class, 'status'])->withoutMiddleware([
     \App\Http\Middleware\HandleInertiaRequests::class,
 ]);
 
+Route::get('/buy-from-social-media', function () {
+    return Inertia::render('SocialCommerce/Buy', [
+        'enabled' => (bool) config('social_commerce.enabled'),
+        'entryEnabled' => (bool) config('social_commerce.buyer_entry_enabled'),
+    ]);
+})->name('social-commerce.buy');
+Route::get('/social-buy/claim/{invitation:public_id}', [\App\Http\Controllers\Api\SocialCommerceClaimController::class, 'landing'])->name('social-commerce.claim');
+
+Route::middleware('auth')->group(function () {
+    Route::get('/social-commerce/requests/{socialRequest:public_id}', fn (\App\Models\SocialCommerceRequest $socialRequest) => Inertia::render('SocialCommerce/RequestStatus', ['request' => (new \App\Http\Resources\SocialCommerceRequestResource($socialRequest->load(['claimedMerchant', 'product', 'invitations', 'events', 'order'])))->resolve()]))->name('social-commerce.request');
+    Route::get('/social-commerce/requests/{socialRequest:public_id}/offer', fn (\App\Models\SocialCommerceRequest $socialRequest) => Inertia::render('SocialCommerce/Offer', ['request' => (new \App\Http\Resources\SocialCommerceRequestResource($socialRequest->load(['claimedMerchant', 'product', 'order'])))->resolve()]))->name('social-commerce.offer');
+    Route::get('/merchant/social-commerce/requests', fn () => Inertia::render('Merchant/SocialCommerceRequests'))->name('merchant.social-commerce.requests');
+    Route::get('/merchant/social-commerce/requests/{socialRequest:public_id}', fn (\App\Models\SocialCommerceRequest $socialRequest) => Inertia::render('Merchant/SocialCommerceRequestDetails', ['request' => (new \App\Http\Resources\SocialCommerceRequestResource($socialRequest->load(['claimedMerchant', 'product', 'buyer', 'events'])))->resolve()]))->name('merchant.social-commerce.request');
+});
+
+Route::middleware(['auth', 'admin'])->group(function () {
+    Route::get('/admin/social-commerce/requests', fn () => Inertia::render('Admin/SocialCommerceRequests'))->name('admin.social-commerce.requests');
+});
+
 Route::get('/health/live', [HealthController::class, 'live'])->withoutMiddleware([
     \App\Http\Middleware\CheckUserBan::class,
     \App\Http\Middleware\DetectUserCountry::class,
@@ -326,11 +345,6 @@ Route::get('/service-requests/{publicId}/pay/{token}', function (string $publicI
 })->name('service-request.pay');
 
 Route::get('/search', function (Request $request) {
-    $detectedCountryIso = $request->session()->get('user_session_country.iso_alpha2');
-    $detectedCountryId = $detectedCountryIso
-        ? Country::query()->where('iso_alpha2', strtoupper((string) $detectedCountryIso))->value('id')
-        : null;
-
     $seo = SeoMeta::search(trim((string) $request->query('q', '')));
 
     return Inertia::render('Search', [
@@ -345,7 +359,7 @@ Route::get('/search', function (Request $request) {
             'service_subcategory_id' => $request->query('service_subcategory_id'),
             'service_category' => trim((string) $request->query('service_category', '')),
             'service_subcategory' => trim((string) $request->query('service_subcategory', '')),
-            'country_id' => $request->query('country_id', $detectedCountryId),
+            'country_id' => $request->query('country_id'),
             'location' => trim((string) $request->query('location', '')),
             'lat' => $request->query('lat'),
             'lng' => $request->query('lng'),

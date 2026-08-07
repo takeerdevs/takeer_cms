@@ -322,6 +322,11 @@ class Product extends Model
         return $this->hasOne(ProductAttribute::class);
     }
 
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
+    }
+
     public function embedding(): HasOne
     {
         return $this->hasOne(ProductEmbedding::class);
