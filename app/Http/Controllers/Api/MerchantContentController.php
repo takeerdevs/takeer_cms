@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ContentItem;
+use App\Models\ContentItemVersion;
 use App\Models\Merchant;
 use App\Models\Post;
 use App\Services\ContentPolicyService;
+use App\Services\LongFormDocumentService;
 use App\Services\PulseNotificationService;
 use App\Support\MerchantPermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class MerchantContentController extends Controller
@@ -25,7 +28,7 @@ class MerchantContentController extends Controller
         $posts = Post::where('merchant_id', $merchant->id)
             ->when($request->filled('source'), fn ($query) => $query->where('source', $request->string('source')->toString()))
             ->when($request->filled('q'), function ($query) use ($request) {
-                $term = '%' . $request->string('q')->toString() . '%';
+                $term = '%'.$request->string('q')->toString().'%';
 
                 $query->where(function ($inner) use ($term) {
                     $inner->where('title', 'like', $term)
@@ -33,12 +36,12 @@ class MerchantContentController extends Controller
                 });
             })
             ->when($request->string('post_type')->toString() === 'long', function ($query) {
-                $query->whereHas('linkedContentItem', fn ($contentQuery) => $contentQuery->whereIn('format', ['editorjs', 'markdown', 'html']));
+                $query->whereHas('linkedContentItem', fn ($contentQuery) => $contentQuery->whereIn('format', ['lexical', 'markdown', 'html']));
             })
             ->when($request->string('post_type')->toString() === 'short', function ($query) {
                 $query->where(function ($inner) {
                     $inner->whereDoesntHave('linkedContentItem')
-                        ->orWhereHas('linkedContentItem', fn ($contentQuery) => $contentQuery->whereNotIn('format', ['editorjs', 'markdown', 'html']));
+                        ->orWhereHas('linkedContentItem', fn ($contentQuery) => $contentQuery->whereNotIn('format', ['lexical', 'markdown', 'html']));
                 });
             })
             ->with([
@@ -60,7 +63,7 @@ class MerchantContentController extends Controller
                     ? (bool) $post->reactions_enabled_override
                     : $globalReactions;
                 $contentFormat = $post->linkedContentItem?->format;
-                $postType = in_array($contentFormat, ['editorjs', 'markdown', 'html'], true) ? 'long' : 'short';
+                $postType = in_array($contentFormat, ['lexical', 'markdown', 'html'], true) ? 'long' : 'short';
                 $coverImage = $post->media->firstWhere('media_type', 'image')?->url;
 
                 return [
@@ -132,13 +135,59 @@ class MerchantContentController extends Controller
         ]);
     }
 
+    /**
+     * The /merchant/{merchant} route group passes the merchant route value
+     * before content-item bindings. Keep these adapters explicit so the
+     * content-item actions also work through the scoped merchant URLs.
+     */
+    public function scopedShow(Request $request, mixed $merchant, ContentItem $contentItem): JsonResponse
+    {
+        return $this->show($request, $contentItem);
+    }
+
+    public function scopedUpdate(
+        Request $request,
+        mixed $merchant,
+        ContentItem $contentItem,
+        ContentPolicyService $policyService,
+        LongFormDocumentService $documentService
+    ): JsonResponse {
+        return $this->update($request, $contentItem, $policyService, $documentService);
+    }
+
+    public function scopedDestroy(Request $request, mixed $merchant, ContentItem $contentItem): JsonResponse
+    {
+        return $this->destroy($request, $contentItem);
+    }
+
+    public function scopedVersions(Request $request, mixed $merchant, ContentItem $contentItem): JsonResponse
+    {
+        return $this->versions($request, $contentItem);
+    }
+
+    public function scopedRestoreVersion(
+        Request $request,
+        mixed $merchant,
+        ContentItem $contentItem,
+        ContentItemVersion $version,
+        LongFormDocumentService $documentService
+    ): JsonResponse {
+        return $this->restoreVersion($request, $contentItem, $version, $documentService);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
 
         $contents = ContentItem::where('merchant_id', $merchant->id)
+            ->when($request->filled('visibility'), fn ($query) => $query->where('visibility', $request->string('visibility')->toString()))
+            ->when($request->filled('q'), function ($query) use ($request) {
+                $term = '%'.$request->string('q')->toString().'%';
+                $query->where(fn ($inner) => $inner->where('title', 'like', $term)->orWhere('excerpt', 'like', $term));
+            })
+            ->withCount('versions')
             ->latest()
-            ->paginate(20);
+            ->paginate(min(50, max(10, $request->integer('per_page', 20))));
 
         return response()->json($contents);
     }
@@ -151,7 +200,7 @@ class MerchantContentController extends Controller
         return response()->json(['content_item' => $contentItem]);
     }
 
-    public function store(Request $request, ContentPolicyService $policyService): JsonResponse
+    public function store(Request $request, ContentPolicyService $policyService, LongFormDocumentService $documentService): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
 
@@ -159,23 +208,30 @@ class MerchantContentController extends Controller
             'title' => 'required|string|max:255',
             'excerpt' => 'nullable|string|max:500',
             'body' => 'required|string',
-            'format' => 'nullable|string|in:plain_text,markdown,html,editorjs',
+            'format' => 'nullable|string|in:plain_text,markdown,html,lexical',
             'visibility' => 'nullable|string|in:draft,published,archived',
             'price' => 'nullable|numeric|min:0',
             'currency_id' => 'nullable|integer|exists:currencies,id',
             'bg_style' => 'nullable|string|in:gradient_sunset,gradient_ocean,gradient_forest,gradient_midnight,gradient_fire,solid_black,solid_brand,solid_white',
         ]);
 
-        $moderation = $policyService->moderateText(($validated['title'] ?? '') . "\n" . ($validated['body'] ?? ''));
+        if (($validated['format'] ?? LongFormDocumentService::FORMAT) === LongFormDocumentService::FORMAT) {
+            $documentService->assertValid($validated['body']);
+        }
+
+        $bodyText = $documentService->plainText($validated['body'], $validated['format'] ?? LongFormDocumentService::FORMAT);
+        $moderation = $policyService->moderateText(($validated['title'] ?? '')."\n".$bodyText);
 
         $contentItem = ContentItem::create([
             ...$validated,
             'merchant_id' => $merchant->id,
-            'slug' => Str::slug($validated['title']) . '-' . Str::lower(Str::random(6)),
+            'slug' => Str::slug($validated['title']).'-'.Str::lower(Str::random(6)),
             'moderation_status' => $moderation['status'],
             'moderation_notes' => $moderation['notes'],
             'published_at' => (($validated['visibility'] ?? 'draft') === 'published' && $moderation['allowed']) ? now() : null,
         ]);
+
+        $this->captureVersion($contentItem, $request);
 
         if (($validated['visibility'] ?? 'draft') === 'published' && $moderation['allowed']) {
             $this->syncFeedPostForPublishedContent($contentItem, $validated['bg_style'] ?? null, $request);
@@ -188,7 +244,7 @@ class MerchantContentController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, ContentItem $contentItem, ContentPolicyService $policyService): JsonResponse
+    public function update(Request $request, ContentItem $contentItem, ContentPolicyService $policyService, LongFormDocumentService $documentService): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
         $this->ensureOwnership($merchant->id, $contentItem->merchant_id);
@@ -197,7 +253,7 @@ class MerchantContentController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'excerpt' => 'nullable|string|max:500',
             'body' => 'sometimes|required|string',
-            'format' => 'nullable|string|in:plain_text,markdown,html,editorjs',
+            'format' => 'nullable|string|in:plain_text,markdown,html,lexical',
             'visibility' => 'nullable|string|in:draft,published,archived',
             'price' => 'nullable|numeric|min:0',
             'currency_id' => 'nullable|integer|exists:currencies,id',
@@ -206,14 +262,18 @@ class MerchantContentController extends Controller
 
         $title = $validated['title'] ?? $contentItem->title;
         $body = $validated['body'] ?? $contentItem->body;
-        $moderation = $policyService->moderateText($title . "\n" . $body);
+        $format = $validated['format'] ?? $contentItem->format;
+        if ($format === LongFormDocumentService::FORMAT) {
+            $documentService->assertValid($body);
+        }
+        $moderation = $policyService->moderateText($title."\n".$documentService->plainText($body, $format));
 
         $wasPublished = $contentItem->visibility === 'published';
 
         $contentItem->update([
             ...$validated,
             'slug' => array_key_exists('title', $validated)
-                ? Str::slug($validated['title']) . '-' . Str::lower(Str::random(6))
+                ? Str::slug($validated['title']).'-'.Str::lower(Str::random(6))
                 : $contentItem->slug,
             'moderation_status' => $moderation['status'],
             'moderation_notes' => $moderation['notes'],
@@ -221,6 +281,8 @@ class MerchantContentController extends Controller
                 ? ($contentItem->published_at ?? now())
                 : null,
         ]);
+
+        $this->captureVersion($contentItem->fresh(), $request);
 
         $isPublished = ($validated['visibility'] ?? $contentItem->visibility) === 'published' && $moderation['allowed'];
         if ($isPublished) {
@@ -251,6 +313,52 @@ class MerchantContentController extends Controller
         return response()->json(['message' => 'Content deleted.']);
     }
 
+    public function versions(Request $request, ContentItem $contentItem): JsonResponse
+    {
+        $merchant = $this->merchantFromRequest($request);
+        $this->ensureOwnership($merchant->id, $contentItem->merchant_id);
+
+        return response()->json([
+            'versions' => $contentItem->versions()
+                ->with('createdBy:id,name')
+                ->latest('version')
+                ->limit(100)
+                ->get(['id', 'content_item_id', 'version', 'created_by_user_id', 'title', 'excerpt', 'format', 'created_at']),
+        ]);
+    }
+
+    public function restoreVersion(Request $request, ContentItem $contentItem, ContentItemVersion $version, LongFormDocumentService $documentService): JsonResponse
+    {
+        $merchant = $this->merchantFromRequest($request);
+        $this->ensureOwnership($merchant->id, $contentItem->merchant_id);
+        abort_if($version->content_item_id !== $contentItem->id, 404);
+
+        if ($version->format === LongFormDocumentService::FORMAT) {
+            $documentService->assertValid($version->body);
+        }
+
+        $wasPublished = $contentItem->visibility === 'published';
+        $contentItem->update([
+            'title' => $version->title,
+            'excerpt' => $version->excerpt,
+            'body' => $version->body,
+            'format' => $version->format,
+            'visibility' => 'draft',
+            'published_at' => null,
+        ]);
+
+        if ($wasPublished) {
+            Post::where('content_item_id', $contentItem->id)->delete();
+        }
+
+        $this->captureVersion($contentItem->fresh(), $request);
+
+        return response()->json([
+            'message' => 'Draft version restored.',
+            'content_item' => $contentItem->fresh(),
+        ]);
+    }
+
     private function merchantFromRequest(Request $request)
     {
         $routeMerchant = $request->route('merchant');
@@ -279,6 +387,34 @@ class MerchantContentController extends Controller
     private function ensureOwnership(int $merchantId, int $contentMerchantId): void
     {
         abort_if($merchantId !== $contentMerchantId, 403, 'Unauthorized.');
+    }
+
+    private function captureVersion(ContentItem $contentItem, Request $request): void
+    {
+        $hash = hash('sha256', implode("\n", [
+            $contentItem->title,
+            $contentItem->excerpt ?? '',
+            $contentItem->body,
+            $contentItem->format,
+        ]));
+        DB::transaction(function () use ($contentItem, $hash, $request) {
+            ContentItem::query()->whereKey($contentItem->id)->lockForUpdate()->firstOrFail();
+            $latest = ContentItemVersion::query()->where('content_item_id', $contentItem->id)->latest('version')->first();
+            if ($latest?->body_hash === $hash) {
+                return;
+            }
+
+            ContentItemVersion::create([
+                'content_item_id' => $contentItem->id,
+                'version' => ((int) ($latest?->version ?? 0)) + 1,
+                'created_by_user_id' => $request->user()?->id,
+                'title' => $contentItem->title,
+                'excerpt' => $contentItem->excerpt,
+                'body' => $contentItem->body,
+                'format' => $contentItem->format,
+                'body_hash' => $hash,
+            ]);
+        });
     }
 
     private function creatorPayload(Post $post): ?array
@@ -317,7 +453,8 @@ class MerchantContentController extends Controller
             ? MerchantPermissions::staffFor($request->user(), $contentItem->merchant)
             : null;
 
-        $previewText = trim((string) ($contentItem->excerpt ?: Str::limit(trim(strip_tags((string) $contentItem->body)), 240)));
+        $bodyText = app(LongFormDocumentService::class)->plainText((string) $contentItem->body, $contentItem->format);
+        $previewText = trim((string) ($contentItem->excerpt ?: Str::limit($bodyText, 240)));
 
         $lines = array_filter([
             $displayTitle,
@@ -343,7 +480,7 @@ class MerchantContentController extends Controller
                 $contentItem,
                 'content',
                 $displayTitle ?: 'Premium content',
-                '/p/' . ($post->public_id ?: $post->id),
+                '/p/'.($post->public_id ?: $post->id),
                 "{$contentItem->merchant->display_name} published new premium content."
             );
         }

@@ -2,30 +2,32 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Events\PostEngagementUpdated;
-use App\Jobs\ProcessPostMediaVideo;
+use App\Http\Controllers\Controller;
 use App\Http\Resources\CommentResource;
 use App\Http\Resources\PostResource;
+use App\Jobs\ProcessPostMediaVideo;
 use App\Models\Bundle;
+use App\Models\ContentItem;
 use App\Models\Forwarder;
 use App\Models\Merchant;
 use App\Models\Post;
 use App\Models\PostProductTag;
-use App\Models\Product;
 use App\Models\PostReaction;
-use App\Models\PostLike;
+use App\Models\Product;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
+use App\Services\ContentPolicyService;
 use App\Services\EntitlementService;
 use App\Services\LinkPreviewService;
+use App\Services\LongFormDocumentService;
 use App\Services\PhoneService;
 use App\Services\PulseNotificationService;
 use App\Support\MerchantPermissions;
 use App\Support\SeoMeta;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
@@ -75,8 +77,8 @@ class PostController extends Controller
         }
 
         $viewer = $request->user() ?: auth()->guard('web')->user();
-        if ($post->trashed() && !$this->canViewDeletedPost($viewer, $post)) {
-            if (!$post->latestModerationAction?->show_public_notice) {
+        if ($post->trashed() && ! $this->canViewDeletedPost($viewer, $post)) {
+            if (! $post->latestModerationAction?->show_public_notice) {
                 abort(404);
             }
 
@@ -105,7 +107,7 @@ class PostController extends Controller
             'postId' => $post->id,
             'seo' => $seo,
             'initialComments' => Inertia::defer(
-                fn() => $canAccessComments
+                fn () => $canAccessComments
                     ? CommentResource::collection(
                         $post->comments()
                             ->whereNull('parent_id')
@@ -153,8 +155,8 @@ class PostController extends Controller
         $post = $query->firstOrFail();
 
         $viewer = $request->user() ?: auth()->guard('web')->user();
-        if ($post->trashed() && !$this->canViewDeletedPost($viewer, $post)) {
-            if (!$post->latestModerationAction?->show_public_notice) {
+        if ($post->trashed() && ! $this->canViewDeletedPost($viewer, $post)) {
+            if (! $post->latestModerationAction?->show_public_notice) {
                 return response()->json(['message' => 'Post not found'], 404);
             }
         }
@@ -167,7 +169,7 @@ class PostController extends Controller
     /**
      * Store a new social post (merchant).
      */
-    public function store(Request $request, LinkPreviewService $linkPreviewService): JsonResponse
+    public function store(Request $request, LinkPreviewService $linkPreviewService, LongFormDocumentService $documentService, ContentPolicyService $policyService): JsonResponse
     {
         $validated = $request->validate([
             'caption' => 'nullable|string',
@@ -181,7 +183,7 @@ class PostController extends Controller
             'images.*' => 'string',
             'product_id' => 'nullable|integer|exists:products,id',
             'merchant_id' => 'nullable|integer',
-            
+
             // New Promotion/Restriction Fields
             'is_restricted' => 'nullable|boolean',
             'promotables' => 'nullable|array',
@@ -191,24 +193,29 @@ class PostController extends Controller
             'comments_enabled_override' => 'nullable|boolean',
             'reactions_enabled_override' => 'nullable|boolean',
             'forwarder_route_id' => 'nullable|string|max:120',
+            'draft_content_item_id' => 'nullable|integer|exists:content_items,id',
         ]);
+
+        if ($documentService->isLexical($validated['body'] ?? null)) {
+            $documentService->assertValid($validated['body']);
+        }
 
         $merchantProfile = $this->merchantFromRequest($request);
 
-        if (!$merchantProfile) {
+        if (! $merchantProfile) {
             return response()->json(['message' => 'Tafadhali tengeneza biashara kwanza.'], 403);
         }
 
         $forwarderRoute = $this->resolveForwarderRoute($merchantProfile, $validated['forwarder_route_id'] ?? null);
 
         $attachedProduct = null;
-        if (!empty($validated['product_id'])) {
+        if (! empty($validated['product_id'])) {
             $attachedProduct = Product::query()
                 ->where('merchant_id', $merchantProfile->id)
                 ->with('images')
                 ->find($validated['product_id']);
 
-            if (!$attachedProduct) {
+            if (! $attachedProduct) {
                 return response()->json([
                     'message' => 'Product hii haipo kwenye profile uliyochagua.',
                 ], 422);
@@ -227,10 +234,36 @@ class PostController extends Controller
             ], 403);
         }
 
-        $isLongForm = !empty(trim((string) ($validated['body'] ?? '')));
-        $isShortForm = !$isLongForm;
+        $isLongForm = ! empty(trim((string) ($validated['body'] ?? '')));
+        $isShortForm = ! $isLongForm;
         $restrictedPrice = $hasSingleUnlockPrice ? (float) $validated['restricted_price'] : null;
         $paidShortUnlock = $isShortForm && $shouldLockPost && $restrictedPrice !== null && $restrictedPrice > 0;
+
+        $draftContentItem = null;
+        if ($isLongForm && ! empty($validated['draft_content_item_id'])) {
+            $draftContentItem = ContentItem::query()
+                ->where('merchant_id', $merchantProfile->id)
+                ->find($validated['draft_content_item_id']);
+            if (! $draftContentItem) {
+                return response()->json(['message' => 'The selected draft does not belong to this business.'], 422);
+            }
+
+            $moderation = $policyService->moderateText(trim((string) ($validated['title'] ?? ''))."\n".$documentService->plainText($validated['body'] ?? null, LongFormDocumentService::FORMAT));
+            if (! $moderation['allowed']) {
+                return response()->json(['message' => 'This draft cannot be published until its moderation issues are resolved.', 'moderation' => $moderation], 422);
+            }
+
+            $draftContentItem->update([
+                'title' => trim((string) ($validated['title'] ?? $draftContentItem->title)),
+                'excerpt' => $validated['excerpt'] ?? null,
+                'body' => $validated['body'],
+                'format' => LongFormDocumentService::FORMAT,
+                'visibility' => 'published',
+                'moderation_status' => $moderation['status'],
+                'moderation_notes' => $moderation['notes'],
+                'published_at' => $draftContentItem->published_at ?? now(),
+            ]);
+        }
 
         if ($paidShortUnlock && empty(trim((string) ($validated['title'] ?? '')))) {
             return response()->json([
@@ -244,7 +277,7 @@ class PostController extends Controller
         $previewSourceText = trim(implode("\n", array_filter([
             $validated['caption'] ?? null,
             $validated['excerpt'] ?? null,
-            $validated['body'] ?? null,
+            $documentService->plainText($validated['body'] ?? null),
         ], fn ($value) => is_string($value) && trim($value) !== '')));
         $linkPreview = $shouldLockPost
             ? null
@@ -256,6 +289,7 @@ class PostController extends Controller
             : null;
 
         $post = Post::create([
+            'content_item_id' => $draftContentItem?->id,
             'merchant_id' => $merchantProfile->id,
             'forwarder_id' => $forwarderRoute['forwarder_id'] ?? null,
             'forwarder_route_id' => $forwarderRoute['route_id'] ?? null,
@@ -268,7 +302,7 @@ class PostController extends Controller
             'caption' => $validated['caption'] ?? null,
             'title' => $validated['title'] ?? null,
             'excerpt' => $validated['excerpt'] ?? null,
-            'body' => $validated['body'] ?? null,
+            'body' => $draftContentItem ? null : ($validated['body'] ?? null),
             'bg_style' => $validated['bg_style'] ?? null,
             'is_restricted' => $shouldLockPost,
             'restricted_price' => $restrictedPrice,
@@ -291,7 +325,7 @@ class PostController extends Controller
                     ->whereKey($promoInput['id'])
                     ->exists();
 
-                if (!$ownedPromotable) {
+                if (! $ownedPromotable) {
                     return response()->json([
                         'message' => 'Kipengele ulichochagua hakipo kwenye profile hii.',
                     ], 422);
@@ -327,7 +361,7 @@ class PostController extends Controller
                     ]);
                 }
             }
-        } elseif (!empty($validated['product_id'])) {
+        } elseif (! empty($validated['product_id'])) {
             // Use Product Media (Legacy/Secondary attachment)
             if ($attachedProduct && $attachedProduct->images->isNotEmpty()) {
                 foreach ($attachedProduct->images as $image) {
@@ -392,15 +426,15 @@ class PostController extends Controller
     {
         $viewer = request()->user() ?: auth()->guard('web')->user();
 
-        if ($post->trashed() && !$this->canViewDeletedPost($viewer, $post)) {
+        if ($post->trashed() && ! $this->canViewDeletedPost($viewer, $post)) {
             return response()->json(['message' => 'This content is no longer publicly available.'], 403);
         }
 
-        if (!$post->trashed() && !$this->commentsEnabled($post)) {
+        if (! $post->trashed() && ! $this->commentsEnabled($post)) {
             return response()->json(['message' => 'Comments are disabled for this post by the merchant.'], 403);
         }
 
-        if (!$post->trashed() && !$this->canAccessPostComments($viewer, $post)) {
+        if (! $post->trashed() && ! $this->canAccessPostComments($viewer, $post)) {
             return response()->json(['message' => 'Comments are locked until this post is unlocked.'], 403);
         }
 
@@ -424,11 +458,11 @@ class PostController extends Controller
             return response()->json(['message' => 'Comments are disabled on deleted content.'], 403);
         }
 
-        if (!$this->commentsEnabled($post)) {
+        if (! $this->commentsEnabled($post)) {
             return response()->json(['message' => 'Comments are disabled for this post by the merchant.'], 403);
         }
 
-        if (!$this->canAccessPostComments($request->user(), $post)) {
+        if (! $this->canAccessPostComments($request->user(), $post)) {
             return response()->json(['message' => 'Unlock this post first to comment.'], 403);
         }
 
@@ -443,7 +477,7 @@ class PostController extends Controller
                 ->where('id', $request->integer('parent_id'))
                 ->first();
 
-            if (!$parent) {
+            if (! $parent) {
                 return response()->json(['message' => 'Invalid reply target for this post.'], 422);
             }
 
@@ -478,11 +512,11 @@ class PostController extends Controller
             return response()->json(['message' => 'Reactions are disabled on deleted content.'], 403);
         }
 
-        if (!$this->reactionsEnabled($post)) {
+        if (! $this->reactionsEnabled($post)) {
             return response()->json(['message' => 'Reactions are disabled for this post by the merchant.'], 403);
         }
 
-        if (!$this->canAccessPostComments($request->user(), $post)) {
+        if (! $this->canAccessPostComments($request->user(), $post)) {
             return response()->json(['message' => 'Unlock this post first to react.'], 403);
         }
 
@@ -496,7 +530,7 @@ class PostController extends Controller
         /** @var PostReaction|null $existing */
         $existing = $post->reactions()->where('user_id', $user->id)->first();
 
-        if (!$emoji) {
+        if (! $emoji) {
             if ($existing) {
                 $existing->delete();
                 app(PulseNotificationService::class)->postReactionCleared($post, (int) $user->id);
@@ -516,7 +550,7 @@ class PostController extends Controller
             ->selectRaw('emoji, COUNT(*) as total')
             ->groupBy('emoji')
             ->get()
-            ->map(fn($row) => [
+            ->map(fn ($row) => [
                 'emoji' => $row->emoji,
                 'count' => (int) ($row->total ?? 0),
             ])->values();
@@ -552,7 +586,7 @@ class PostController extends Controller
         $formattedPhone = PhoneService::formatToE164($rawPhone, $country?->iso_alpha2 ?: $this->sessionRegion());
         $otpPhones = array_values(array_unique(array_filter([$formattedPhone, $rawPhone])));
 
-        $throttleKey = 'guest-engagement-otp:' . sha1($request->ip() . '|' . ($formattedPhone ?: $rawPhone));
+        $throttleKey = 'guest-engagement-otp:'.sha1($request->ip().'|'.($formattedPhone ?: $rawPhone));
         if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
             return response()->json([
                 'message' => 'Too many attempts. Please wait a bit and try again.',
@@ -572,7 +606,7 @@ class PostController extends Controller
             }
         }
 
-        if (!$hashedOtp || !Hash::check($validated['otp'], $hashedOtp)) {
+        if (! $hashedOtp || ! Hash::check($validated['otp'], $hashedOtp)) {
             RateLimiter::hit($throttleKey, 600);
 
             return response()->json(['message' => 'The OTP is incorrect or has expired.'], 422);
@@ -580,21 +614,21 @@ class PostController extends Controller
 
         $phone = $formattedPhone ?: $rawPhone;
 
-        if ($validated['action'] === 'comment' && !$this->commentsEnabled($post)) {
+        if ($validated['action'] === 'comment' && ! $this->commentsEnabled($post)) {
             return response()->json(['message' => 'Comments are disabled for this post by the merchant.'], 403);
         }
 
-        if ($validated['action'] === 'reaction' && !$this->reactionsEnabled($post)) {
+        if ($validated['action'] === 'reaction' && ! $this->reactionsEnabled($post)) {
             return response()->json(['message' => 'Reactions are disabled for this post by the merchant.'], 403);
         }
 
         $user = User::whereIn('phone_number', PhoneService::variantsForLookup($phone, $country))->first();
         $name = trim($validated['name']);
-        if (!$user && !$this->canAccessPostComments(null, $post)) {
+        if (! $user && ! $this->canAccessPostComments(null, $post)) {
             return response()->json(['message' => 'Unlock this post first to engage.'], 403);
         }
 
-        if (!$user) {
+        if (! $user) {
             $user = User::create([
                 'name' => $name,
                 'phone_number' => $phone,
@@ -609,7 +643,7 @@ class PostController extends Controller
             $user->forceFill($updates)->save();
         }
 
-        if (!$this->canAccessPostComments($user, $post)) {
+        if (! $this->canAccessPostComments($user, $post)) {
             return response()->json(['message' => 'Unlock this post first to engage.'], 403);
         }
 
@@ -625,7 +659,7 @@ class PostController extends Controller
                     ->where('id', $request->integer('parent_id'))
                     ->first();
 
-                if (!$parent) {
+                if (! $parent) {
                     return response()->json(['message' => 'Invalid reply target for this post.'], 422);
                 }
 
@@ -666,7 +700,7 @@ class PostController extends Controller
             ->selectRaw('emoji, COUNT(*) as total')
             ->groupBy('emoji')
             ->get()
-            ->map(fn($row) => [
+            ->map(fn ($row) => [
                 'emoji' => $row->emoji,
                 'count' => (int) ($row->total ?? 0),
             ])->values();
@@ -740,11 +774,11 @@ class PostController extends Controller
             return response()->json(['message' => 'Reactions are disabled on deleted content.'], 403);
         }
 
-        if (!$this->reactionsEnabled($post)) {
+        if (! $this->reactionsEnabled($post)) {
             return response()->json(['message' => 'Reactions are disabled for this post by the merchant.'], 403);
         }
 
-        if (!$this->canAccessPostComments($request->user(), $post)) {
+        if (! $this->canAccessPostComments($request->user(), $post)) {
             return response()->json(['message' => 'Unlock this post first to react.'], 403);
         }
 
@@ -778,7 +812,7 @@ class PostController extends Controller
 
         abort_unless($post instanceof Post, 404);
 
-        if (!$scopedMerchant instanceof Merchant && $scopedMerchant) {
+        if (! $scopedMerchant instanceof Merchant && $scopedMerchant) {
             $scopedMerchant = Merchant::where('username', $scopedMerchant)->firstOrFail();
         }
 
@@ -827,11 +861,11 @@ class PostController extends Controller
         $hasPaidLinkedContent = $linkedContentItem && $linkedContentItem->price !== null;
         $isRestricted = (bool) ($post->is_restricted ?? false) || $hasPromotableGate || $hasSingleUnlockPrice || $hasPaidLinkedContent;
 
-        if (!$isRestricted && $allowPublicUnrestricted) {
+        if (! $isRestricted && $allowPublicUnrestricted) {
             return true;
         }
 
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -913,7 +947,7 @@ class PostController extends Controller
 
     private function resolveForwarderRoute(Merchant $merchant, ?string $routeId): ?array
     {
-        if (!$routeId) {
+        if (! $routeId) {
             return null;
         }
 
@@ -936,14 +970,14 @@ class PostController extends Controller
             ->latest()
             ->first();
 
-        if (!$forwarder) {
+        if (! $forwarder) {
             abort(422, 'Forwarder route is not available for this profile.');
         }
 
         $routeModel = $forwarder->routes
             ->first(fn ($item) => (string) $item->route_uid === (string) $routeId || (string) $item->id === (string) $routeId);
 
-        if (!$routeModel) {
+        if (! $routeModel) {
             abort(422, 'Selected forwarder route was not found.');
         }
 
@@ -1010,8 +1044,8 @@ class PostController extends Controller
             ->values();
 
         return ($this->forwarderRoutePlaceName($originLocations) ?: 'Origin')
-            . ' to '
-            . ($this->forwarderRoutePlaceName($destinationLocations) ?: 'Destination');
+            .' to '
+            .($this->forwarderRoutePlaceName($destinationLocations) ?: 'Destination');
     }
 
     private function forwarderRoutePlaceName(\Illuminate\Support\Collection $locations): string

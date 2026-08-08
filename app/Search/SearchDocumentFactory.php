@@ -10,12 +10,15 @@ use App\Models\OfferingGroup;
 use App\Models\Post;
 use App\Models\Product;
 use App\Models\SubscriptionPlan;
+use App\Services\LongFormDocumentService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class SearchDocumentFactory
 {
+    public function __construct(private readonly LongFormDocumentService $documentService) {}
+
     public const TYPES = [
         'merchant' => Merchant::class,
         'post' => Post::class,
@@ -244,7 +247,7 @@ class SearchDocumentFactory
         }
 
         $restricted = (bool) $post->is_restricted;
-        $publicBody = $restricted ? null : $post->body;
+        $publicBody = $restricted ? null : $this->documentService->plainText($post->body);
         $title = (string) ($post->title ?: Str::limit(trim((string) $post->caption), 100) ?: 'Post');
         $media = $post->media->first();
         $summary = trim((string) ($post->excerpt ?: $post->caption));
@@ -276,10 +279,11 @@ class SearchDocumentFactory
 
         $linkedPost = Post::query()->where('content_item_id', $content->id)->latest('id')->first();
         $paid = $content->price !== null;
-        $publicBody = $paid ? null : $content->body;
+        $restricted = $paid || (bool) $linkedPost?->is_restricted;
+        $publicBody = $restricted ? null : $this->documentService->plainText($content->body, $content->format);
         $url = $linkedPost ? '/p/'.($linkedPost->public_id ?: $linkedPost->id) : '/content/'.$content->slug;
 
-        return $this->document($content, 'content_item', 'content_item', $paid ? 'paid_content' : 'article', 'long_content', [
+        return $this->document($content, 'content_item', 'content_item', $restricted ? 'paid_content' : 'article', 'long_content', [
             'merchant_id' => $content->merchant_id,
             'canonical_group_key' => 'content_item:'.$content->id,
             'title' => $content->title,
@@ -293,7 +297,7 @@ class SearchDocumentFactory
             'price_max_base' => $content->price,
             'country_id' => $content->merchant->country_id,
             'published_at' => $content->published_at,
-            'facets' => ['format' => $content->format, 'is_paid' => $paid],
+            'facets' => ['format' => $content->format, 'is_paid' => $paid, 'is_restricted' => $restricted],
             'display_data' => ['id' => $content->id, 'slug' => $content->slug, 'title' => $content->title, 'excerpt' => $content->excerpt, 'format' => $content->format, 'price' => $content->price, 'url' => $url],
             'chunks' => $this->textChunks($this->text([$content->title, $content->excerpt, $publicBody]), 'body'),
         ]);
@@ -361,6 +365,7 @@ class SearchDocumentFactory
         if (! $group || $group->trashed() || $group->status !== 'published' || ! $group->merchant || ! $this->merchantEligible($group->merchant)) {
             return null;
         }
+
         return $this->document($group, 'offering_group', 'offering_group', $group->group_type ?: 'package', 'offering_group', [
             'merchant_id' => $group->merchant_id,
             'title' => $group->title,
@@ -455,6 +460,7 @@ class SearchDocumentFactory
         if ($buffer !== '') {
             $chunks[] = $this->chunk($type.':'.count($chunks), $type, $buffer);
         }
+
         return array_slice($chunks, 0, 40);
     }
 
@@ -470,6 +476,7 @@ class SearchDocumentFactory
             if (is_bool($value) || $value === null) {
                 return [];
             }
+
             return [trim(strip_tags((string) $value))];
         };
 
@@ -491,6 +498,7 @@ class SearchDocumentFactory
         if ($product->type === 'physical') {
             return 'physical_product';
         }
+
         return match ((string) $product->digital_delivery_type) {
             'video_stream' => 'premium_video',
             'audio_stream' => 'premium_audio',

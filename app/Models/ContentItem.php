@@ -58,4 +58,9 @@ class ContentItem extends Model
     {
         return $this->hasMany(SubscriptionPlanItem::class, 'item_id')->where('item_type', 'content_item');
     }
+
+    public function versions(): HasMany
+    {
+        return $this->hasMany(ContentItemVersion::class);
+    }
 }

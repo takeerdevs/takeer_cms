@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, Loader2, Lock, ShieldCheck, Store, Zap } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
-import EditorJsRenderer from '@/Components/EditorJsRenderer';
+import LongFormContentRenderer from '@/Components/LongFormContentRenderer';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useLocale } from '@/lib/i18n';
@@ -121,8 +121,8 @@ export default function ContentItemDetail({ contentItem, hasAccess, previewBody 
                                                 </a>
                                             </div>
                                         )}
-                                        {contentItem.format === 'editorjs' ? (
-                                            <EditorJsRenderer data={secureBody} />
+                                        {contentItem.format === 'lexical' ? (
+                                            <LongFormContentRenderer data={secureBody} />
                                         ) : contentItem.format === 'html' ? (
                                             <div className="leading-8" dangerouslySetInnerHTML={{ __html: sanitizeHtml(secureBody || '') }} />
                                         ) : (

@@ -8,7 +8,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import ShoppablePin from '@/Components/ShoppablePin';
 import PostManagementMenu from '@/Components/PostManagementMenu';
-import EditorJsRenderer from '@/Components/EditorJsRenderer';
+import LongFormContentRenderer from '@/Components/LongFormContentRenderer';
+import { isLexicalDocument } from '@/lib/longFormContent';
 import LinkifiedText from '@/Components/LinkifiedText';
 import LinkPreviewCard from '@/Components/LinkPreviewCard';
 import VideoPlayer from '@/Components/VideoPlayer';
@@ -117,17 +118,6 @@ const timeAgo = (ts, copy = (english) => english) => {
     if (s < 86400) return `${Math.floor(s / 3600)}h`;
     return `${Math.floor(s / 86400)}d`;
 };
-
-function bodyLooksLikeEditorJs(body) {
-    if (typeof body === 'object' && body !== null && Array.isArray(body.blocks)) return true;
-    if (typeof body !== 'string') return false;
-    try {
-        const parsed = JSON.parse(body);
-        return Array.isArray(parsed?.blocks);
-    } catch {
-        return false;
-    }
-}
 
 function sanitizeHtml(html) {
     if (typeof window === 'undefined') return String(html || '');
@@ -1313,8 +1303,8 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                 {/* Long-form body */}
                 {!isLocked && isLongForm && post.body && (
                     <div className="px-5 pb-8">
-                        {bodyLooksLikeEditorJs(post.body) ? (
-                            <EditorJsRenderer data={post.body} />
+                        {isLexicalDocument(post.body) ? (
+                            <LongFormContentRenderer data={post.body} />
                         ) : String(post.body).trim().startsWith('<') ? (
                             <div className="prose prose-sm max-w-none leading-8" dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.body) }} />
                         ) : (

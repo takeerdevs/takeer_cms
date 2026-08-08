@@ -283,6 +283,23 @@ class UploadController extends Controller
         }
     }
 
+    /**
+     * Upload public media used by merchant-authored posts and long-form cards.
+     */
+    public function uploadContentMedia(
+        Request $request,
+        MediaUploadService $mediaService,
+        \App\Services\StorageQuotaService $quotaService
+    ): JsonResponse
+    {
+        $request->merge([
+            'type' => 'public',
+            'folder' => 'content',
+        ]);
+
+        return $this->uploadMedia($request, $mediaService, $quotaService);
+    }
+
     private function uploadMediaChunk(Request $request, MediaUploadService $mediaService, \App\Services\StorageQuotaService $quotaService): JsonResponse
     {
         $request->validate([

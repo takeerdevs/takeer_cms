@@ -10,13 +10,14 @@ use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\SubscriptionPlan;
 use App\Services\EntitlementService;
+use App\Services\LongFormDocumentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class CommerceCatalogController extends Controller
 {
-    public function showContentItem(Request $request, ContentItem $contentItem, EntitlementService $entitlementService): JsonResponse
+    public function showContentItem(Request $request, ContentItem $contentItem, EntitlementService $entitlementService, LongFormDocumentService $documentService): JsonResponse
     {
         abort_if($contentItem->visibility !== 'published', 404);
 
@@ -29,7 +30,7 @@ class CommerceCatalogController extends Controller
             if ($contentItem->format === 'plain_text') {
                 $previewBody = 'Unlock this short post to read the full text.';
             } else {
-                $previewBody = Str::limit(trim(strip_tags((string) $contentItem->body)), 220);
+                $previewBody = Str::limit($documentService->plainText((string) $contentItem->body, $contentItem->format), 220);
             }
         }
 

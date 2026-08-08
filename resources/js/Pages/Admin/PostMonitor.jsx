@@ -5,7 +5,8 @@ import { Card, CardContent } from '@/Components/ui/Card';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import PostCard from '@/Components/PostCard';
-import EditorJsRenderer from '@/Components/EditorJsRenderer';
+import LongFormContentRenderer from '@/Components/LongFormContentRenderer';
+import { isLexicalDocument } from '@/lib/longFormContent';
 import LinkifiedText from '@/Components/LinkifiedText';
 import { useLocale } from '@/lib/i18n';
 
@@ -64,8 +65,8 @@ export default function PostMonitor({ postRef }) {
                                 )}
                                 {post.body && (
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                        {looksLikeEditorJs(post.body) ? (
-                                            <EditorJsRenderer content={post.body} />
+                                        {post.content_format === 'lexical' || isLexicalDocument(post.body) ? (
+                                            <LongFormContentRenderer data={post.body} />
                                         ) : (
                                             <p className="text-sm text-slate-800 whitespace-pre-wrap">{post.body}</p>
                                         )}
@@ -84,16 +85,4 @@ export default function PostMonitor({ postRef }) {
             </div>
         </AdminLayout>
     );
-}
-
-function looksLikeEditorJs(value) {
-    if (!value) return false;
-    if (typeof value === 'object') return Array.isArray(value.blocks);
-    if (typeof value !== 'string') return false;
-    try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed?.blocks);
-    } catch {
-        return false;
-    }
 }

@@ -389,7 +389,7 @@ Route::get('/search', function (Request $request) {
 
 Route::get('/ai/access', [AiSearchController::class, 'access'])->middleware('throttle:30,1');
 
-Route::get('/content/{contentItem}', function (Request $request, string $contentItem, EntitlementService $entitlementService) {
+Route::get('/content/{contentItem}', function (Request $request, string $contentItem, EntitlementService $entitlementService, \App\Services\LongFormDocumentService $documentService) {
     $internalShortTitle = '__short_locked__';
     $contentItem = ContentItem::withTrashed()->where('slug', $contentItem)->firstOrFail();
     $linkedPost = Post::query()
@@ -411,40 +411,7 @@ Route::get('/content/{contentItem}', function (Request $request, string $content
     $previewBody = null;
 
     if (!$hasAccess) {
-        if ($contentItem->format === 'editorjs') {
-            $decoded = json_decode((string) $contentItem->body, true);
-            $chunks = [];
-
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded['blocks'] ?? null)) {
-            foreach ($decoded['blocks'] as $block) {
-                $type = $block['type'] ?? null;
-                $data = is_array($block['data'] ?? null) ? $block['data'] : [];
-
-                if (in_array($type, ['header', 'paragraph', 'quote'], true)) {
-                    $chunks[] = trim(strip_tags((string) ($data['text'] ?? '')));
-                    continue;
-                }
-
-                if ($type === 'list') {
-                    foreach ((array) ($data['items'] ?? []) as $entry) {
-                        $content = is_array($entry) ? ($entry['content'] ?? '') : $entry;
-                        $chunks[] = trim(strip_tags((string) $content));
-                    }
-                    continue;
-                }
-
-                if ($type === 'checklist') {
-                    foreach ((array) ($data['items'] ?? []) as $entry) {
-                        $chunks[] = trim(strip_tags((string) ($entry['text'] ?? '')));
-                    }
-                }
-            }
-            }
-
-            $previewBody = trim(implode("\n\n", array_filter($chunks)));
-        } else {
-            $previewBody = trim(strip_tags((string) $contentItem->body));
-        }
+        $previewBody = $documentService->plainText((string) $contentItem->body, $contentItem->format);
 
         $isLockedPaid = $contentItem->price !== null;
         if ($isLockedPaid) {
@@ -1917,6 +1884,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/products/{product:id}/live-event/orders/{order:id}/attendance', [\App\Http\Controllers\Api\LiveEventController::class, 'markAttendance']);
         Route::post('/products/{product:id}/live-event/orders/{order:id}/resend-access', [\App\Http\Controllers\Api\LiveEventController::class, 'resendAccess']);
         Route::post('/upload/media', [UploadController::class, 'uploadMedia'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
+        Route::post('/content/upload/media', [UploadController::class, 'uploadContentMedia'])->middleware('merchant_permission:posts.create,posts.publish,digital_products.create,digital_products.update');
         Route::post('/upload/draft', [UploadController::class, 'draftProduct'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
         Route::post('/upload/manual', [UploadController::class, 'manualDraft'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
         Route::post('/upload/publish', [UploadController::class, 'publishProduct'])->middleware('merchant_permission:products.publish,digital_products.publish,services.create');
@@ -1926,9 +1894,11 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/content-items/api', [MerchantContentController::class, 'index'])->middleware('merchant_permission:digital_products.view');
         Route::post('/content-items/api', [MerchantContentController::class, 'store'])->middleware('merchant_permission:digital_products.create');
-        Route::get('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'show'])->middleware('merchant_permission:digital_products.view');
-        Route::put('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'update'])->middleware('merchant_permission:digital_products.update');
-        Route::delete('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'destroy'])->middleware('merchant_permission:digital_products.delete');
+        Route::get('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'scopedShow'])->middleware('merchant_permission:digital_products.view');
+        Route::get('/content-items/{contentItem:id}/versions/api', [MerchantContentController::class, 'scopedVersions'])->middleware('merchant_permission:digital_products.view');
+        Route::post('/content-items/{contentItem:id}/versions/{version:id}/restore/api', [MerchantContentController::class, 'scopedRestoreVersion'])->middleware('merchant_permission:digital_products.update');
+        Route::put('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'scopedUpdate'])->middleware('merchant_permission:digital_products.update');
+        Route::delete('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'scopedDestroy'])->middleware('merchant_permission:digital_products.delete');
         Route::get('/posts/api', [MerchantContentController::class, 'posts'])->middleware('merchant_permission:posts.view');
         Route::patch('/posts/{post:id}/interaction/api', [MerchantContentController::class, 'updatePostInteraction'])->middleware('merchant_permission:posts.update');
         Route::get('/content-reports/api', [ContentReportModerationController::class, 'merchantIndex'])->middleware('merchant_permission:posts.view');
@@ -2135,6 +2105,7 @@ Route::middleware('auth')->group(function () {
         Route::delete('/merchant/products/{id}', [UploadController::class, 'deleteProduct'])->middleware('merchant_permission:products.delete,digital_products.delete,services.delete');
         Route::post('/merchant/products/{product}/media', [UploadController::class, 'syncDraftMedia'])->middleware('merchant_permission:products.update,digital_products.update,services.update');
         Route::post('/merchant/upload/media', [UploadController::class, 'uploadMedia'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
+        Route::post('/merchant/content/upload/media', [UploadController::class, 'uploadContentMedia'])->middleware('merchant_permission:posts.create,posts.publish,digital_products.create,digital_products.update');
         Route::post('/merchant/upload/draft', [UploadController::class, 'draftProduct'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
         Route::post('/merchant/upload/manual', [UploadController::class, 'manualDraft'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
         Route::post('/merchant/upload/publish', [UploadController::class, 'publishProduct'])->middleware('merchant_permission:products.publish,digital_products.publish,services.create');
@@ -2147,6 +2118,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/merchant/content-items/api', [MerchantContentController::class, 'index'])->middleware('merchant_permission:digital_products.view');
         Route::post('/merchant/content-items/api', [MerchantContentController::class, 'store'])->middleware('merchant_permission:digital_products.create');
         Route::get('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'show'])->middleware('merchant_permission:digital_products.view');
+        Route::get('/merchant/content-items/{contentItem:id}/versions/api', [MerchantContentController::class, 'versions'])->middleware('merchant_permission:digital_products.view');
+        Route::post('/merchant/content-items/{contentItem:id}/versions/{version:id}/restore/api', [MerchantContentController::class, 'restoreVersion'])->middleware('merchant_permission:digital_products.update');
         Route::put('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'update'])->middleware('merchant_permission:digital_products.update');
         Route::delete('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'destroy'])->middleware('merchant_permission:digital_products.delete');
         Route::get('/merchant/posts/api', [MerchantContentController::class, 'posts'])->middleware('merchant_permission:posts.view');

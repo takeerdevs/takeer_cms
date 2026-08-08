@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Image, ShoppingBag, BookOpenText, Lock, Crown, Package } from 'lucide-react';
+import { X, Image, ShoppingBag, BookOpenText, Lock, Crown, Package, History, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import LongFormBlockEditor from '@/Components/LongFormBlockEditor';
 import PolicyNotice from '@/Components/PolicyNotice';
@@ -31,6 +31,22 @@ const BG_OPTION_TRANSLATIONS = {
     '🔵 Brand': '🔵 Chapa',
 };
 const SHORT_LOCKED_INTERNAL_TITLE = '__short_locked__';
+
+function lexicalDocumentHasContent(body) {
+    if (!body) return false;
+    try {
+        const document = JSON.parse(body);
+        const hasContent = (node) => {
+            if (!node || typeof node !== 'object') return false;
+            if (node.type === 'takeer_card') return true;
+            if (node.type === 'text' && String(node.text || '').trim()) return true;
+            return Array.isArray(node.children) && node.children.some(hasContent);
+        };
+        return hasContent(document?.root);
+    } catch {
+        return String(body).trim().length > 0;
+    }
+}
 
 function AccessGateIcon({ type, className = '' }) {
     const Icon = type === 'bundle' ? Package : Crown;
@@ -202,6 +218,10 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     const [lastLongAutosaveSignature, setLastLongAutosaveSignature] = useState(null);
     const [longAutosaveStatus, setLongAutosaveStatus] = useState('');
     const [longEditorKey, setLongEditorKey] = useState(0);
+    const [longDrafts, setLongDrafts] = useState([]);
+    const [longDraftsLoading, setLongDraftsLoading] = useState(false);
+    const [showLongDrafts, setShowLongDrafts] = useState(false);
+    const [longVersions, setLongVersions] = useState([]);
     const [shortPrice, setShortPrice] = useState('');
 
     // Support for legacy/old product selection if still needed by some logic
@@ -216,6 +236,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
 
     const fileRef = useRef(null);
     const textRef = useRef(null);
+    const longDraftMerchantRef = useRef(null);
     const merchantApiBase = selectedProfile?.username ? `/merchant/${selectedProfile.username}` : '/merchant';
     const merchantPayload = selectedProfile?.id ? { merchant_id: selectedProfile.id } : {};
     const canCreateProduct = selectedProfile
@@ -297,6 +318,18 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
         setShortTitle('');
     }, [selectedProfile, selectedProfileKycComplete]);
 
+    useEffect(() => {
+        if (!isOpen || composerMode !== 'long' || !selectedProfile?.id) return;
+        if (longDraftMerchantRef.current && longDraftMerchantRef.current !== selectedProfile.id) {
+            setLongForm({id: null, title: '', excerpt: '', body: '', price: ''});
+            setLongVersions([]);
+            setLastLongAutosaveSignature(null);
+            setLongAutosaveStatus('Draft not saved yet');
+            setLongEditorKey((current) => current + 1);
+        }
+        longDraftMerchantRef.current = selectedProfile.id;
+    }, [composerMode, isOpen, selectedProfile?.id]);
+
     // Prefill when opened from a product page
     useEffect(() => {
         if (isOpen) {
@@ -326,7 +359,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
 
         const normalizedTitle = (longForm.title || '').trim();
         const normalizedBody = (longForm.body || '').trim();
-        if (!normalizedTitle || !normalizedBody) return;
+        if (!normalizedTitle && !(longForm.excerpt || '').trim() && !lexicalDocumentHasContent(normalizedBody)) return;
 
         const signature = JSON.stringify({
             id: longForm.id ?? null,
@@ -344,13 +377,14 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                 const priceVal = longForm.price === '' ? null : Number(longForm.price);
                 const payload = {
                     ...merchantPayload,
-                    title: normalizedTitle,
+                    title: normalizedTitle || 'Untitled draft',
                     excerpt: longForm.excerpt || null,
                     body: normalizedBody,
-                    format: 'editorjs',
+                    format: 'lexical',
                     visibility: 'draft',
                     price: priceVal,
                 };
+                let savedId = longForm.id;
 
                 if (longForm.id) {
                     await axios.put(`${merchantApiBase}/content-items/${longForm.id}/api`, payload);
@@ -358,12 +392,22 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                     const res = await axios.post(`${merchantApiBase}/content-items/api`, payload);
                     const saved = res.data?.content_item;
                     if (saved?.id) {
+                        savedId = saved.id;
                         setLongForm((current) => ({ ...current, id: saved.id }));
                     }
                 }
 
                 setLastLongAutosaveSignature(signature);
                 setLongAutosaveStatus('Draft auto-saved');
+                try {
+                    const requests = [axios.get(`${merchantApiBase}/content-items/api?visibility=draft&per_page=50`)];
+                    if (savedId) requests.push(axios.get(`${merchantApiBase}/content-items/${savedId}/versions/api`));
+                    const [draftsResponse, versionsResponse] = await Promise.all(requests);
+                    setLongDrafts(Array.isArray(draftsResponse.data?.data) ? draftsResponse.data.data : []);
+                    if (versionsResponse) setLongVersions(Array.isArray(versionsResponse.data?.versions) ? versionsResponse.data.versions : []);
+                } catch {
+                    // The draft itself is safely stored even if refreshing the list fails.
+                }
             } catch (error) {
                 setLongAutosaveStatus('Draft autosave failed');
             }
@@ -371,6 +415,64 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
 
         return () => clearTimeout(timer);
     }, [composerMode, isOpen, lastLongAutosaveSignature, longForm, submitting]);
+
+    useEffect(() => {
+        if (!isOpen || composerMode !== 'long' || !selectedProfile) return;
+        let cancelled = false;
+        setLongDraftsLoading(true);
+        axios.get(`${merchantApiBase}/content-items/api?visibility=draft&per_page=50`)
+            .then((response) => {
+                if (!cancelled) setLongDrafts(Array.isArray(response.data?.data) ? response.data.data : []);
+            })
+            .catch(() => {
+                if (!cancelled) setLongDrafts([]);
+            })
+            .finally(() => {
+                if (!cancelled) setLongDraftsLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [composerMode, isOpen, merchantApiBase, selectedProfile]);
+
+    const loadDraftVersions = async (draftId) => {
+        if (!draftId) {
+            setLongVersions([]);
+            return;
+        }
+        const response = await axios.get(`${merchantApiBase}/content-items/${draftId}/versions/api`);
+        setLongVersions(Array.isArray(response.data?.versions) ? response.data.versions : []);
+    };
+
+    const loadLongDraft = async (draftId) => {
+        try {
+            const response = await axios.get(`${merchantApiBase}/content-items/${draftId}/api`);
+            const draft = response.data?.content_item;
+            if (!draft) return;
+            setLongForm({id: draft.id, title: draft.title === 'Untitled draft' ? '' : (draft.title || ''), excerpt: draft.excerpt || '', body: draft.body || '', price: draft.price || ''});
+            setLastLongAutosaveSignature(null);
+            setLongEditorKey((current) => current + 1);
+            setLongAutosaveStatus('Draft loaded');
+            await loadDraftVersions(draft.id);
+            setShowLongDrafts(false);
+        } catch (error) {
+            toast.error(copy('Could not load this draft.', 'Imeshindikana kufungua draft hii.'));
+        }
+    };
+
+    const restoreLongVersion = async (versionId) => {
+        if (!longForm.id) return;
+        try {
+            const response = await axios.post(`${merchantApiBase}/content-items/${longForm.id}/versions/${versionId}/restore/api`);
+            const draft = response.data?.content_item;
+            if (!draft) return;
+            setLongForm({id: draft.id, title: draft.title === 'Untitled draft' ? '' : (draft.title || ''), excerpt: draft.excerpt || '', body: draft.body || '', price: draft.price || ''});
+            setLastLongAutosaveSignature(null);
+            setLongEditorKey((current) => current + 1);
+            setLongAutosaveStatus('Earlier version restored');
+            await loadDraftVersions(draft.id);
+        } catch (error) {
+            toast.error(copy('Could not restore this version.', 'Imeshindikana kurejesha version hii.'));
+        }
+    };
 
     const fetchPromotables = async () => {
         if (!selectedProfile) return;
@@ -440,6 +542,8 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
         setLongEditorKey((current) => current + 1);
         setLongAutosaveStatus('Draft not saved yet');
         setLastLongAutosaveSignature('');
+        setLongVersions([]);
+        setShowLongDrafts(false);
         setForwarderRouteId('');
     };
 
@@ -517,6 +621,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                     : (shouldRequireShortTitle ? shortTitle.trim() : null),
                 excerpt: composerMode === 'long' ? longForm.excerpt : null,
                 body: composerMode === 'long' ? longForm.body : null,
+                draft_content_item_id: composerMode === 'long' ? longForm.id : null,
                 bg_style: (composerMode === 'short' && text.length < 180 && mediaFiles.length === 0) ? bg : null,
 
                 // Media
@@ -748,6 +853,47 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                 </div>
                             ) : (
                                 <div className="bg-card/60 backdrop-blur-md border border-border/50 rounded-3xl p-4 space-y-4">
+                                    <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3">
+                                        <div>
+                                            <p className="text-sm font-black text-foreground">{longForm.id ? copy('Editing saved draft', 'Unahariri draft iliyohifadhiwa') : copy('New long-form draft', 'Draft mpya ya post ndefu')}</p>
+                                            <p className="mt-0.5 text-[11px] text-muted-foreground">{copy('Changes are saved automatically and revisions are retained.', 'Mabadiliko yanahifadhiwa moja kwa moja na versions zinatunzwa.')}</p>
+                                        </div>
+                                        <button type="button" onClick={() => setShowLongDrafts((current) => !current)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-3 text-xs font-bold text-foreground hover:bg-muted">
+                                            <History className="size-4" />
+                                            {copy(`Drafts (${longDrafts.length})`, `Drafts (${longDrafts.length})`)}
+                                        </button>
+                                    </div>
+
+                                    {showLongDrafts ? (
+                                        <div className="rounded-2xl border border-border bg-background p-3 shadow-sm">
+                                            <p className="px-2 pb-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">{copy('Saved drafts', 'Drafts zilizohifadhiwa')}</p>
+                                            <div className="max-h-64 space-y-1 overflow-y-auto">
+                                                {longDraftsLoading ? <p className="px-2 py-4 text-xs text-muted-foreground">{copy('Loading drafts...', 'Inafungua drafts...')}</p> : null}
+                                                {!longDraftsLoading && longDrafts.length === 0 ? <p className="px-2 py-4 text-xs text-muted-foreground">{copy('No saved long-form drafts yet.', 'Bado hakuna draft ya post ndefu.')}</p> : null}
+                                                {longDrafts.map((draft) => (
+                                                    <button key={draft.id} type="button" onClick={() => loadLongDraft(draft.id)} className={cn('flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left hover:bg-muted', longForm.id === draft.id && 'bg-brand-50 text-brand-900')}>
+                                                        <span className="min-w-0"><span className="block truncate text-sm font-bold">{draft.title || copy('Untitled draft', 'Draft isiyo na kichwa')}</span><span className="mt-1 block truncate text-[11px] text-muted-foreground">{draft.excerpt || copy('No excerpt yet', 'Bado hakuna muhtasari')}</span></span>
+                                                        <span className="shrink-0 text-[10px] text-muted-foreground">v{draft.versions_count || 1}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : null}
+
+                                    {longForm.id && longVersions.length > 1 ? (
+                                        <details className="rounded-2xl border border-border bg-muted/20 px-3 py-2">
+                                            <summary className="cursor-pointer text-xs font-bold text-muted-foreground">{copy(`Revision history (${longVersions.length})`, `Historia ya versions (${longVersions.length})`)}</summary>
+                                            <div className="mt-2 max-h-44 space-y-1 overflow-y-auto">
+                                                {longVersions.map((version, index) => (
+                                                    <div key={version.id} className="flex items-center justify-between gap-3 rounded-lg bg-background px-3 py-2">
+                                                        <span className="min-w-0"><span className="block truncate text-xs font-semibold">Version {version.version}{index === 0 ? ` · ${copy('latest', 'ya sasa')}` : ''}</span><span className="block text-[10px] text-muted-foreground">{new Date(version.created_at).toLocaleString()}</span></span>
+                                                        {index > 0 ? <button type="button" onClick={() => restoreLongVersion(version.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] font-bold hover:bg-muted"><RotateCcw className="size-3" />{copy('Restore', 'Rejesha')}</button> : null}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </details>
+                                    ) : null}
+
                                     <div className="grid gap-4 md:grid-cols-1">
                                         <div className="space-y-2">
                                             <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Title', 'Kichwa')}</label>
@@ -779,8 +925,9 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                             value={longForm.body}
                                             onChange={(nextBody) => setLongForm((current) => ({ ...current, body: nextBody }))}
                                             placeholder={copy('Write your article, add headings, links, images, and embeds...', 'Andika makala yako, ongeza vichwa, links, picha na embeds...')}
-                                            uploadUrl={`${merchantApiBase}/upload/media`}
+                                            uploadUrl={`${merchantApiBase}/content/upload/media`}
                                             uploadFields={merchantPayload}
+                                            bookmarkSearchUrl={`${merchantApiBase}/posts/api`}
                                         />
                                     </div>
 

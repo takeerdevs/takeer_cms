@@ -14,7 +14,7 @@ return new class extends Migration {
             $table->string('slug')->unique();
             $table->string('excerpt', 500)->nullable();
             $table->longText('body');
-            $table->enum('format', ['plain_text', 'markdown', 'html', 'editorjs'])->default('editorjs');
+            $table->enum('format', ['plain_text', 'markdown', 'html', 'lexical'])->default('lexical');
 
             $table->enum('visibility', ['draft', 'published', 'archived'])->default('draft');
             $table->decimal('price', 12, 2)->nullable();

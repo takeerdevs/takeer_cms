@@ -7,7 +7,8 @@ import {
     CheckCircle, Circle, Loader2, Download, Headphones, BookOpenText
 } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
-import EditorJsRenderer from '@/Components/EditorJsRenderer';
+import LongFormContentRenderer from '@/Components/LongFormContentRenderer';
+import { isLexicalDocument } from '@/lib/longFormContent';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { useLocale } from '@/lib/i18n';
@@ -209,17 +210,6 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
         }
     };
 
-    const bodyLooksLikeEditorJs = (body) => {
-        if (typeof body === 'object' && body !== null && Array.isArray(body.blocks)) return true;
-        if (typeof body !== 'string') return false;
-        try {
-            const parsed = JSON.parse(body);
-            return Array.isArray(parsed?.blocks);
-        } catch {
-            return false;
-        }
-    };
-
     const sanitizeHtml = (html) => {
         if (typeof window === 'undefined') return String(html || '');
         const parser = new DOMParser();
@@ -254,8 +244,8 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
             );
         }
 
-        if (contentItem.format === 'editorjs' || bodyLooksLikeEditorJs(contentItem.body)) {
-            return <EditorJsRenderer data={contentItem.body} />;
+        if (contentItem.format === 'lexical' || isLexicalDocument(contentItem.body)) {
+            return <LongFormContentRenderer data={contentItem.body} />;
         }
 
         if (contentItem.format === 'html' || String(contentItem.body).trim().startsWith('<')) {
