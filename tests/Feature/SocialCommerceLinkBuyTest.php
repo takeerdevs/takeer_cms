@@ -55,6 +55,50 @@ class SocialCommerceLinkBuyTest extends TestCase
         $this->assertDatabaseCount('social_commerce_requests', 0);
     }
 
+    public function test_invited_seller_can_dismiss_an_unrelated_listing_and_retained_evidence_is_removed(): void
+    {
+        $buyer = User::factory()->create([
+            'role' => 'buyer',
+            'phone_number' => '+255700000099',
+            'phone_verified_at' => now(),
+        ]);
+
+        $this->actingAs($buyer)->post('/api/social-commerce/requests', [
+            'original_url' => 'https://www.instagram.com/p/NOT_THE_SELLER/',
+            'idempotency_key' => 'seller-dismiss-1',
+            'buyer_product_note' => 'Wrong seller item',
+            'requested_quantity' => 1,
+            'seller_phone' => '+255763141335',
+            'seller_phone_source' => 'buyer_entered',
+            'seller_contact_attested' => '1',
+            'buyer_screenshot' => UploadedFile::fake()->image('wrong-item.jpg'),
+        ], ['Accept' => 'application/json'])->assertCreated();
+
+        $socialRequest = SocialCommerceRequest::query()->firstOrFail();
+        $evidencePath = substr((string) $socialRequest->buyer_screenshot_path, strlen('private://'));
+        Storage::disk('s3')->assertExists($evidencePath);
+
+        $inviteResponse = $this->actingAs($buyer)->postJson('/api/social-commerce/requests/'.$socialRequest->public_id.'/invitations', [
+            'channel' => 'copy',
+        ])->assertCreated();
+        $fragment = (string) parse_url((string) $inviteResponse->json('claim_url'), PHP_URL_FRAGMENT);
+        $token = str_starts_with($fragment, 'token=') ? substr($fragment, 6) : '';
+        $invitation = SocialCommerceRequestInvitation::query()->firstOrFail();
+
+        auth()->guard('web')->logout();
+        $this->postJson('/api/social-commerce/claims/'.$invitation->public_id.'/dismiss', [
+            'claim_token' => $token,
+        ])->assertOk()->assertJsonPath('request_status', SocialCommerceRequest::DECLINED);
+
+        $socialRequest->refresh();
+        $this->assertSame('seller_not_listing', $socialRequest->closed_reason);
+        $this->assertSame('redacted://seller-dismissed', $socialRequest->original_url);
+        $this->assertNull($socialRequest->buyer_screenshot_path);
+        $this->assertNull($socialRequest->preview_snapshot);
+        $this->assertSame('revoked', $invitation->fresh()->status);
+        Storage::disk('s3')->assertMissing($evidencePath);
+    }
+
     public function test_buyer_can_attach_private_screenshot_evidence_for_a_carousel_item(): void
     {
         $buyer = User::factory()->create([
@@ -143,14 +187,25 @@ class SocialCommerceLinkBuyTest extends TestCase
         $this->assertDatabaseCount('orders', 0);
 
         $inviteResponse = $this->actingAs($buyer)->postJson('/api/social-commerce/requests/'.$request->public_id.'/invitations', [
-            'channel' => 'share_link',
+            'channel' => 'copy',
         ])->assertCreated();
         $claimUrl = $inviteResponse->json('claim_url');
+        $shortClaimUrl = $inviteResponse->json('short_claim_url');
         $token = parse_url($claimUrl, PHP_URL_FRAGMENT);
         $token = str_starts_with((string) $token, 'token=') ? substr((string) $token, 6) : '';
         $invitation = SocialCommerceRequestInvitation::query()->firstOrFail();
         $this->assertNotSame('', $token);
+        $this->assertMatchesRegularExpression('#/sb/[A-Za-z0-9]{16}$#', (string) $shortClaimUrl);
+        $this->assertSame(16, strlen((string) $invitation->short_code));
+        $this->assertNotSame('', (string) $invitation->short_token_hash);
         $this->assertStringNotContainsString($token, json_encode($invitation->message_snapshot));
+        $this->get($shortClaimUrl)->assertRedirect(route('social-commerce.claim', ['invitation' => $invitation->public_id]).'#token='.$invitation->short_code);
+
+        $reusedInviteResponse = $this->actingAs($buyer)->postJson('/api/social-commerce/requests/'.$request->public_id.'/invitations', [
+            'channel' => 'copy',
+        ])->assertCreated();
+        $this->assertSame($shortClaimUrl, $reusedInviteResponse->json('short_claim_url'));
+        $this->assertDatabaseCount('social_commerce_request_invitations', 1);
 
         $this->actingAs($sellerUser)->postJson('/api/social-commerce/claims/'.$invitation->public_id.'/accept', [
             'claim_token' => $token,
@@ -167,9 +222,27 @@ class SocialCommerceLinkBuyTest extends TestCase
             'inventory_count' => 5,
         ]);
 
+        $this->actingAs($sellerUser)->getJson('/api/merchant/social-commerce/requests/'.$request->public_id.'/products?q=Seller')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $product->id);
+
         $this->actingAs($sellerUser)->postJson('/api/merchant/social-commerce/requests/'.$request->public_id.'/match-product', [
             'product_id' => $product->id,
-        ])->assertOk();
+        ])->assertOk()
+            ->assertJsonPath('data.product.id', $product->id)
+            ->assertJsonPath('data.product.slug', $product->slug)
+            ->assertJsonPath('data.product.url', route('product.show', ['product' => $product->slug]));
+        $this->assertDatabaseHas('social_product_links', [
+            'platform' => 'instagram',
+            'url_hash' => $request->url_hash,
+            'product_id' => $product->id,
+            'merchant_id' => $merchant->id,
+        ]);
+        $this->postJson('/api/social-commerce/resolve', ['url' => $request->original_url])
+            ->assertOk()
+            ->assertJsonPath('matched', true)
+            ->assertJsonPath('product.id', $product->id)
+            ->assertJsonPath('product.url', route('product.show', ['product' => $product->slug]));
         $this->actingAs($sellerUser)->postJson('/api/merchant/social-commerce/requests/'.$request->public_id.'/offer', [
             'product_id' => $product->id,
             'quantity' => 1,

@@ -11,13 +11,13 @@ import { trackPlatformEvent } from '@/lib/attribution';
 import { useLocale } from '@/lib/i18n';
 
 export default function SearchPage() {
-    const { initialQuery = '', initialPage = 1, initialFilters = {}, countries = [], productCategories = [], serviceCategories = [] } = usePage().props;
+    const { initialQuery = '', initialPage = 1, initialFilters = {}, countries = [], productCategories = [] } = usePage().props;
     const { t } = useLocale();
     const sentinelRef = useRef(null);
     const autoSearchReadyRef = useRef(false);
     const [query, setQuery] = useState(initialQuery || '');
     const [filters, setFilters] = useState({
-        type: initialFilters.type || 'all',
+        type: ['physical', 'digital', 'custom', 'creator'].includes(initialFilters.type) ? initialFilters.type : 'all',
         surface: initialFilters.surface || 'all',
         category_id: initialFilters.category_id || '',
         sub_category_id: initialFilters.sub_category_id || '',
@@ -42,7 +42,7 @@ export default function SearchPage() {
     useEffect(() => {
         setQuery(initialQuery || '');
         setFilters({
-            type: initialFilters.type || 'all',
+            type: ['physical', 'digital', 'custom', 'creator'].includes(initialFilters.type) ? initialFilters.type : 'all',
             surface: initialFilters.surface || 'all',
             category_id: initialFilters.category_id || '',
             sub_category_id: initialFilters.sub_category_id || '',
@@ -114,7 +114,9 @@ export default function SearchPage() {
         })
             .then((res) => {
                 if (cancelled) return;
-                const data = res.data?.data || [];
+                // Older search indexes may still return service entities. Hide
+                // them at the frontend until service listings are launched.
+                const data = (res.data?.data || []).filter((item) => item.entity_type !== 'service' && item.payload?.type !== 'service');
                 const nextMeta = res.data?.meta || null;
                 setResults(data);
                 setMeta(nextMeta);
@@ -167,7 +169,7 @@ export default function SearchPage() {
             },
         })
             .then((res) => {
-                const data = res.data?.data || [];
+                const data = (res.data?.data || []).filter((item) => item.entity_type !== 'service' && item.payload?.type !== 'service');
                 const nextMeta = res.data?.meta || null;
                 setResults((current) => {
                     const seen = new Set(current.map((item) => `${item.entity_type}-${item.entity_id}`));
@@ -212,10 +214,6 @@ export default function SearchPage() {
     };
 
     const selectedProductCategory = productCategories.find((category) => String(category.id) === String(filters.category_id));
-    const selectedServiceCategory = serviceCategories.find((category) => (
-        String(category.id) === String(filters.service_category_id)
-        || (!filters.service_category_id && category.name === filters.service_category)
-    ));
 
     const useBrowserLocation = () => {
         setLocationError('');
@@ -299,10 +297,6 @@ export default function SearchPage() {
                                         type,
                                         category_id: type === 'physical' ? prev.category_id : '',
                                         sub_category_id: type === 'physical' ? prev.sub_category_id : '',
-                                        service_category: type === 'service' ? prev.service_category : '',
-                                        service_subcategory: type === 'service' ? prev.service_subcategory : '',
-                                        service_category_id: type === 'service' ? prev.service_category_id : '',
-                                        service_subcategory_id: type === 'service' ? prev.service_subcategory_id : '',
                                     }));
                                 }}
                                 className="h-10 rounded-xl border border-border bg-background px-3 text-sm font-semibold"
@@ -310,7 +304,6 @@ export default function SearchPage() {
                                 <option value="all">{t('search.allOffers')}</option>
                                 <option value="physical">{t('search.physical')}</option>
                                 <option value="digital">{t('search.digital')}</option>
-                                <option value="service">{t('search.service')}</option>
                                 <option value="custom">{t('search.custom')}</option>
                                 <option value="creator">{t('search.creator')}</option>
                             </select>
@@ -352,47 +345,7 @@ export default function SearchPage() {
                                 </select>
                             </div>
                         )}
-                        {filters.type === 'service' && (
-                            <div className="grid grid-cols-2 gap-2">
-                                <select
-                                    value={filters.service_category_id}
-                                    onChange={(e) => {
-                                        const category = serviceCategories.find((item) => String(item.id) === e.target.value);
-                                        setFilters(prev => ({
-                                            ...prev,
-                                            service_category_id: e.target.value,
-                                            service_subcategory_id: '',
-                                            service_category: category?.name || '',
-                                            service_subcategory: '',
-                                        }));
-                                    }}
-                                    className="h-10 rounded-xl border border-border bg-background px-3 text-sm font-semibold"
-                                >
-                                    <option value="">{t('search.anyServiceCategory')}</option>
-                                    {serviceCategories.map((category) => (
-                                        <option key={category.id} value={category.id}>{category.name}</option>
-                                    ))}
-                                </select>
-                                <select
-                                    value={filters.service_subcategory_id}
-                                    onChange={(e) => {
-                                        const subcategory = (selectedServiceCategory?.children || []).find((item) => String(item.id) === e.target.value);
-                                        setFilters(prev => ({
-                                            ...prev,
-                                            service_subcategory_id: e.target.value,
-                                            service_subcategory: subcategory?.name || '',
-                                        }));
-                                    }}
-                                    disabled={!selectedServiceCategory}
-                                    className="h-10 rounded-xl border border-border bg-background px-3 text-sm font-semibold disabled:opacity-50"
-                                >
-                                    <option value="">{t('search.anySpecialty')}</option>
-                                    {(selectedServiceCategory?.children || []).map((category) => (
-                                        <option key={category.id} value={category.id}>{category.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
+                        {/* Service category filters are commented out until service listings launch. */}
                         <div className="grid grid-cols-[1fr_auto] gap-2">
                             <input
                                 value={filters.location}
@@ -539,8 +492,6 @@ function countVisibleFilters(filters = {}) {
         filters.type,
         filters.category_id,
         filters.sub_category_id,
-        filters.service_category_id || filters.service_category,
-        filters.service_subcategory_id || filters.service_subcategory,
         filters.country_id,
         filters.location,
     ];

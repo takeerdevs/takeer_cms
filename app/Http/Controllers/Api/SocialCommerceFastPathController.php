@@ -13,9 +13,35 @@ class SocialCommerceFastPathController extends Controller
     public function resolve(Request $request, SocialCommerceFastPathService $fastPath): JsonResponse
     {
         $data = $request->validate(['url' => ['required', 'url:http,https', 'max:2048']]);
-        if (!config('social_commerce.connected_merchant_fast_path_enabled')) return response()->json(['matched' => false, 'reason' => 'disabled']);
         $match = $fastPath->resolve($data['url']);
-        return response()->json($match ? ['matched' => true, 'merchant' => ['id' => $match['merchant']->id, 'display_name' => $match['merchant']->display_name, 'username' => $match['merchant']->username], 'product' => ['id' => $match['product']->id, 'title' => $match['product']->title], 'provenance' => $match['provenance']] : ['matched' => false]);
+        $mappingSource = data_get($match, 'social_product_link.metadata.mapping_source');
+
+        // Manual seller-confirmed mappings are always available. The feature flag
+        // still controls mappings created through the connected-account endpoint.
+        if (!$match || (!config('social_commerce.connected_merchant_fast_path_enabled') && $mappingSource !== 'social_commerce_request')) {
+            return response()->json(['matched' => false]);
+        }
+
+        $product = $match['product'];
+        $productUrl = route('product.show', ['product' => $product->slug ?: $product->id]);
+
+        return response()->json([
+            'matched' => true,
+            'merchant' => [
+                'id' => $match['merchant']->id,
+                'display_name' => $match['merchant']->display_name,
+                'username' => $match['merchant']->username,
+            ],
+            'product' => [
+                'id' => $product->id,
+                'title' => $product->title,
+                'slug' => $product->slug,
+                'price' => $product->price !== null ? (float) $product->price : null,
+                'url' => $productUrl,
+            ],
+            'product_url' => $productUrl,
+            'provenance' => $match['provenance'],
+        ]);
     }
 
     public function map(Request $request, SocialCommerceFastPathService $fastPath): JsonResponse

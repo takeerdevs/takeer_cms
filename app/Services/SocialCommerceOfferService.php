@@ -16,7 +16,10 @@ use Illuminate\Validation\ValidationException;
 
 class SocialCommerceOfferService
 {
-    public function __construct(private readonly SocialCommerceAuditService $audit) {}
+    public function __construct(
+        private readonly SocialCommerceAuditService $audit,
+        private readonly SocialCommerceFastPathService $fastPath,
+    ) {}
 
     public function matchProduct(SocialCommerceRequest $request, User $user, int $productId, ?Request $httpRequest = null): SocialCommerceRequest
     {
@@ -38,6 +41,7 @@ class SocialCommerceOfferService
                 throw ValidationException::withMessages(['request' => 'This request is not ready for product setup.']);
             }
             $locked->update(['product_id' => $product->id]);
+            $this->fastPath->mapRequestProduct($locked->fresh(['claimedMerchant']), $product, $user);
             $this->audit->record($locked, 'social_product_matched', $from, $locked->status, $httpRequest, $user->id, 'user', 'internal', ['product_id' => $product->id]);
             $matched = $locked->fresh(['product', 'claimedMerchant']);
             if ($from === SocialCommerceRequest::ONBOARDING) {
@@ -70,6 +74,7 @@ class SocialCommerceOfferService
             ]);
             $this->audit->record($request, 'social_product_created', $request->status, $request->status, $httpRequest, $user->id, 'user', 'internal', ['product_id' => $product->id]);
             $request->update(['product_id' => $product->id]);
+            $this->fastPath->mapRequestProduct($request->fresh(['claimedMerchant']), $product, $user);
             return $request->fresh(['product', 'claimedMerchant']);
         });
     }

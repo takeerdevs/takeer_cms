@@ -67,7 +67,9 @@ export default function OfferingGroups({ merchantUsername }) {
     const [builderSaving, setBuilderSaving] = useState(false);
     const [form, setForm] = useState({
         title: '',
-        template_key: 'service_package',
+        // Service packages remain supported by the backend, but are hidden from
+        // the launch UI until service-provider workflows are ready.
+        template_key: 'menu_board',
         description: '',
         publish_targets: defaultAutoPostTargets,
     });
@@ -88,7 +90,12 @@ export default function OfferingGroups({ merchantUsername }) {
         setLoading(true);
         try {
             const response = await axios.get('/api/merchant/offering-groups');
-            setTemplates(response.data?.templates || {});
+            const serverTemplates = response.data?.templates || {};
+            // Keep the service template in the API for later reactivation, but
+            // do not offer it as a creation choice during the digital/physical launch.
+            setTemplates(Object.fromEntries(
+                Object.entries(serverTemplates).filter(([key]) => key !== 'service_package')
+            ));
             setGroups(response.data?.groups?.data || []);
         } catch (error) {
             toast.error(error.response?.data?.message || copy('Failed to load offering groups.', 'Imeshindikana kupakia makundi ya ofa.'));
@@ -158,7 +165,11 @@ export default function OfferingGroups({ merchantUsername }) {
             params.set('exclude_group_id', groupId);
             if (search.trim()) params.set('search', search.trim());
             const response = await axios.get(`/api/merchant/offering-groups/catalog?${params.toString()}`);
-            setCatalog(response.data?.items || []);
+            // Service items may still exist in the backend catalog. They remain
+            // available to old groups, but cannot be added to new groups here.
+            setCatalog((response.data?.items || []).filter((item) => (
+                String(item.product_type || item.kind || item.type || '').toLowerCase() !== 'service'
+            )));
         } catch (error) {
             toast.error(error.response?.data?.message || copy('Failed to load catalog.', 'Imeshindwa kupakia catalog.'));
         } finally {
@@ -198,7 +209,7 @@ export default function OfferingGroups({ merchantUsername }) {
             });
             toast.success(copy('Offering group created.', 'Kundi la ofa limeundwa.'));
             setCreateOpen(false);
-            setForm({ title: '', template_key: 'service_package', description: '', publish_targets: defaultAutoPostTargets });
+            setForm({ title: '', template_key: 'menu_board', description: '', publish_targets: defaultAutoPostTargets });
             await loadGroups();
         } catch (error) {
             toast.error(error.response?.data?.message || copy('Failed to create offering group.', 'Imeshindikana kuunda kundi la ofa.'));
@@ -331,7 +342,7 @@ export default function OfferingGroups({ merchantUsername }) {
                 description: selectedGroup.description || '',
                 status: selectedGroup.status || 'draft',
                 group_type: selectedGroup.group_type || 'package',
-                template_key: selectedGroup.template_key || 'service_package',
+                template_key: selectedGroup.template_key || 'menu_board',
                 pricing_mode: selectedGroup.pricing_mode || 'sum_children',
                 base_price: selectedGroup.base_price ?? null,
                 checkout_mode: selectedGroup.checkout_mode || 'select_items',
@@ -380,7 +391,7 @@ export default function OfferingGroups({ merchantUsername }) {
                     <div>
                         <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">{copy('Offering groups', 'Makundi ya ofa')}</h1>
                         <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
-                            {copy('Build menus, packages, itineraries, and nested offerings from products, services, and other groups.', 'Unda menyu, vifurushi, ratiba na ofa zilizopangiliwa kutoka bidhaa, huduma na makundi mengine.')}
+                            {copy('Build menus, packages, itineraries, and nested offerings from products and other groups.', 'Unda menyu, vifurushi, ratiba na ofa zilizopangiliwa kutoka bidhaa na makundi mengine.')}
                         </p>
                     </div>
                     <Button type="button" className="h-12 rounded-2xl px-5 font-black" onClick={() => setCreateOpen(true)}>
@@ -388,7 +399,7 @@ export default function OfferingGroups({ merchantUsername }) {
                     </Button>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-2">
                     {Object.entries(templates).map(([key, template]) => {
                         const Icon = templateIcon[key] || Box;
                         return (
@@ -426,7 +437,7 @@ export default function OfferingGroups({ merchantUsername }) {
                                 <div className="p-12 text-center">
                                     <ClipboardList className="mx-auto h-10 w-10 text-slate-300" />
                                     <p className="mt-3 text-sm font-black text-slate-900">{copy('No offering groups yet.', 'Hakuna makundi ya ofa bado.')}</p>
-                                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Start with a menu board, service package, or itinerary.', 'Anza na menyu, kifurushi cha huduma au ratiba.')}</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Start with a menu board, package, or itinerary.', 'Anza na menyu, kifurushi au ratiba.')}</p>
                                 </div>
                             ) : (
                                 <div className="divide-y divide-slate-100">
@@ -485,7 +496,7 @@ export default function OfferingGroups({ merchantUsername }) {
                                 <div className="p-10 text-center">
                                     <Layers className="mx-auto h-10 w-10 text-slate-300" />
                                     <p className="mt-3 text-sm font-black text-slate-900">{copy('Select a group to build it.', 'Chagua kundi kulijenga.')}</p>
-                                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Add menu items, services, products, or another group.', 'Ongeza bidhaa za menyu, huduma, bidhaa au kundi jingine.')}</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy('Add products or another group.', 'Ongeza bidhaa au kundi jingine.')}</p>
                                 </div>
                             ) : (
                                 <div className="divide-y divide-slate-100">
@@ -545,7 +556,7 @@ export default function OfferingGroups({ merchantUsername }) {
                                                 <select className="h-10 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={selectedGroup.checkout_mode || 'select_items'} onChange={(event) => updateSelectedGroup({ checkout_mode: event.target.value })}>
                                                     <option value="select_items">{copy('Customer selects items', 'Mteja anachagua bidhaa')}</option>
                                                     <option value="buy_group">{copy('Buy whole group', 'Nunua kundi lote')}</option>
-                                                    <option value="book_group">{copy('Book group', 'Weka booking ya kundi')}</option>
+                                                    {/* Service-only group checkout is commented out for the launch. */}
                                                     <option value="request_quote">{copy('Request quote', 'Omba bei')}</option>
                                                     <option value="visible_only">{copy('Visible only', 'Inaonekana tu')}</option>
                                                 </select>

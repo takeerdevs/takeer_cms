@@ -39,6 +39,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const [isFormOpen, setIsFormOpen] = useState(false);
     const [savingFeeId, setSavingFeeId] = useState(null);
     const [feeDrafts, setFeeDrafts] = useState({});
     const formRef = useRef(null);
@@ -80,7 +81,10 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: googleMapsApiKey,
-        libraries: libraries
+        libraries: libraries,
+        version: 'weekly',
+        authReferrerPolicy: 'origin',
+        preventGoogleFontsLoading: true,
     });
 
     const autocompleteRef = useRef(null);
@@ -279,6 +283,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
 
     const handleEdit = (zone) => {
         setEditingId(zone.id);
+        setIsFormOpen(true);
         setNewZone({
             zone_name: zone.zone_name || '',
             flat_rate_fee: zone.flat_rate_fee || '',
@@ -314,13 +319,12 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         setIntercityFeeKnown(zone.delivery_type === 'intercity_bus' ? Number(zone.flat_rate_fee || 0) > 0 : false);
 
         // Scroll to form
-        if (formRef.current) {
-            formRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
+        window.setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
     };
 
     const handleCancelEdit = () => {
         setEditingId(null);
+        setIsFormOpen(false);
         setNewZone({
             zone_name: '',
             flat_rate_fee: '',
@@ -719,7 +723,21 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                 </div>
             )}
 
-            <form ref={formRef} onSubmit={handleSubmit} className={`space-y-4 border-t pt-4 border-dashed mt-4 p-4 rounded-2xl transition-colors duration-300 ${editingId ? 'bg-brand-50/50 border-brand-200' : 'border-slate-200'}`}>
+            {!isFormOpen && (
+                <button
+                    type="button"
+                    onClick={() => setIsFormOpen(true)}
+                    className="flex w-full items-center justify-between gap-4 rounded-2xl border border-dashed border-brand-200 bg-brand-50/30 px-4 py-3 text-left transition hover:border-brand-400 hover:bg-brand-50"
+                >
+                    <span>
+                        <span className="block text-xs font-black text-brand-900">{copy('Add a delivery method', 'Ongeza njia ya delivery')}</span>
+                        <span className="mt-1 block text-[11px] font-semibold text-brand-800/70">{copy('Choose where you deliver, the customer price, and the expected time.', 'Chagua eneo unalofikisha, gharama ya mteja, na muda wa kufikisha.')}</span>
+                    </span>
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm"><Plus className="h-4 w-4" /></span>
+                </button>
+            )}
+
+            {isFormOpen && <form ref={formRef} onSubmit={handleSubmit} className={`space-y-4 border-t pt-4 border-dashed mt-4 p-4 rounded-2xl transition-colors duration-300 ${editingId ? 'bg-brand-50/50 border-brand-200' : 'border-slate-200'}`}>
                 <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                         <div className={`p-1.5 rounded-lg ${editingId ? 'bg-brand-600' : 'bg-slate-900'} text-white`}>
@@ -729,11 +747,9 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                             {editingId ? copy('Edit shipping method', 'Hariri Njia ya Usafirishaji') : copy('Add new method', 'Ongeza Njia Mpya')}
                         </h3>
                     </div>
-                    {editingId && (
-                        <Button variant="ghost" size="sm" onClick={handleCancelEdit} className="h-7 text-xs font-bold gap-1 text-slate-500 hover:text-slate-900 border border-slate-200">
-                            <X className="h-3 w-3" /> {copy('Cancel', 'Ghairi')}
-                        </Button>
-                    )}
+                    <Button type="button" variant="ghost" size="sm" onClick={handleCancelEdit} className="h-7 text-xs font-bold gap-1 text-slate-500 hover:text-slate-900 border border-slate-200">
+                        <X className="h-3 w-3" /> {copy('Close', 'Funga')}
+                    </Button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     {[
@@ -1178,7 +1194,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                     {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : (editingId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />)}
                     {editingId ? copy('UPDATE METHOD', 'SASISHA NJIA') : copy('SAVE METHOD', 'HIFADHI NJIA')}
                 </Button>
-            </form>
+            </form>}
         </div>
     );
 }

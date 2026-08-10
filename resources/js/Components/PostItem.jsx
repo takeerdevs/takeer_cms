@@ -63,7 +63,7 @@ const TEXT_BACKGROUNDS = {
     gradient_midnight: 'linear-gradient(135deg, #1e1b4b, #4c1d95)',
     solid_black: '#000000',
     solid_white: '#ffffff',
-    solid_brand: '#0284c7',
+    solid_brand: '#cf3e23',
 };
 
 const QUICK_REACTIONS = ['👍', '❤️', '🔥'];

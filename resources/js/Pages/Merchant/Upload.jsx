@@ -8,7 +8,7 @@ import { Textarea } from '@/Components/ui/Textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/Components/ui/Dialog';
 import {
     UploadCloud, Sparkles, CheckCircle2, ChevronRight, ChevronLeft,
-    Tags, AlertTriangle, PenLine, MapPin, Link as LinkIcon,
+    Tags, AlertTriangle, PenLine, MapPin, Link as LinkIcon, Link2,
     Edit3, X, ShoppingBag, Globe, Calendar, ArrowLeft,
     FileUp, Phone, MessageCircle, ExternalLink, File, CheckCircle, Loader2,
     Plus, Search, Trash2, Info, Store, ShieldCheck, PlayCircle, Music, Images, Palette,
@@ -421,12 +421,20 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const { auth } = usePage().props;
     const merchantProfiles = auth?.user?.merchant_profiles ?? [];
     const uploadableProfiles = merchantProfiles.filter((profile) => (
-        ['products.create', 'digital_products.create', 'services.create'].some((permission) => (
+        // Services are intentionally hidden from the launch UI. Keep the service
+        // permission in the backend so this can be re-enabled without migration work.
+        ['products.create', 'digital_products.create'].some((permission) => (
             hasMerchantPermission(profile.permissions || [], permission)
         ))
     ));
     const currentMerchant = auth?.user?.merchant_profiles?.find(m => m.username === merchantUsername)
         || auth?.user?.merchant_profiles?.[0] || {};
+    const socialRequestId = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('social_request')
+        : null;
+    const socialRequestReturnUrl = socialRequestId
+        ? '/merchant/social-commerce/requests/' + encodeURIComponent(socialRequestId)
+        : null;
     const uploadSwitchRedirect = (merchant) => (
         `/merchant/${encodeURIComponent(merchant.username)}/upload${typeof window !== 'undefined' ? window.location.search : ''}`
     );
@@ -440,7 +448,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         ].filter(Boolean)));
     }, [merchantTimezone, currentMerchant?.timezone, timezoneOptions]);
 
-    // Flow state: 'select', 'physical', 'digital', 'service'
+    // Flow state: 'select', 'physical', 'digital'. The service flow remains below
+    // as dormant code for the later service-provider launch.
     const [step, setStep] = useState('select');
     const [uploadModule, setUploadModule] = useState(null);
     const [menuDetails, setMenuDetails] = useState({
@@ -1042,7 +1051,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (editId) {
             setProductId(editId);
             loadProductForEdit(editId);
-        } else if (['physical', 'digital', 'service'].includes(typeParam)) {
+        } else if (['physical', 'digital'].includes(typeParam)) {
             setProductType(typeParam);
             setStep(typeParam);
             if (typeParam === 'physical') setShowManualForm(true);
@@ -1054,7 +1063,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             }
         }
         fetchCatalogRoot();
-        fetchServiceCategories();
+        // Service categories are intentionally not loaded while service listings
+        // are hidden from the launch UI. Re-enable this call with the service card.
         fetchMerchantProducts();
         fetchPromotables();
         fetchShippingProfiles();
@@ -2716,6 +2726,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     };
 
     const handleTypeSelect = (type) => {
+        // A stale/deep link to ?type=service must not reopen the dormant flow.
+        if (type === 'service') {
+            setProductType('physical');
+            setStep('select');
+            return;
+        }
         setProductType(type);
         setStep(type === 'service' ? 'service_modules' : type);
         if (type === 'physical') {
@@ -4084,9 +4100,23 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
             const data = res.data;
 
+            if (socialRequestId && data.product_id) {
+                try {
+                    await axios.post('/api/merchant/social-commerce/requests/' + encodeURIComponent(socialRequestId) + '/match-product', {
+                        product_id: Number(data.product_id),
+                    });
+                } catch {
+                    toast.info(copy('Product created. Link it to the pending social request when you return.', 'Bidhaa imeundwa. Iunganishe na ombi la social lililo pending ukirudi.'), { id: 'publish' });
+                }
+            }
+
             toast.success(data.message || copy('Done! The product is now live.', 'Tayari! Bidhaa imewekwa sokoni kikamilifu.'), { id: 'publish' });
             setTimeout(() => {
                 resetForm();
+                if (socialRequestReturnUrl) {
+                    window.location.href = socialRequestReturnUrl;
+                    return;
+                }
                 if (merchantUsername || data.merchantUsername) {
                     window.location.href = `/merchant/${merchantUsername || data.merchantUsername}/dashboard`;
                 } else {
@@ -4437,7 +4467,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         <div className="flex flex-col items-center gap-2 mt-4">
                             <ProfileSwitcher
                                 variant="hero"
-                                profiles={uploadableProfiles}
+                                profiles={socialRequestId
+                                    ? uploadableProfiles.filter((profile) => profile.username === merchantUsername)
+                                    : uploadableProfiles}
                                 switchRedirect={uploadSwitchRedirect}
                             />
                         </div>
@@ -4450,6 +4482,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             <p className="text-muted-foreground">{copy('Choose a product type.', 'Chagua aina ya bidhaa.')}</p>
                         </div>
                     </div>
+
+                    {socialRequestId && (
+                        <div className="flex items-start gap-3 rounded-2xl border border-brand-200 bg-brand-50/70 p-4 text-left">
+                            <Link2 className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" />
+                            <div className="min-w-0">
+                                <p className="font-black text-brand-950">{copy('Product for a pending social request', 'Bidhaa ya ombi la social lililo pending')}</p>
+                                <p className="mt-1 text-sm leading-6 text-brand-900/80">{copy('Complete this product, then Takeer will return you to the request so you can confirm the buyer offer.', 'Kamilisha bidhaa hii, kisha Takeer itakurudisha kwenye ombi ili uthibitishe offer ya buyer.')}</p>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-1 gap-4">
                         <button
@@ -4480,19 +4522,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             <ChevronRight className="h-6 w-6 ml-auto text-muted-foreground opacity-50 group-hover:text-blue-600" />
                         </button>
 
-                        <button
-                            onClick={() => handleTypeSelect('service')}
-                            className="group relative flex items-center gap-6 p-6 bg-white border border-border rounded-[1rem] hover:border-purple-500 hover:ring-4 hover:ring-purple-500/10 transition-all text-left shadow-sm"
-                        >
-                            <div className="h-16 w-16 bg-purple-50 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                                <Calendar className="h-8 w-8 text-purple-600" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-foreground">{copy('Service / appointment', 'Huduma / miadi')}</h3>
-                                <p className="text-sm text-muted-foreground mt-1">{copy('Salon, consulting, bookings, or in-person training.', 'Saluni, ushauri, booking, au mafunzo ya ana kwa ana.')}</p>
-                            </div>
-                            <ChevronRight className="h-6 w-6 ml-auto text-muted-foreground opacity-50 group-hover:text-purple-600" />
-                        </button>
+                        {/* Services are temporarily commented out for the digital/physical launch.
+                            Re-enable this card when service-provider onboarding is ready. */}
                     </div>
 
                     <PolicyNotice />
@@ -4522,6 +4553,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         </p>
                     </div>
                 </div>
+
+                {socialRequestId && (
+                    <div className="flex items-start gap-3 rounded-2xl border border-brand-200 bg-brand-50/70 p-4">
+                        <Link2 className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" />
+                        <div className="min-w-0">
+                            <p className="font-black text-brand-950">{copy('Product for a pending social request', 'Bidhaa ya ombi la social lililo pending')}</p>
+                            <p className="mt-1 text-sm leading-6 text-brand-900/80">{copy('This form is already scoped to the selected seller account. After publishing, you will return to the request to mark the link ready.', 'Fomu hii tayari imefungwa kwa akaunti ya seller uliyochagua. Baada ya ku-publish, utarudi kwenye ombi kuweka link tayari.')}</p>
+                        </div>
+                    </div>
+                )}
 
                 {/* ── SECTIONS BASED ON PROTYPE ── */}
 

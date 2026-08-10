@@ -27,7 +27,10 @@ export default function ShopLocationsModal({
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: googleMapsApiKey,
-        libraries: libraries
+        libraries: libraries,
+        version: 'weekly',
+        authReferrerPolicy: 'origin',
+        preventGoogleFontsLoading: true,
     });
 
     const getStockForLocation = (locationId) => {

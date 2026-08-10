@@ -14,7 +14,6 @@ import {
     Search,
     ShoppingBag,
     Sparkles,
-    Wrench,
 } from 'lucide-react';
 import { productPriceLabel } from '@/lib/productUnits';
 import { useLocale } from '@/lib/i18n';
@@ -29,7 +28,6 @@ const CATALOG_FILTERS = [
     { key: 'all', label: 'All', statKey: 'catalog_total' },
     { key: 'physical', label: 'Products', statKey: 'physical' },
     { key: 'digital', label: 'Digital', statKey: 'digital' },
-    { key: 'service', label: 'Services', statKey: 'services' },
 ];
 
 export default function PublicCatalog({ merchantSlug, initialData }) {
@@ -38,7 +36,6 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
         { key: 'all', label: t('catalog.all'), statKey: 'catalog_total' },
         { key: 'physical', label: t('catalog.products'), statKey: 'physical' },
         { key: 'digital', label: t('catalog.digital'), statKey: 'digital' },
-        { key: 'service', label: t('catalog.services'), statKey: 'services' },
     ];
     const sentinelRef = useRef(null);
     const getKey = (pageIndex, previousPageData) => {
@@ -79,6 +76,7 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
         const needle = query.trim().toLowerCase();
 
         return products
+            .filter((product) => ['physical', 'digital'].includes(product.type))
             .filter((product) => filter === 'all' || product.type === filter)
             .filter((product) => {
                 if (!needle) return true;
@@ -140,10 +138,9 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
                             </div>
 
                             {catalogStats && (
-                                <div className="grid grid-cols-3 gap-1 border-t border-neutral-100 px-4 py-2.5">
+                                <div className="grid grid-cols-2 gap-1 border-t border-neutral-100 px-4 py-2.5">
                                     <CatalogStatPill label={t('catalog.products')} value={catalogStats.physical} />
                                     <CatalogStatPill label={t('catalog.digital')} value={catalogStats.digital} />
-                                    <CatalogStatPill label={t('catalog.services')} value={catalogStats.services} />
                                 </div>
                             )}
 

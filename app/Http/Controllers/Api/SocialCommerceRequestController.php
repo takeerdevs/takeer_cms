@@ -193,7 +193,7 @@ class SocialCommerceRequestController extends Controller
             'status' => $invitation->status,
             'sent_at' => $invitation->sent_at?->toISOString(),
             'expires_at' => $invitation->expires_at?->toISOString(),
-        ], 'claim_url' => $result['claim_url']], 201);
+        ], 'claim_url' => $result['claim_url'], 'short_claim_url' => $result['short_claim_url'] ?? null], 201);
     }
 
     public function cancel(Request $request, SocialCommerceRequest $socialRequest, SocialCommerceRequestService $requests): SocialCommerceRequestResource

@@ -22,7 +22,7 @@
         
         <!-- Header: Merchant Info -->
         <div class="w-full flex items-center gap-6">
-            <div class="h-24 w-24 rounded-full bg-brand-500 border-4 border-white/20 flex items-center justify-center text-white text-4xl font-bold overflow-hidden bg-[#0284c7]">
+            <div class="h-24 w-24 rounded-full bg-brand-500 border-4 border-white/20 flex items-center justify-center text-white text-4xl font-bold overflow-hidden bg-[#cf3e23]">
                 @if($merchant_avatar)
                     <img src="{{ $merchant_avatar }}" class="w-full h-full object-cover">
                 @else
@@ -53,7 +53,7 @@
                     {{ $title }}
                 </h2>
                 <div class="flex items-center gap-4">
-                    <span class="bg-[#0284c7] text-white text-2xl font-bold px-6 py-2 rounded-full">REF: #{{ $post_id }}</span>
+                    <span class="bg-[#cf3e23] text-white text-2xl font-bold px-6 py-2 rounded-full">REF: #{{ $post_id }}</span>
                     <span class="text-gray-400 text-2xl font-bold uppercase tracking-widest">Scan to Buy</span>
                 </div>
             </div>

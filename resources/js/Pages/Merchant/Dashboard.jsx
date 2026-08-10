@@ -39,7 +39,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const commerceModes = merchantProfile?.business_profile?.commerce_modes || [];
     const recommendedModules = merchantProfile?.business_profile?.recommended_modules || [];
     const { can, canAny } = useMerchantPermissions(merchantSlug);
-    const canCreateItem = canAny(['products.create', 'digital_products.create', 'services.create']);
+    const canCreateItem = canAny(['products.create', 'digital_products.create']);
     const hasModule = (module) => activeModules.includes(module);
     const hasMode = (mode) => commerceModes.includes(mode);
     const usesConfiguredSetup = activeModules.length > 0 || commerceModes.length > 0;
@@ -122,37 +122,17 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
             href: `/merchant/${merchantSlug}/upload?type=physical&module=menu`,
             primary: !hasModule('products') && !hasMode('physical_products'),
         }] : []),
-        ...((hasModule('services') || hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('workshops') || hasModule('rooms') || hasModule('tour_departures') || hasMode('services_bookings')) && can('services.create') ? [{
-            key: 'service',
-            label: hasModule('rooms') ? copy('Add room / accommodation', 'Ongeza chumba / malazi') : hasModule('tour_departures') ? copy('Add tour', 'Ongeza safari') : hasModule('rentals') ? copy('Add rental', 'Ongeza cha kukodisha') : hasModule('workshops') ? copy('Add class / event', 'Ongeza darasa / tukio') : hasModule('appointments') ? copy('Add appointment', 'Ongeza miadi') : hasModule('reservations') ? copy('Add reservation', 'Ongeza reservation') : copy('Add service', 'Ongeza huduma'),
-            icon: hasModule('tour_departures') && !hasModule('rooms') ? MapPin : CalendarClock,
-            href: `/merchant/${merchantSlug}/upload?type=service${hasModule('rooms') ? '&module=rooms' : hasModule('tour_departures') ? '&module=tour_departures' : hasModule('rentals') ? '&module=rentals' : hasModule('workshops') ? '&module=workshops' : hasModule('appointments') ? '&module=appointments' : hasModule('reservations') ? '&module=reservations' : ''}`,
-            primary: !hasModule('products') && !hasMode('physical_products') && !hasModule('menu') && !hasMode('food_menu'),
-        }] : []),
-        ...((hasModule('availability') || hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('rooms') || hasModule('tour_departures') || hasModule('workshops') || hasMode('services_bookings')) && canAny(['services.view', 'services.schedule']) ? [{
-            key: 'availability',
-            label: copy('Schedule', 'Ratiba'),
-            icon: Settings,
-            href: `/merchant/${merchantSlug}/availability`,
-        }] : []),
-        ...((hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('rooms') || hasModule('tour_departures') || hasModule('workshops') || hasMode('services_bookings')) && canAny(['services.view', 'services.schedule']) ? [{
-            key: 'booking-calendar',
-            label: copy('Booking calendar', 'Kalenda ya booking'),
-            icon: CalendarClock,
-            href: `/merchant/${merchantSlug}/bookings`,
-        }] : []),
+        /* Service creation is intentionally commented out for the launch.
+           Restore this quick action when service-provider onboarding is ready. */
+        /* Scheduling and booking quick actions are intentionally commented out
+           with the service launch scope. */
         ...((hasModule('digital_products') || hasMode('digital_products')) && can('digital_products.create') ? [{
             key: 'digital',
             label: copy('Add digital product', 'Ongeza bidhaa ya kidijitali'),
             icon: Download,
             href: `/merchant/${merchantSlug}/upload?type=digital`,
         }] : []),
-        ...((hasModule('custom_orders') || hasModule('quotes') || hasMode('custom_orders_quotes')) && can('services.create') ? [{
-            key: 'custom-order',
-            label: copy('Add custom order', 'Ongeza oda maalum'),
-            icon: Boxes,
-            href: `/merchant/${merchantSlug}/upload?type=service&module=custom_orders`,
-        }] : []),
+        /* Custom service orders are also part of the deferred service launch. */
         ...((hasModule('courses') || hasModule('workshops') || hasMode('courses_learning')) && can('bundles.view') ? [{
             key: 'course',
             label: copy('Courses / classes', 'Kozi / madarasa'),
@@ -202,10 +182,8 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
         { key: 'products', label: copy('Products', 'Bidhaa'), description: copy('Inventory, variants, stock, and product listings.', 'Inventory, variants, stock na orodha za bidhaa.'), icon: Package, href: `/merchant/${merchantSlug}/products`, permissions: ['products.view'], modules: ['products'], modes: ['physical_products'] },
         { key: 'menu', label: copy('Menu', 'Menyu'), description: copy('Food, drinks, add-ons, and menu prices.', 'Chakula, vinywaji, viongezi na bei za menyu.'), icon: Utensils, href: `/merchant/${merchantSlug}/menu`, permissions: ['products.view'], modules: ['menu'], modes: ['food_menu'] },
         { key: 'orders', label: copy('Orders', 'Oda'), description: copy('Purchases, payment status, fulfillment, and dispatch.', 'Manunuzi, hali ya malipo, utimilishaji na usafirishaji.'), icon: ShoppingBag, href: `/merchant/${merchantSlug}/orders`, permissions: ['orders.view'], modules: ['orders'], modes: ['physical_products', 'food_menu', 'digital_products', 'custom_orders_quotes', 'subscriptions_memberships'] },
-        { key: 'services', label: hasModule('rooms') ? copy('Rooms / accommodation', 'Vyumba / malazi') : hasModule('tour_departures') ? copy('Tours', 'Safari') : hasModule('rentals') ? copy('Rentals', 'Kukodisha') : hasModule('appointments') ? copy('Appointments', 'Miadi') : hasModule('reservations') ? copy('Reservations', 'Reservations') : copy('Services', 'Huduma'), description: copy('Services, packages, enquiries, and booking offers.', 'Huduma, vifurushi, maulizo na ofa za booking.'), icon: hasModule('rooms') ? BedDouble : CalendarClock, href: hasModule('rooms') ? `/merchant/${merchantSlug}/rooms` : hasModule('tour_departures') ? `/merchant/${merchantSlug}/tours` : hasModule('rentals') ? `/merchant/${merchantSlug}/rentals` : hasModule('workshops') ? `/merchant/${merchantSlug}/workshops` : hasModule('appointments') ? `/merchant/${merchantSlug}/appointments` : hasModule('reservations') ? `/merchant/${merchantSlug}/reservations` : `/merchant/${merchantSlug}/services`, permissions: ['services.view'], modules: ['services', 'rooms', 'tour_departures', 'rentals', 'appointments', 'reservations', 'workshops'], modes: ['services_bookings'] },
-        { key: 'custom_orders', label: copy('Custom orders', 'Oda maalum'), description: copy('Customer requirements, quotes, and made-to-order work.', 'Mahitaji ya mteja, bei na kazi za kuagiza maalum.'), icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permissions: ['services.view'], modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
-        { key: 'availability', label: copy('Schedule', 'Ratiba'), description: copy('Rules, slots, capacity, buffers, and date-specific sessions.', 'Rules, nafasi, uwezo, buffers na vipindi vya tarehe maalum.'), icon: Clock3, href: `/merchant/${merchantSlug}/availability`, permissions: ['services.view', 'services.schedule'], modules: ['availability', 'bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
-        { key: 'bookings', label: copy('Booking calendar', 'Kalenda ya booking'), description: copy('Scheduled requests, sessions, reservations, and upcoming work.', 'Maombi yaliyopangwa, vipindi, reservations na kazi zijazo.'), icon: CalendarClock, href: `/merchant/${merchantSlug}/bookings`, permissions: ['services.view', 'services.schedule'], modules: ['bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
+        /* Service, custom-order, availability, and booking workspace items are
+           intentionally commented out for the launch. */
         { key: 'digital_products', label: copy('Digital products', 'Bidhaa za kidijitali'), description: copy('Downloads, files, content access, and license keys.', 'Upakuaji, faili, ufikiaji wa maudhui na funguo za leseni.'), icon: Download, href: `/merchant/${merchantSlug}/downloads`, permissions: ['digital_products.view'], modules: ['digital_products'], modes: ['digital_products'] },
         { key: 'courses', label: copy('Courses / classes', 'Kozi / madarasa'), description: copy('Learning services, lessons, cohorts, and materials.', 'Huduma za kujifunza, masomo, cohorts na vifaa.'), icon: BookOpenText, href: `/merchant/${merchantSlug}/courses`, permissions: ['bundles.view'], modules: ['courses', 'workshops'], modes: ['courses_learning'] },
         { key: 'enrollments', label: copy('Enrollments', 'Usajili'), description: copy('Students, participants, applicants, and class statuses.', 'Wanafunzi, washiriki, waombaji na hali za darasa.'), icon: ClipboardList, href: `/merchant/${merchantSlug}/enrollments`, permissions: ['bundles.manage_course', 'orders.view'], modules: ['enrollments', 'courses', 'workshops'], modes: ['courses_learning'] },
@@ -314,7 +292,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                         <div>
                             <h3 className="font-black text-brand-950">{copy('Choose what this business does', 'Chagua biashara hii inafanya nini')}</h3>
                             <p className="text-sm text-brand-800 mt-1 max-w-2xl">
-                                {copy('These tools are recommended based on your selected activities. Choose what this business uses: products, menu, rooms, bookings, courses, orders, bookkeeping, and more.', 'Kuna zana zilizopendekezwa kulingana na shughuli ulizochagua. Chagua biashara hii inatumia nini: bidhaa, menyu, vyumba, booking, kozi, oda, utunzaji wa vitabu na zaidi.')}
+                                {copy('These tools are recommended based on your selected activities. Choose what this business uses: products, digital products, menu, courses, orders, bookkeeping, and more.', 'Kuna zana zilizopendekezwa kulingana na shughuli ulizochagua. Chagua biashara hii inatumia nini: bidhaa, bidhaa za kidijitali, menyu, kozi, oda, utunzaji wa vitabu na zaidi.')}
                             </p>
                             <div className="mt-2 flex flex-wrap gap-1.5">
                                 {recommendedModules.slice(0, 8).map(module => (

@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Image, ShoppingBag, BookOpenText, Lock, Crown, Package, History, RotateCcw } from 'lucide-react';
+import { X, Image, ShoppingBag, BookOpenText, Lock, Crown, Package, History, RotateCcw, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import LongFormBlockEditor from '@/Components/LongFormBlockEditor';
 import PolicyNotice from '@/Components/PolicyNotice';
@@ -18,7 +18,7 @@ const BG_OPTIONS = [
     { key: 'gradient_midnight', label: '🌌 Midnight', preview: 'linear-gradient(135deg,#1e1b4b,#4c1d95)' },
     { key: 'gradient_fire', label: '🔥 Fire', preview: 'linear-gradient(135deg,#ef4444,#f97316)' },
     { key: 'solid_black', label: '⬛ Black', preview: '#000' },
-    { key: 'solid_brand', label: '🔵 Brand', preview: '#0284c7' },
+    { key: 'solid_brand', label: '🟠 Brand', preview: '#cf3e23' },
 ];
 const BG_OPTION_TRANSLATIONS = {
     Normal: 'Kawaida',
@@ -222,6 +222,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     const [longDraftsLoading, setLongDraftsLoading] = useState(false);
     const [showLongDrafts, setShowLongDrafts] = useState(false);
     const [longVersions, setLongVersions] = useState([]);
+    const [deletingLongDraftId, setDeletingLongDraftId] = useState(null);
     const [shortPrice, setShortPrice] = useState('');
 
     // Support for legacy/old product selection if still needed by some logic
@@ -240,7 +241,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     const merchantApiBase = selectedProfile?.username ? `/merchant/${selectedProfile.username}` : '/merchant';
     const merchantPayload = selectedProfile?.id ? { merchant_id: selectedProfile.id } : {};
     const canCreateProduct = selectedProfile
-        ? ['products.create', 'digital_products.create', 'services.create'].some((permission) => (
+        ? ['products.create', 'digital_products.create'].some((permission) => (
             hasMerchantPermission(selectedProfile.permissions || [], permission)
         ))
         : false;
@@ -471,6 +472,34 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
             await loadDraftVersions(draft.id);
         } catch (error) {
             toast.error(copy('Could not restore this version.', 'Imeshindikana kurejesha version hii.'));
+        }
+    };
+
+    const deleteLongDraft = async (draft) => {
+        if (!draft?.id || deletingLongDraftId) return;
+        const draftName = draft.title && draft.title !== 'Untitled draft'
+            ? `“${draft.title}”`
+            : copy('this draft', 'draft hii');
+        if (!window.confirm(copy(`Delete ${draftName}? This cannot be undone.`, `Ufute ${draftName}? Haitaweza kurejeshwa.`))) return;
+
+        setDeletingLongDraftId(draft.id);
+        try {
+            await axios.delete(`${merchantApiBase}/content-items/${draft.id}/api`);
+            setLongDrafts((current) => current.filter((item) => item.id !== draft.id));
+
+            if (String(longForm.id) === String(draft.id)) {
+                setLongForm({id: null, title: '', excerpt: '', body: '', price: ''});
+                setLongVersions([]);
+                setLastLongAutosaveSignature(null);
+                setLongAutosaveStatus(copy('Draft deleted', 'Draft imefutwa'));
+                setLongEditorKey((current) => current + 1);
+            }
+
+            toast.success(copy('Draft deleted.', 'Draft imefutwa.'));
+        } catch (error) {
+            toast.error(error.response?.data?.message || copy('Could not delete this draft.', 'Imeshindikana kufuta draft hii.'));
+        } finally {
+            setDeletingLongDraftId(null);
         }
     };
 
@@ -731,7 +760,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                     >
                                                         <div className={cn(
                                                             "h-16 w-16 rounded-full p-0.5 transition-all shadow-sm",
-                                                            active ? "bg-gradient-to-tr from-brand-500 to-brand-700 scale-105" : "bg-transparent grayscale-[0.5] opacity-60"
+                                                            active ? "bg-gradient-to-tr from-brand-500 to-brand-700 scale-105" : "bg-transparent grayscale-[0.5] opacity-80"
                                                         )}>
                                                             <div className="h-full w-full rounded-full border-[3px] border-background bg-card flex items-center justify-center overflow-hidden">
                                                                 {profile.avatar_url ? (
@@ -871,10 +900,22 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                 {longDraftsLoading ? <p className="px-2 py-4 text-xs text-muted-foreground">{copy('Loading drafts...', 'Inafungua drafts...')}</p> : null}
                                                 {!longDraftsLoading && longDrafts.length === 0 ? <p className="px-2 py-4 text-xs text-muted-foreground">{copy('No saved long-form drafts yet.', 'Bado hakuna draft ya post ndefu.')}</p> : null}
                                                 {longDrafts.map((draft) => (
-                                                    <button key={draft.id} type="button" onClick={() => loadLongDraft(draft.id)} className={cn('flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left hover:bg-muted', longForm.id === draft.id && 'bg-brand-50 text-brand-900')}>
-                                                        <span className="min-w-0"><span className="block truncate text-sm font-bold">{draft.title || copy('Untitled draft', 'Draft isiyo na kichwa')}</span><span className="mt-1 block truncate text-[11px] text-muted-foreground">{draft.excerpt || copy('No excerpt yet', 'Bado hakuna muhtasari')}</span></span>
-                                                        <span className="shrink-0 text-[10px] text-muted-foreground">v{draft.versions_count || 1}</span>
-                                                    </button>
+                                                    <div key={draft.id} className={cn('flex w-full items-center gap-2 rounded-xl pr-2 hover:bg-muted', longForm.id === draft.id && 'bg-brand-50 text-brand-900')}>
+                                                        <button type="button" onClick={() => loadLongDraft(draft.id)} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-3 text-left">
+                                                            <span className="min-w-0"><span className="block truncate text-sm font-bold">{draft.title || copy('Untitled draft', 'Draft isiyo na kichwa')}</span><span className="mt-1 block truncate text-[11px] text-muted-foreground">{draft.excerpt || copy('No excerpt yet', 'Bado hakuna muhtasari')}</span></span>
+                                                            <span className="shrink-0 text-[10px] text-muted-foreground">v{draft.versions_count || 1}</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => deleteLongDraft(draft)}
+                                                            disabled={deletingLongDraftId === draft.id}
+                                                            aria-label={copy(`Delete ${draft.title || 'draft'}`, `Futa ${draft.title || 'draft'}`)}
+                                                            title={copy('Delete draft', 'Futa draft')}
+                                                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                                                        >
+                                                            {deletingLongDraftId === draft.id ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Trash2 className="size-4" />}
+                                                        </button>
+                                                    </div>
                                                 ))}
                                             </div>
                                         </div>
@@ -919,7 +960,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Body', 'Mwili wa makala')}</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{copy('Body', 'Makala Kamili')}</label>
                                         <LongFormBlockEditor
                                             key={`composer-long-editor-${longEditorKey}`}
                                             value={longForm.body}
@@ -929,10 +970,6 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                             uploadFields={merchantPayload}
                                             bookmarkSearchUrl={`${merchantApiBase}/posts/api`}
                                         />
-                                    </div>
-
-                                    <div className="inline-flex items-center rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground">
-                                        {longAutosaveStatus}
                                     </div>
                                 </div>
                             )}
@@ -1270,7 +1307,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                         {/* Floating Toolbox (Bottom - Short Mode Only) */}
                         {composerMode === 'short' && (
                             <div className="absolute bottom-6 left-0 right-0 px-4 flex justify-center w-full max-w-2xl mx-auto pointer-events-none">
-                                <div className="pointer-events-auto flex items-center justify-center gap-1.5 w-max bg-accent/80 backdrop-blur-xl p-2 rounded-full border border-border/50 shadow-xl">
+                                <div className="pointer-events-auto flex items-center justify-center gap-1.5 w-max bg-white backdrop-blur-xl p-2 rounded-full border border-border/50 shadow-xl">
                                     {/* Media picker */}
                                     <motion.button
                                         whileTap={{ scale: 0.9 }}

@@ -13,7 +13,8 @@ const SEGMENTS = [
     { value: 'all', label: 'All contacts' },
     { value: 'needs_reply', label: 'Needs reply' },
     { value: 'orders', label: 'Orders' },
-    { value: 'bookings', label: 'Bookings' },
+    // Booking communications remain supported by the backend but are hidden
+    // from the launch UI with the service-provider workflow.
     { value: 'learning', label: 'Learning' },
     { value: 'members', label: 'Members' },
 ];
@@ -32,7 +33,6 @@ export default function Communications({ merchantUsername }) {
         all: copy('All contacts', 'Mawasiliano yote'),
         needs_reply: copy('Needs reply', 'Zinahitaji jibu'),
         orders: copy('Orders', 'Oda'),
-        bookings: copy('Bookings', 'Booking'),
         learning: copy('Learning', 'Mafunzo'),
         members: copy('Members', 'Wanachama'),
     };
@@ -147,7 +147,7 @@ export default function Communications({ merchantUsername }) {
                         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{copy('Operations', 'Uendeshaji')}</p>
                         <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">{copy('Communications', 'Mawasiliano')}</h1>
                         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                            {copy('Prepare customer follow-ups across orders, bookings, enrollments, memberships, and service requests.', 'Andaa ufuatiliaji wa wateja kwenye oda, booking, usajili, uanachama na maombi ya huduma.')}
+                            {copy('Prepare customer follow-ups across orders, enrollments, memberships, and customer messages.', 'Andaa ufuatiliaji wa wateja kwenye oda, usajili, uanachama na ujumbe wa wateja.')}
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -211,7 +211,7 @@ export default function Communications({ merchantUsername }) {
                                         </div>
                                     ))
                                 ) : (
-                                    <EmptyState icon={Bell} title={copy('No urgent follow-ups', 'Hakuna ufuatiliaji wa haraka')} text={copy('Pending customer work will appear here when orders, bookings, memberships, or classes need attention.', 'Kazi za wateja zinazosubiri zitaonekana hapa oda, booking, uanachama au madarasa yanapohitaji uangalizi.')} />
+                                    <EmptyState icon={Bell} title={copy('No urgent follow-ups', 'Hakuna ufuatiliaji wa haraka')} text={copy('Pending customer work will appear here when orders, memberships, or classes need attention.', 'Kazi za wateja zinazosubiri zitaonekana hapa oda, uanachama au madarasa yanapohitaji uangalizi.')} />
                                 )}
                             </CardContent>
                         </Card>
@@ -224,7 +224,7 @@ export default function Communications({ merchantUsername }) {
                                 {contacts.length ? contacts.map((contact) => (
                                     <ContactRow key={contact.key} contact={contact} onSelect={() => selectContact(contact)} copy={copy} />
                                 )) : (
-                                    <EmptyState icon={UserRound} title={copy('No contacts found', 'Hakuna mawasiliano yaliyopatikana')} text={copy('Contacts appear after orders, bookings, enrollments, subscriptions, or service requests.', 'Mawasiliano yataonekana baada ya oda, booking, usajili, uanachama au maombi ya huduma.')} />
+                                    <EmptyState icon={UserRound} title={copy('No contacts found', 'Hakuna mawasiliano yaliyopatikana')} text={copy('Contacts appear after orders, enrollments, subscriptions, or customer messages.', 'Mawasiliano yataonekana baada ya oda, usajili, uanachama au ujumbe wa wateja.')} />
                                 )}
                             </CardContent>
                         </Card>

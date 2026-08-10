@@ -85,6 +85,7 @@ Route::post('/social-commerce/previews', [SocialCommercePreviewController::class
 Route::get('/social-commerce/previews/{preview}', [SocialCommercePreviewController::class, 'show'])->middleware('throttle:60,1');
 Route::post('/social-commerce/resolve', [SocialCommerceFastPathController::class, 'resolve'])->middleware('throttle:30,1');
 Route::post('/social-commerce/invitations/{invitation:public_id}/opt-out', [SocialCommerceFastPathController::class, 'optOut'])->middleware('throttle:5,10');
+Route::post('/social-commerce/claims/{invitation:public_id}/dismiss', [SocialCommerceClaimController::class, 'dismiss'])->middleware('throttle:10,1');
 Route::get('/posts/{post}/comments', [PostController::class, 'comments'])->withTrashed();
 Route::get('/pwa/product/{product}', [ProductController::class, 'show']);
 Route::post('/try-on/products/{product}/sessions', [VirtualTryOnController::class, 'store'])
@@ -158,6 +159,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/merchant/social-commerce/requests', [MerchantSocialCommerceRequestController::class, 'index']);
     Route::get('/merchant/social-commerce/requests/{socialRequest:public_id}', [MerchantSocialCommerceRequestController::class, 'show']);
+    Route::get('/merchant/social-commerce/requests/{socialRequest:public_id}/products', [MerchantSocialCommerceRequestController::class, 'products']);
     Route::post('/merchant/social-commerce/requests/{socialRequest:public_id}/match-product', [MerchantSocialCommerceRequestController::class, 'matchProduct']);
     Route::post('/merchant/social-commerce/requests/{socialRequest:public_id}/create-product', [MerchantSocialCommerceRequestController::class, 'createProduct']);
     Route::post('/merchant/social-commerce/requests/{socialRequest:public_id}/offer', [MerchantSocialCommerceRequestController::class, 'offer']);

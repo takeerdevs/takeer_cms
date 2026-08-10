@@ -16,7 +16,9 @@ export function useDiscoveryRails() {
         axios.get('/api/discovery/rails')
             .then((res) => {
                 if (cancelled) return;
-                setRails((res.data?.rails || []).filter((rail) => (rail.items || []).length > 0));
+                // The API remains backward-compatible, but service rails are hidden
+                // from the launch frontend until service providers are supported.
+                setRails((res.data?.rails || []).filter((rail) => rail.key !== 'services' && (rail.items || []).length > 0));
             })
             .catch(() => {
                 if (!cancelled) setRails([]);
@@ -108,7 +110,7 @@ function ProductRailCard({ product, compact = false, featured = false }) {
                         product_type: product.type,
                     },
                 })}
-                className={`${featured ? 'w-44' : 'w-40'} shrink-0 overflow-hidden rounded-lg bg-white ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-sm`}
+                className={`${featured ? 'w-44' : 'w-40'} shrink-0 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-md`}
             >
                 <div className="relative aspect-square bg-white">
                     {discountPercent > 0 && (
@@ -158,7 +160,7 @@ function ProductRailCard({ product, compact = false, featured = false }) {
                     product_type: product.type,
                 },
             })}
-            className={`${compact ? 'w-36' : featured ? 'w-44' : 'w-40'} shrink-0 rounded-lg bg-white overflow-hidden ring-1 ring-border/80 hover:-translate-y-0.5 hover:shadow-sm transition-all`}
+            className={`${compact ? 'w-36' : featured ? 'w-44' : 'w-40'} shrink-0 rounded-lg bg-white overflow-hidden shadow-sm ring-1 ring-border/80 hover:-translate-y-0.5 hover:shadow-md transition-all`}
         >
             <div className="aspect-[4/3] bg-muted">
                 {product.image_url ? (
@@ -186,7 +188,7 @@ function SubscriptionRailCard({ plan, compact = false, featured = false }) {
     return (
         <Link
             href={`/plan/${plan.slug || plan.id}`}
-            className={`${compact ? 'w-36' : featured ? 'w-44' : 'w-40'} shrink-0 rounded-lg bg-white p-3 ring-1 ring-border/80 hover:-translate-y-0.5 hover:shadow-sm transition-all`}
+            className={`${compact ? 'w-36' : featured ? 'w-44' : 'w-40'} shrink-0 rounded-lg bg-white p-3 shadow-sm ring-1 ring-border/80 hover:-translate-y-0.5 hover:shadow-md transition-all`}
         >
             <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
                 <Crown className="h-5 w-5" />
@@ -204,7 +206,6 @@ function railSearchHref(rail) {
         premium_media: '/search?q=premium&type=digital&surface=products',
         downloads: '/search?q=downloads&type=digital&surface=products',
         events: '/search?q=event&type=digital&surface=products',
-        services: '/search?q=service&type=service&surface=products',
         memberships: '/search?q=club&type=creator',
     };
 
@@ -217,7 +218,6 @@ function localizedRailTitle(rail = {}, copy = (english) => english) {
         premium_media: copy('Premium content', 'Maudhui premium'),
         downloads: copy('Downloads', 'Downloads'),
         events: copy('Events', 'Matukio'),
-        services: copy('Services', 'Huduma'),
         memberships: copy('Memberships', 'Uanachama'),
     };
 
@@ -230,7 +230,6 @@ function localizedRailSubtitle(rail = {}, copy = (english) => english) {
         premium_media: copy('Videos, photos, and paid content', 'Video, picha na maudhui ya kulipia'),
         downloads: copy('Files and digital products you can download', 'Faili na bidhaa za kidijitali unazoweza kupakua'),
         events: copy('Events and places to attend', 'Matukio na nafasi za kuhudhuria'),
-        services: copy('Services you can request or book', 'Huduma unazoweza kuomba au kubook'),
         memberships: copy('Plans to join creators', 'Mipango ya kujiunga na creators'),
     };
 

@@ -17,7 +17,6 @@ import {
     ShoppingBag,
     Sparkles,
     Truck,
-    Wrench,
 } from 'lucide-react';
 import { productPriceLabel } from '@/lib/productUnits';
 import { formatOfferCount } from '@/Components/MerchantOffersPanel';
@@ -34,7 +33,6 @@ const fetcher = async (url) => {
 const SHOP_SECTIONS = [
     { key: 'all', label: 'All', countKey: 'shop_total', apiType: 'all', icon: Sparkles, hint: 'Full shop', tone: 'slate' },
     { key: 'products', label: 'Products', countKey: 'physical', apiType: 'physical', icon: ShoppingBag, hint: 'Physical goods', tone: 'blue' },
-    { key: 'services', label: 'Services', countKey: 'services', apiType: 'service', icon: Wrench, hint: 'Bookable work', tone: 'emerald' },
     { key: 'digital', label: 'Digital', countKey: 'digital', apiType: 'digital', icon: DownloadCloud, hint: 'Files & online', tone: 'sky' },
     { key: 'content', label: 'Content', countKey: 'content', apiType: 'content', icon: BookOpenText, hint: 'Premium posts', tone: 'violet' },
     { key: 'offerings', label: 'Offerings', countKey: 'offerings', apiType: 'offering_group', icon: Layers, hint: 'Menus & packages', tone: 'teal' },
@@ -47,17 +45,12 @@ const SECTION_COPY = {
     all: {
         eyebrow: 'Shop',
         title: 'Discover our offerings',
-        body: 'Explore products, services, downloads, bundles, memberships, and premium content from this merchant.',
+        body: 'Explore products, downloads, bundles, memberships, and premium content from this merchant.',
     },
     products: {
         eyebrow: 'Products',
         title: 'Browse physical products',
         body: 'Shop stocked items with clear pricing, product photos, and checkout-ready detail pages.',
-    },
-    services: {
-        eyebrow: 'Services',
-        title: 'Book or request services',
-        body: 'Find services, custom work, appointments, sessions, and other merchant-provided offers.',
     },
     digital: {
         eyebrow: 'Digital',
@@ -120,7 +113,9 @@ export default function PublicShop({ merchantSlug, shopSection = 'all' }) {
     const bio = String(merchant?.bio || '').trim();
     const hasLongBio = bio.length > 140;
 
-    const products = useMemo(() => normalizeOfferList(data?.products), [data]);
+    // Service records may still exist in the backend, but are not displayed in
+    // the launch storefront.
+    const products = useMemo(() => normalizeOfferList(data?.products).filter((product) => ['physical', 'digital'].includes(product.type)), [data]);
     const contentItems = useMemo(() => normalizeOfferList(data?.content_items), [data]);
     const bundles = useMemo(() => normalizeOfferList(data?.bundles), [data]);
     const subscriptionPlans = useMemo(() => normalizeOfferList(data?.subscription_plans), [data]);
@@ -133,7 +128,7 @@ export default function PublicShop({ merchantSlug, shopSection = 'all' }) {
     const searchablePlans = useMemo(() => filterByQuery(subscriptionPlans, query, (item) => `${item.name} ${item.description || ''}`), [subscriptionPlans, query]);
     const searchableOfferingGroups = useMemo(() => filterByQuery(offeringGroups, query, (item) => `${item.title} ${item.description || ''} ${item.template_key || ''} ${item.group_type || ''}`), [offeringGroups, query]);
     const searchableFreightRoutes = useMemo(() => filterByQuery(freightRoutes, query, (item) => `${item.title} ${item.origin || ''} ${item.destination || ''} ${item.estimate || ''} ${item.rates_info || ''}`), [freightRoutes, query]);
-    const showSearch = ['all', 'products', 'services', 'digital', 'content', 'offerings', 'freight', 'bundles', 'memberships'].includes(section);
+    const showSearch = ['all', 'products', 'digital', 'content', 'offerings', 'freight', 'bundles', 'memberships'].includes(section);
 
     if (error) {
         return (
@@ -277,7 +272,6 @@ function ShopSectionBody({ section, slug, products, contentItems, bundles, subsc
         return (
             <div className="space-y-8 px-4 pt-5 sm:px-6 lg:px-8">
                 <OfferRail title="Products" href={`/u/${slug}/shop/products`} items={products.filter((item) => item.type === 'physical').slice(0, 8)} renderItem={(item) => <ProductCard key={item.id} product={item} />} />
-                <OfferRail title="Services" href={`/u/${slug}/shop/services`} items={products.filter((item) => item.type === 'service').slice(0, 4)} renderItem={(item) => <ServiceCard key={item.id} product={item} />} />
                 <OfferRail title="Digital" href={`/u/${slug}/shop/digital`} items={products.filter((item) => item.type === 'digital').slice(0, 4)} renderItem={(item) => <DigitalProductRow key={item.id} product={item} />} layout="list" />
                 <OfferRail title="Content" href={`/u/${slug}/shop/content`} items={contentItems.slice(0, 4)} renderItem={(item) => <ContentRow key={item.id} item={item} />} layout="list" />
                 <OfferRail title="Offerings" href={`/u/${slug}/shop/offerings`} items={offeringGroups.slice(0, 4)} renderItem={(item) => <OfferingGroupCard key={item.id} group={item} />} />
@@ -290,10 +284,6 @@ function ShopSectionBody({ section, slug, products, contentItems, bundles, subsc
 
     if (section === 'products') {
         return <GridWrap>{products.map((item) => <ProductCard key={item.id} product={item} />)}</GridWrap>;
-    }
-
-    if (section === 'services') {
-        return <ListWrap>{products.map((item) => <ServiceCard key={item.id} product={item} />)}</ListWrap>;
     }
 
     if (section === 'digital') {

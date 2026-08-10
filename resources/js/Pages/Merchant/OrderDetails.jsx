@@ -474,7 +474,7 @@ function printForwarderShippingLabel(order, translate = (english) => english) {
                     body { margin: 0; padding: 24px; font-family: Arial, sans-serif; color: #0f172a; }
                     .label { border: 3px solid #0f172a; border-radius: 18px; padding: 24px; max-width: 680px; }
                     .title { font-size: 26px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 18px; }
-                    .ref { border: 2px solid #0ea5e9; border-radius: 14px; padding: 14px; font-size: 22px; font-weight: 900; margin-bottom: 18px; }
+                    .ref { border: 2px solid #f45d3a; border-radius: 14px; padding: 14px; font-size: 22px; font-weight: 900; margin-bottom: 18px; }
                     .body { white-space: pre-wrap; font-size: 18px; line-height: 1.45; font-weight: 700; }
                     .footer { margin-top: 22px; border-top: 1px solid #cbd5e1; padding-top: 12px; font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em; }
                     @media print { body { padding: 0; } .label { border-radius: 0; max-width: none; min-height: 100vh; } }

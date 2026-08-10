@@ -6,7 +6,6 @@ import {
     DownloadCloud,
     Layers,
     ShoppingBag,
-    Wrench,
 } from 'lucide-react';
 import { productPriceLabel } from '@/lib/productUnits';
 import { useLocale } from '@/lib/i18n';
@@ -15,7 +14,6 @@ const OFFER_FILTERS = [
     { key: 'all', label: 'All', countKey: 'shop_total' },
     { key: 'physical', label: 'Products', countKey: 'physical' },
     { key: 'digital', label: 'Digital', countKey: 'digital' },
-    { key: 'service', label: 'Services', countKey: 'services' },
     { key: 'content', label: 'Content', countKey: 'content' },
     { key: 'bundle', label: 'Bundles', countKey: 'bundles' },
     { key: 'membership', label: 'Memberships', countKey: 'memberships' },
@@ -39,8 +37,8 @@ export default function MerchantOffersPanel({
     const allProductsHref = shopHref || `/u/${slug}/shop/all`;
 
     const visible = useMemo(() => {
-        const productList = filter === 'all' || ['physical', 'digital', 'service'].includes(filter)
-            ? products.filter((product) => filter === 'all' || product.type === filter)
+        const productList = filter === 'all' || ['physical', 'digital'].includes(filter)
+            ? products.filter((product) => ['physical', 'digital'].includes(product.type) && (filter === 'all' || product.type === filter))
             : [];
 
         return {
@@ -76,7 +74,7 @@ export default function MerchantOffersPanel({
                                     : 'bg-neutral-100 text-foreground hover:bg-neutral-200'
                                 }`}
                             >
-                                {copy(item.label, { All: 'Vyote', Products: 'Bidhaa', Digital: 'Kidijitali', Services: 'Huduma', Content: 'Maudhui', Bundles: 'Vifurushi', Memberships: 'Uanachama' }[item.label] || item.label)}
+                                {copy(item.label, { All: 'Vyote', Products: 'Bidhaa', Digital: 'Kidijitali', Content: 'Maudhui', Bundles: 'Vifurushi', Memberships: 'Uanachama' }[item.label] || item.label)}
                                 {count !== null && count !== undefined && (
                                     <span className={isActive ? 'text-background/80' : 'text-muted-foreground'}>
                                         {formatOfferCount(count)}
@@ -146,7 +144,7 @@ export default function MerchantOffersPanel({
                     />
 
                     <OfferSection
-                        title={copy('Products & services', 'Bidhaa na huduma')}
+                        title={copy('Products & digital offers', 'Bidhaa na ofa za kidijitali')}
                         items={sliceItems(visible.products, limit)}
                         compact={compact}
                         renderItem={(item) => (

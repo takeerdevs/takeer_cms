@@ -77,6 +77,9 @@ Route::get('/buy-from-social-media', function () {
         'entryEnabled' => (bool) config('social_commerce.buyer_entry_enabled'),
     ]);
 })->name('social-commerce.buy');
+Route::get('/sb/{shortCode}', [\App\Http\Controllers\Api\SocialCommerceClaimController::class, 'short'])
+    ->where('shortCode', '[A-Za-z0-9]{16}')
+    ->name('social-commerce.short');
 Route::get('/social-buy/claim/{invitation:public_id}', [\App\Http\Controllers\Api\SocialCommerceClaimController::class, 'landing'])->name('social-commerce.claim');
 
 Route::middleware('auth')->group(function () {
@@ -1503,6 +1506,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/overview', function (Merchant $merchant) {
             return Inertia::render('Merchant/Overview', [
                 'merchantUsername' => $merchant->username,
+                'supportsBookings' => $merchant->supportsBusinessArea([
+                    'bookings', 'availability', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops', 'services',
+                ], ['services_bookings', 'food_menu', 'courses_learning']),
             ]);
         })->middleware('merchant_permission:dashboard.view,orders.view,bookkeeping.view');
         Route::get('/overview/api', [MerchantBusinessOverviewController::class, 'show'])->middleware('merchant_permission:dashboard.view,orders.view,bookkeeping.view');
@@ -1806,10 +1812,6 @@ Route::middleware('auth')->group(function () {
         })->middleware('merchant_permission:orders.view');
 
         Route::get('/customers', function (Merchant $merchant) {
-            abort_unless($merchant->supportsBusinessArea([
-                'customers', 'orders', 'services', 'bookings', 'courses', 'enrollments', 'subscriptions', 'marketing', 'retail_ops',
-            ], ['physical_products', 'food_menu', 'digital_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships', 'custom_orders_quotes']), 404);
-
             return Inertia::render('Merchant/Customers', [
                 'merchantUsername' => $merchant->username,
             ]);

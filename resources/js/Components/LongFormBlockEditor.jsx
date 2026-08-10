@@ -932,7 +932,6 @@ export default function LongFormBlockEditor({
                 </TakeerCardProvider>
             </LexicalComposer>
             {uploadingImage ? <p className="text-xs text-muted-foreground">{copy('Uploading image...', 'Inapakia picha...')}</p> : null}
-            <p className="px-2 text-[11px] text-muted-foreground">Type “/” or use “+” to add a block</p>
         </div>
     );
 }

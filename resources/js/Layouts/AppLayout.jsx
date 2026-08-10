@@ -1,5 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
-import { Home, Search, Plus, ShoppingBag, User } from 'lucide-react';
+import { Home, Search, Plus, ShoppingBag, User, ArrowRight, Inbox } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Toaster } from 'sonner';
 import { toast } from 'sonner';
@@ -26,6 +26,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
     const [composerOptions, setComposerOptions] = useState({});
     const [creatingProfile, setCreatingProfile] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
+    const [pendingSocialRequests, setPendingSocialRequests] = useState(0);
 
     // Global checkout state
     const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -96,6 +97,26 @@ export default function AppLayout({ children, hideTabBar = false }) {
     )));
     const canOpenComposer = Boolean(auth?.user?.phone_number) && (!hasMerchantProfile || hasPostableMerchantProfile);
 
+    useEffect(() => {
+        if (!hasMerchantProfile) {
+            setPendingSocialRequests(0);
+            return;
+        }
+
+        let cancelled = false;
+        axios.get('/api/merchant/social-commerce/requests')
+            .then((response) => {
+                if (cancelled) return;
+                const items = response.data?.data || [];
+                setPendingSocialRequests(items.filter((item) => ['claimed', 'onboarding', 'product_setup', 'offer_ready'].includes(item.status)).length);
+            })
+            .catch(() => {
+                if (!cancelled) setPendingSocialRequests(0);
+            });
+
+        return () => { cancelled = true; };
+    }, [hasMerchantProfile, currentUrl]);
+
     const openComposerForCurrentUser = async (options = {}) => {
         const nextOptions = typeof options === 'object' && options !== null ? options : {};
 
@@ -151,7 +172,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
     ];
 
     return (
-        <div className="relative isolate min-h-screen overflow-x-clip bg-background text-foreground font-sans antialiased">
+        <div className="relative isolate min-h-screen overflow-x-clip bg-background font-sans text-foreground antialiased">
             <AmbientWaveBackground />
             <Toaster position="top-center" richColors />
             <AppHeader
@@ -161,6 +182,12 @@ export default function AppLayout({ children, hideTabBar = false }) {
                 isCreating={creatingProfile}
             />
 
+            {pendingSocialRequests > 0 && !String(currentUrl || '').startsWith('/merchant/social-commerce/requests') && (
+                <Link href="/merchant/social-commerce/requests" className="relative z-20 mx-auto mt-2 flex w-[calc(100%-2rem)] max-w-5xl items-center justify-between gap-3 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-orange-950 shadow-sm transition hover:border-orange-300 hover:bg-orange-100/70">
+                    <span className="flex min-w-0 items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white"><Inbox className="h-4 w-4" /></span><span className="min-w-0"><span className="block text-sm font-black">{t('socialCommerce.pendingSellerRequests', { count: pendingSocialRequests }, `${pendingSocialRequests} pending social-media ${pendingSocialRequests === 1 ? 'request' : 'requests'}`)}</span><span className="block truncate text-xs font-semibold text-orange-800/75">{t('socialCommerce.finishSellerSetup', {}, 'Finish seller setup or prepare the buyer offer.')}</span></span></span><ArrowRight className="h-4 w-4 shrink-0" />
+                </Link>
+            )}
+
             {/* ── Full-width content, no sidebar ── */}
             <main className={cn('relative z-10 min-h-screen', hideTabBar ? 'pb-0' : 'pb-20')}>
                 {children}
@@ -169,8 +196,8 @@ export default function AppLayout({ children, hideTabBar = false }) {
 
             {/* ── Floating Tab Bar (all screen sizes) ─────────────────── */}
             {!hideTabBar && (
-                <nav className="fixed bottom-2 left-1/2 z-50 w-[calc(100%-2.5rem)] max-w-sm -translate-x-1/2">
-                    <div className="flex h-14 items-center justify-around rounded-full border-[0.5px] border-border/50 bg-background/80 px-2 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
+                <nav className="fixed bottom-3 left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 env-safe-bottom">
+                    <div className="flex h-[3.75rem] items-center justify-around rounded-[1.35rem] border border-white/90 bg-white/88 px-2 shadow-[0_18px_50px_-18px_rgba(73,32,20,0.42)] backdrop-blur-2xl">
                         {navItems.map((item, i) => {
                             const Icon = item.icon;
                             if (item.isCreate) {
@@ -181,7 +208,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
                                         disabled={creatingProfile}
                                         className="flex items-center justify-center transition-transform active:scale-90 disabled:opacity-60"
                                     >
-                                        <div className="h-11 w-11 rounded-full bg-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20 border-2 border-background">
+                                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border-2 border-white bg-gradient-to-br from-brand-500 to-commerce-500 shadow-lg shadow-brand-500/25">
                                             <Plus className="h-6 w-6 text-white" strokeWidth={3} />
                                         </div>
                                     </button>
@@ -192,7 +219,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
                                     <button
                                         key="search-mobile"
                                         onClick={() => setSearchOpen(true)}
-                                        className="relative flex items-center justify-center w-10 h-10 rounded-full transition-all tap-highlight-transparent text-muted-foreground active:scale-95"
+                                        className="relative flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-all tap-highlight-transparent hover:bg-brand-50 hover:text-brand-700 active:scale-95"
                                     >
                                         <Icon className="h-6 w-6 transition-all" strokeWidth={2} />
                                     </button>
@@ -205,15 +232,15 @@ export default function AppLayout({ children, hideTabBar = false }) {
                                     key={item.href || i}
                                     href={item.href}
                                     className={cn(
-                                        'relative flex items-center justify-center w-10 h-10 rounded-full transition-all tap-highlight-transparent',
-                                        active ? 'text-brand-600' : 'text-muted-foreground active:scale-95'
+                                        'relative flex h-10 w-10 items-center justify-center rounded-xl transition-all tap-highlight-transparent',
+                                        active ? 'bg-brand-50 text-brand-700 shadow-inner shadow-brand-100/50' : 'text-muted-foreground hover:bg-brand-50 hover:text-brand-700 active:scale-95'
                                     )}
                                 >
                                     <Icon className={cn("h-6 w-6 transition-all", active && "scale-110")} strokeWidth={active ? 2.5 : 2} />
                                     {active && (
                                         <motion.div
                                             layoutId="nav-active"
-                                            className="absolute -bottom-1 h-1 w-1 rounded-full bg-brand-600"
+                                            className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-commerce-500"
                                             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                                         />
                                     )}
@@ -282,10 +309,10 @@ function AmbientWaveBackground() {
             <svg viewBox="0 0 1440 900" preserveAspectRatio="none" focusable="false">
                 <defs>
                     <linearGradient id="ambient-wave-gradient" x1="0%" y1="82%" x2="100%" y2="18%">
-                        <stop offset="0%" stopColor="currentColor" stopOpacity="0.03" />
-                        <stop offset="30%" stopColor="currentColor" stopOpacity="0.46" />
-                        <stop offset="64%" stopColor="currentColor" stopOpacity="0.1" />
-                        <stop offset="100%" stopColor="currentColor" stopOpacity="0.58" />
+                        <stop offset="0%" stopColor="#f45d3a" stopOpacity="0.02" />
+                        <stop offset="30%" stopColor="#f45d3a" stopOpacity="0.28" />
+                        <stop offset="67%" stopColor="#ffb89f" stopOpacity="0.11" />
+                        <stop offset="100%" stopColor="#f8890b" stopOpacity="0.23" />
                     </linearGradient>
                 </defs>
                 <g>

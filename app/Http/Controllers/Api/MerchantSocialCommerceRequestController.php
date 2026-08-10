@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\SocialCommerceRequestResource;
+use App\Models\Product;
 use App\Models\SocialCommerceRequest;
 use App\Services\SocialCommerceOfferService;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,38 @@ class MerchantSocialCommerceRequestController extends Controller
         $this->authorize('view', $socialRequest);
         abort_unless($socialRequest->claimedMerchant?->user_id === $request->user()->id, 403);
         return new SocialCommerceRequestResource($socialRequest->load(['buyer', 'claimedMerchant', 'product', 'linkPreview', 'invitations', 'events']));
+    }
+
+    public function products(Request $request, SocialCommerceRequest $socialRequest): JsonResponse
+    {
+        $this->authorize('view', $socialRequest);
+        abort_unless($socialRequest->claimedMerchant?->user_id === $request->user()->id, 403);
+
+        $search = trim((string) $request->input('q', ''));
+        $products = Product::query()
+            ->where('merchant_id', $socialRequest->claimed_merchant_id)
+            ->where('type', 'physical')
+            ->when($search !== '', function ($query) use ($search) {
+                $like = "%{$search}%";
+                $query->where(function ($candidate) use ($like) {
+                    $candidate->where('title', 'like', $like)
+                        ->orWhere('slug', 'like', $like);
+                });
+            })
+            ->latest()
+            ->limit(12)
+            ->get(['id', 'title', 'slug', 'price', 'inventory_count', 'inventory_quantity']);
+
+        return response()->json([
+            'data' => $products->map(fn (Product $product) => [
+                'id' => $product->id,
+                'title' => $product->title,
+                'slug' => $product->slug,
+                'price' => $product->price !== null ? (float) $product->price : null,
+                'inventory_count' => $product->inventory_count,
+                'inventory_quantity' => $product->inventory_quantity !== null ? (float) $product->inventory_quantity : null,
+            ])->values(),
+        ]);
     }
 
     public function matchProduct(Request $request, SocialCommerceRequest $socialRequest, SocialCommerceOfferService $offers): SocialCommerceRequestResource

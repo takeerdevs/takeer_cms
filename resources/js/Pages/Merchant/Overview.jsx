@@ -8,7 +8,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { useLocale } from '@/lib/i18n';
 
-export default function Overview({ merchantUsername }) {
+export default function Overview({ merchantUsername, supportsBookings = false }) {
     const { copy } = useLocale();
     const [days, setDays] = useState(30);
     const [loading, setLoading] = useState(true);
@@ -45,7 +45,7 @@ export default function Overview({ merchantUsername }) {
                     <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{copy('Reports', 'Ripoti')}</p>
                         <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">{copy('Business overview', 'Muhtasari wa biashara')}</h1>
-                        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{copy('One owner view across sales, catalog, bookings, customers, learning, team, and bookkeeping.', 'Mwonekano mmoja wa mmiliki wa mauzo, katalogi, miadi, wateja, kujifunza, timu na hesabu.')}</p>
+                        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{copy('One owner view across sales, catalog, customers, learning, team, and bookkeeping.', 'Mwonekano mmoja wa mmiliki wa mauzo, katalogi, wateja, kujifunza, timu na hesabu.')}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={days} onChange={(event) => setDays(Number(event.target.value))}>
@@ -76,7 +76,6 @@ export default function Overview({ merchantUsername }) {
                             <ReportCard title={copy('Catalog', 'Katalogi')} icon={Package} rows={[
                                 [copy('Physical products', 'Bidhaa za kawaida'), catalog.physical],
                                 [copy('Digital downloads', 'Upakuaji wa kidijitali'), catalog.digital],
-                                [copy('Services', 'Huduma'), catalog.services],
                                 [copy('Posts', 'Machapisho'), catalog.posts],
                                 [copy('Bundles/courses', 'Vifurushi/kozi'), catalog.bundles],
                                 [copy('Subscriptions', 'Usajili'), catalog.subscriptions],
@@ -84,7 +83,6 @@ export default function Overview({ merchantUsername }) {
                             ]} />
                             <ReportCard title={copy('Operations', 'Uendeshaji')} icon={ReceiptText} rows={[
                                 [copy('Pending orders', 'Oda zinazosubiri'), operations.pending_orders],
-                                [copy('Pending service requests', 'Maombi ya huduma yanayosubiri'), operations.pending_service_requests],
                                 [copy('Active staff', 'Wahudumu hai'), operations.active_staff],
                                 [copy('Bookkeeping income', 'Mapato ya hesabu'), money(operations.bookkeeping_income, currencyCode)],
                                 [copy('Bookkeeping expenses', 'Matumizi ya hesabu'), money(operations.bookkeeping_expenses, currencyCode)],
@@ -93,7 +91,6 @@ export default function Overview({ merchantUsername }) {
                             <ReportCard title={copy('Learning & members', 'Kujifunza na wanachama')} icon={BookOpenText} rows={[
                                 [copy('Enrollments', 'Usajili'), learning.enrollments],
                                 [copy('Active members', 'Wanachama hai'), learning.active_members],
-                                [copy('Service requests', 'Maombi ya huduma'), summary.service_requests],
                                 [copy('Average order value', 'Wastani wa thamani ya oda'), money(summary.average_order_value, currencyCode)],
                                 [copy('Bookkeeping profit', 'Faida ya hesabu'), money(summary.bookkeeping_profit, currencyCode)],
                             ]} />
@@ -136,7 +133,7 @@ export default function Overview({ merchantUsername }) {
 
                         <div className="flex flex-wrap gap-2">
                             <Button asChild variant="outline"><Link href={`/merchant/${merchantUsername}/orders`}>{copy('Orders', 'Oda')} <ChevronRight className="ml-2 h-4 w-4" /></Link></Button>
-                            <Button asChild variant="outline"><Link href={`/merchant/${merchantUsername}/bookings`}>{copy('Bookings', 'Miadi')} <ChevronRight className="ml-2 h-4 w-4" /></Link></Button>
+                            {/* Booking navigation remains in the backend, but is hidden until services launch. */}
                             <Button asChild variant="outline"><Link href={`/merchant/${merchantUsername}/customers`}>{copy('Customers', 'Wateja')} <ChevronRight className="ml-2 h-4 w-4" /></Link></Button>
                         </div>
                     </>

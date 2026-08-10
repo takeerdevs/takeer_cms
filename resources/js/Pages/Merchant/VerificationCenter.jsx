@@ -40,6 +40,9 @@ export default function VerificationCenter({ merchantUsername, auth }) {
     const [isCountryActive, setIsCountryActive] = useState(true);
     const [countryName, setCountryName] = useState('');
     const [view, setView] = useState('main');
+    // Service-provider credential onboarding is intentionally disabled in the
+    // frontend launch. Keep the state, API functions, and backend endpoints for reactivation.
+    const servicesEnabled = false;
     const [serviceCategories, setServiceCategories] = useState([]);
     const [serviceCredentials, setServiceCredentials] = useState([]);
     const [legalDocuments, setLegalDocuments] = useState([]);
@@ -75,8 +78,9 @@ export default function VerificationCenter({ merchantUsername, auth }) {
 
     useEffect(() => {
         fetchKycStatus();
-        fetchServiceCategories();
-        fetchServiceCredentials();
+        // Service credential loading is commented out until service providers launch.
+        // fetchServiceCategories();
+        // fetchServiceCredentials();
         fetchLegalDocuments();
     }, []);
 
@@ -490,6 +494,7 @@ export default function VerificationCenter({ merchantUsername, auth }) {
                                 </Card>
                             </div>
 
+                            {servicesEnabled && (
                             <div className="space-y-4">
                                 <h2 className="text-sm font-black uppercase tracking-widest text-slate-400">3. {copy('Service credentials', 'Leseni za huduma')}</h2>
                                 <Card className="border-2 border-slate-100 overflow-hidden bg-white">
@@ -565,6 +570,7 @@ export default function VerificationCenter({ merchantUsername, auth }) {
                                     </CardContent>
                                 </Card>
                             </div>
+                            )}
                         </motion.div>
                     ) : view === 'selection' ? (
                         <motion.div 

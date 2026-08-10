@@ -2035,13 +2035,13 @@ export default function Chat({
                                 <IntentIcon className="h-5 w-5" />
                             </div>
                             <div className="flex flex-col">
-                                <h3 className="text-sm font-black text-brand-900 dark:text-brand-100 uppercase tracking-tight">{copy('Order', 'Oda')} #{publicId?.substring(0, 8)}</h3>
+                                <h3 className="text-sm font-black text-brand-900 dark:text-brand-100 uppercase tracking-normal">{copy('Order', 'Oda')} #{publicId?.substring(0, 8)}</h3>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-black py-0.5 px-2 bg-brand-50 text-brand-600 rounded-full border border-brand-100 uppercase tracking-tighter">
+                                    <span className="text-[11px] font-bold py-0.5 px-2 bg-brand-50 text-brand-600 rounded-full border border-brand-100 uppercase tracking-[0.02em]">
                                         {intentMeta.label}
                                     </span>
                                     <span className={cn(
-                                        "text-[10px] font-black py-0.5 px-2 rounded-full uppercase tracking-tighter border",
+                                        "text-[11px] font-bold py-0.5 px-2 rounded-full uppercase tracking-[0.02em] border",
                                         ['paid_out', 'pending_fulfillment', 'release_eligible', 'payout_processing'].includes(order?.payment_status) || orderStatus === 'delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
                                             order?.payment_status === 'failed' ? "bg-red-50 text-red-600 border-red-100" :
                                                 "bg-amber-50 text-amber-600 border-amber-100"
@@ -2053,9 +2053,9 @@ export default function Chat({
                         </div>
 
                         <div className="flex flex-col items-end">
-                            <p className="text-[9px] font-black text-brand-600/60 uppercase tracking-widest leading-none mb-1">{copy('Order total', 'Jumla ya oda')}</p>
-                            <p className="text-lg font-black text-brand-800 dark:text-brand-200 tracking-tighter leading-none">TZS {dealTotal.toLocaleString()}</p>
-                            <div className="flex gap-2 text-[9px] font-bold text-slate-400 mt-1">
+                            <p className="text-[10px] font-bold text-brand-600/60 uppercase tracking-[0.12em] leading-none mb-1">{copy('Order total', 'Jumla ya oda')}</p>
+                            <p className="text-lg font-black text-brand-800 dark:text-brand-200 tracking-normal leading-none">TZS {dealTotal.toLocaleString()}</p>
+                            <div className="flex gap-2 text-[10px] font-medium text-slate-400 mt-1">
                                 <span>{intentMeta.totalLabel}: {itemsSubtotal.toLocaleString()}</span>
                                 {shippingTotal > 0 && (
                                     <span className="text-emerald-500 font-black">+ {copy('Shipping', 'Usafiri')}: {shippingTotal.toLocaleString()}</span>
@@ -2079,15 +2079,15 @@ export default function Chat({
                         >
                             <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{copy('Order', 'Oda')}</p>
-                                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${currentStatus.tone}`}>
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">{copy('Order', 'Oda')}</p>
+                                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.02em] ${currentStatus.tone}`}>
                                         {currentStatus.label}
                                     </span>
                                 </div>
-                                <p className="mt-1 text-lg font-black tracking-tight text-slate-950 dark:text-slate-100">
+                                <p className="mt-1 text-lg font-black tracking-normal text-slate-950 dark:text-slate-100">
                                     TZS {dealTotal.toLocaleString()}
                                 </p>
-                                <p className="mt-0.5 text-[10px] font-bold text-slate-500">
+                                <p className="mt-0.5 text-[11px] font-medium text-slate-500">
                                     {dealSummaryParts.join(' · ')}
                                 </p>
                             </div>

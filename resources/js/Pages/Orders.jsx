@@ -43,7 +43,8 @@ import { useLocale } from '@/lib/i18n';
 
 const tabs = [
     { key: 'library', label: 'Library', icon: Library },
-    { key: 'cargo', label: 'Cargo', icon: Truck },
+    // Cargo tracking is kept in place for a later release.
+    // { key: 'cargo', label: 'Cargo', icon: Truck },
     { key: 'memberships', label: 'Memberships', icon: Crown },
     { key: 'following', label: 'Following', icon: Bell },
     { key: 'pulse', label: 'Pulse', icon: Store },
@@ -368,7 +369,8 @@ export default function Orders() {
 
     const visibleTabs = [
         { key: 'library', label: t('orders.tabs.library'), icon: Library },
-        { key: 'cargo', label: t('orders.tabs.cargo'), icon: Truck },
+        // Cargo tracking is intentionally hidden until its fuller experience is ready.
+        // { key: 'cargo', label: t('orders.tabs.cargo'), icon: Truck },
         { key: 'memberships', label: t('orders.tabs.memberships'), icon: Crown },
         { key: 'following', label: t('orders.tabs.following'), icon: Bell },
         { key: 'pulse', label: t('orders.tabs.pulse'), icon: Store },

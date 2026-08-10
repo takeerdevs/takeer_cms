@@ -6,7 +6,7 @@ import {
     ArrowRight, ShieldCheck,
     User, Store, CheckCircle2, ChevronRight,
     Sparkles, TrendingUp, Loader2,
-    Smartphone, KeyRound, FileText, BriefcaseBusiness,
+    Smartphone, KeyRound, FileText,
     PackageCheck, RefreshCcw, MapPin
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -442,12 +442,6 @@ export default function Welcome({ auth, intended }) {
             tone: 'brand',
         },
         {
-            title: t('welcome.serviceCard'),
-            description: t('welcome.serviceCardDescription'),
-            icon: BriefcaseBusiness,
-            tone: 'blue',
-        },
-        {
             title: t('welcome.physicalCard'),
             description: t('welcome.physicalCardDescription'),
             icon: PackageCheck,
@@ -512,7 +506,7 @@ export default function Welcome({ auth, intended }) {
                                         <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">
                                             {t('welcome.youCanSell')}
                                         </span>
-                                        {[t('welcome.digitalProducts'), t('welcome.services'), t('welcome.physicalProducts')].map((label) => (
+                                        {[t('welcome.digitalProducts'), t('welcome.physicalProducts')].map((label) => (
                                             <span key={label} className="inline-flex items-center gap-2 text-sm font-black text-foreground">
                                                 <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-600" />
                                                 {label}
@@ -677,7 +671,7 @@ export default function Welcome({ auth, intended }) {
                                     {t('welcome.personalDescription')}
                                 </p>
                                 <ul className="space-y-3 mb-8">
-                                    {[t('welcome.directSelling'), t('welcome.pspSettlement'), t('welcome.digitalServicesPhysical'), t('welcome.payoutAfterConfirmation')].map(feat => (
+                                    {[t('welcome.directSelling'), t('welcome.pspSettlement'), `${t('welcome.digitalProducts')} & ${t('welcome.physicalProducts')}`, t('welcome.payoutAfterConfirmation')].map(feat => (
                                         <li key={feat} className="flex items-center gap-3 text-sm font-bold text-foreground">
                                             <CheckCircle2 className="h-4 w-4 text-brand-500" /> {feat}
                                         </li>

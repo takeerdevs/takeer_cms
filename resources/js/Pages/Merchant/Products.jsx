@@ -45,15 +45,15 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     const [availabilityProductId, setAvailabilityProductId] = useState('');
     const [serviceSessions, setServiceSessions] = useState([]);
     const [deletingProductId, setDeletingProductId] = useState(null);
-    const normalizedTypeScope = ['physical', 'digital', 'service'].includes(typeScope) ? typeScope : 'all';
+    // Launch catalog intentionally exposes only physical and digital products.
+    // The service manager code below remains dormant so it can be restored later.
+    const normalizedTypeScope = ['physical', 'digital'].includes(typeScope) ? typeScope : 'all';
     const normalizedModuleScope = ['menu', 'rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops', 'forwarders'].includes(moduleScope) ? moduleScope : null;
     const { can, canAny } = useMerchantPermissions(merchantUsername);
-    const resourceForScope = normalizedTypeScope === 'digital'
-        ? 'digital_products'
-        : (normalizedTypeScope === 'service' ? 'services' : 'products');
-    const canCreate = canAny([`${resourceForScope}.create`, 'products.create', 'digital_products.create', 'services.create']);
-    const canUpdate = canAny([`${resourceForScope}.update`, 'products.update', 'digital_products.update', 'services.update']);
-    const canDelete = canAny([`${resourceForScope}.delete`, 'products.delete', 'digital_products.delete', 'services.delete']);
+    const resourceForScope = normalizedTypeScope === 'digital' ? 'digital_products' : 'products';
+    const canCreate = canAny([`${resourceForScope}.create`, 'products.create', 'digital_products.create']);
+    const canUpdate = canAny([`${resourceForScope}.update`, 'products.update', 'digital_products.update']);
+    const canDelete = canAny([`${resourceForScope}.delete`, 'products.delete', 'digital_products.delete']);
     const canSchedule = can('services.schedule');
     const weekdayOptions = [
         { value: 1, short: copy('Mon', 'Jt'), label: copy('Monday', 'Jumatatu') },
@@ -108,7 +108,9 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             if (normalizedModuleScope) params.set('module', normalizedModuleScope);
             params.set('page', String(page));
             const response = await axios.get(`/merchant/${merchantUsername}/products/api${params.toString() ? `?${params.toString()}` : ''}`);
-            setProducts(response.data.data || []);
+            // Keep existing service records intact, but do not expose them in the
+            // launch catalog even if an older backend response still contains them.
+            setProducts((response.data.data || []).filter((product) => ['physical', 'digital'].includes(product.type)));
             setMeta(response.data.meta || { current_page: 1, last_page: 1, total: 0 });
         } catch (error) {
             console.error('Failed to fetch products:', error);

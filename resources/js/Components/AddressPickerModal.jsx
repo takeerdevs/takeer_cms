@@ -47,7 +47,10 @@ export default function AddressPickerModal({
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: googleMapsApiKey,
-        libraries: libraries
+        libraries: libraries,
+        version: 'weekly',
+        authReferrerPolicy: 'origin',
+        preventGoogleFontsLoading: true,
     });
 
     const autocompleteRef = useRef(null);

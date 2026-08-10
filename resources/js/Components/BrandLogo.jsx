@@ -12,18 +12,18 @@ export default function BrandLogo({
     const content = (
         <>
             <img
-                src="/images/brand/takeer-mark.svg"
+                src="/logo.png"
                 alt=""
                 aria-hidden="true"
-                className="h-9 w-9 shrink-0"
+                className="h-11 w-11 shrink-0 object-contain drop-shadow-[0_6px_12px_rgba(207,62,35,0.16)]"
             />
             {!compact && (
                 <span className="min-w-0">
-                    <span className="block truncate text-sm font-black leading-none tracking-tight text-foreground">
+                    <span className="block truncate text-base font-black leading-none tracking-[-0.035em] text-foreground">
                         {label}
                     </span>
                     {subtitle && (
-                        <span className="mt-1 block truncate text-[9px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                        <span className="mt-1.5 block truncate text-[8px] font-bold uppercase tracking-[0.2em] text-brand-600">
                             {subtitle}
                         </span>
                     )}

@@ -857,7 +857,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
     };
 
     return (
-        <article className={`relative bg-card border-b overflow-hidden ${adminMode && isDeleted ? 'border-rose-300 bg-rose-50/35' : 'border-border/70'}`}>
+        <article className={`relative overflow-hidden border-y bg-card sm:mb-4 sm:rounded-3xl sm:border sm:shadow-[0_18px_46px_-34px_rgba(73,32,20,0.48)] ${adminMode && isDeleted ? 'border-rose-300 bg-rose-50/35' : 'border-border/75'}`}>
             {adminMode && (
                 <div className={`px-4 py-2 border-b ${isDeleted ? 'border-rose-200 bg-rose-100/80 text-rose-900' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
                     <div className="flex items-center justify-between gap-3">
@@ -899,7 +899,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                 <div className="relative h-12 w-12 shrink-0">
                     <Link
                         href={`/u/${postData.merchant_profile?.username || postData.merchant?.username || postData.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
-                        className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-gradient-to-br from-brand-400 to-brand-600 text-md font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+                        className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border-2 border-white bg-gradient-to-br from-brand-400 to-brand-700 text-md font-bold text-white shadow-[0_8px_18px_-10px_rgba(207,62,35,0.7)] transition-all hover:-translate-y-0.5 hover:opacity-95"
                     >
                         {postData.merchant_profile?.avatar_url ? (
                             <img src={postData.merchant_profile.avatar_url} className="h-full w-full object-cover" alt="" />

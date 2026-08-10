@@ -118,7 +118,7 @@ export default function Profile({
     const commerceHubItems = [
         { key: 'products', title: t('profile.hub.physical'), count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products`, permission: 'products.view', modules: ['products'], modes: ['physical_products'] },
         { key: 'digital', title: t('profile.hub.digital'), count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view', modules: ['digital_products'], modes: ['digital_products'] },
-        { key: 'services', title: t('profile.hub.services'), count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services`, permission: 'services.view', modules: ['services'], modes: ['services_bookings'] },
+        // Services hub is intentionally commented out for the launch.
         { key: 'posts', title: t('profile.hub.posts'), count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts`, permission: 'posts.view', modules: ['marketing'], modes: [] },
         { key: 'offerings', title: t('profile.hub.offerings'), count: commerceHubSummary.offerings ?? 0, icon: Layers, href: `/merchant/${merchantSlug}/offering-groups`, permission: 'services.view', modules: ['services', 'menu', 'courses', 'tour_departures'], modes: ['services_bookings', 'food_menu', 'courses_learning'] },
         { key: 'bundles', title: t('profile.hub.bundles'), count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view', modules: [], modes: [] },
@@ -135,7 +135,7 @@ export default function Profile({
         { key: 'shipments', title: t('profile.freight.shipments'), icon: Ship, href: `/merchant/${merchantSlug}/forwarders/shipments`, description: t('profile.freight.shipmentsDescription'), permission: 'services.view' },
         { key: 'updates', title: t('profile.freight.updates'), icon: Megaphone, href: `/merchant/${merchantSlug}/posts?compose=1&source=forwarder_update`, description: t('profile.freight.updatesDescription'), permission: 'posts.create' },
     ].filter((item) => can(item.permission));
-    const canAddNew = can('products.create') || can('digital_products.create') || can('services.create');
+    const canAddNew = can('products.create') || can('digital_products.create');
 
     // Verification State
     const [verifView, setVerifView] = useState('main'); // main, selection, form
@@ -804,9 +804,8 @@ export default function Profile({
                                             <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-400">{t('common.salesBreakdown')}</CardTitle>
                                             </CardHeader>
                                             <CardContent className="space-y-4">
-                                                <BreakdownRow label="Digital / Unlockables" count={salesBreakdown.digital} color="bg-indigo-500" total={salesBreakdown.digital + salesBreakdown.physical + salesBreakdown.services} />
-                                                <BreakdownRow label="Physical Products" count={salesBreakdown.physical} color="bg-emerald-500" total={salesBreakdown.digital + salesBreakdown.physical + salesBreakdown.services} />
-                                                <BreakdownRow label="Huduma (Services)" count={salesBreakdown.services} color="bg-amber-500" total={salesBreakdown.digital + salesBreakdown.physical + salesBreakdown.services} />
+                                                <BreakdownRow label="Digital / Unlockables" count={salesBreakdown.digital} color="bg-indigo-500" total={salesBreakdown.digital + salesBreakdown.physical} />
+                                                <BreakdownRow label="Physical Products" count={salesBreakdown.physical} color="bg-emerald-500" total={salesBreakdown.digital + salesBreakdown.physical} />
                                             </CardContent>
                                         </Card>
                                     </div>
@@ -1330,7 +1329,7 @@ export default function Profile({
                                             {[
                                                 { icon: Package, label: copy('Physical products', 'Bidhaa za kushikika') },
                                                 { icon: DownloadCloud, label: copy('Digital products', 'Bidhaa za kidijitali') },
-                                                { icon: Briefcase, label: copy('Services', 'Huduma') },
+                                                // Services are intentionally omitted until service-provider launch.
                                                 { icon: BookOpenText, label: copy('Paid knowledge', 'Maarifa ya kulipia') },
                                             ].map((item) => {
                                                 const Icon = item.icon;

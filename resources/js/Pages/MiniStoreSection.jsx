@@ -62,7 +62,6 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
     const products = useMemo(() => {
         if (sectionType === 'products') return allProducts.filter((product) => product.type === 'physical');
         if (sectionType === 'downloads') return allProducts.filter((product) => product.type === 'digital');
-        if (sectionType === 'services') return allProducts.filter((product) => product.type === 'service');
         return [];
     }, [allProducts, sectionType]);
 
@@ -82,7 +81,6 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
     const titleMap = {
         products: t('catalog.products'),
         downloads: t('catalog.digital'),
-        services: t('catalog.services'),
         content: t('orders.content'),
         courses: t('publicCommerce.courseBundle'),
         bundles: t('publicCommerce.bundleOffer'),

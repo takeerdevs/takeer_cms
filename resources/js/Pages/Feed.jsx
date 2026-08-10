@@ -61,12 +61,12 @@ export default function Feed({ initialPosts = [], initialFeed = null }) {
         <AppLayout>
             <Head title={`${t('feed.title')} | Takeer`} />
 
-            <div className="mx-auto grid w-full max-w-[1380px] grid-cols-1 xl:grid-cols-[260px_minmax(0,680px)_300px] xl:gap-8 xl:px-6">
+            <div className="mx-auto grid w-full max-w-[1380px] grid-cols-1 xl:grid-cols-[260px_minmax(0,680px)_300px] xl:gap-8 xl:px-6 xl:pt-3">
                 <FeedLeftRail rails={rails} profile={defaultProfile} isAuthenticated={Boolean(auth?.user)} />
 
-                <div className="mx-auto w-full max-w-[680px] divide-y divide-border/60 bg-background/88 xl:bg-background/72 xl:backdrop-blur-[1px]">
+                <div className="mx-auto w-full max-w-[680px] bg-transparent sm:px-3 xl:px-0">
                     {railsLoaded && rails.length > 0 && (
-                        <div className="border-b border-border/60 bg-white/65 px-4 py-5 sm:px-5">
+                        <div className="border-b border-border/70 bg-white/75 px-4 py-5 backdrop-blur-md sm:my-4 sm:rounded-3xl sm:border sm:px-5 sm:shadow-[0_16px_40px_-32px_rgba(73,32,20,0.45)]">
                             <div>
                                 <DiscoveryRailSection rail={heroRail} featured />
                             </div>
@@ -127,7 +127,7 @@ function FeedLeftRail({ rails = [], profile = null, isAuthenticated = false }) {
     return (
         <aside className="hidden xl:sticky xl:top-4 xl:block xl:h-[calc(100vh-2rem)] xl:self-start xl:overflow-y-auto xl:pr-1 xl:[scrollbar-width:none] xl:[&::-webkit-scrollbar]:hidden" aria-label={t('feed.digitalProducts')}>
             <div className="space-y-4 py-1">
-                <div className="rounded-2xl bg-white/78 p-4">
+                <div className="marketplace-panel p-4">
                     <div className="flex items-center justify-between gap-3">
                         <div>
                             <p className="mt-0.5 text-sm font-bold text-slate-950">{t('feed.buyOpenInstantly')}</p>
@@ -142,7 +142,7 @@ function FeedLeftRail({ rails = [], profile = null, isAuthenticated = false }) {
                 </div>
 
                 {digitalItems.length > 1 && (
-                    <div className="rounded-2xl bg-white/60 p-4 ring-1 ring-slate-200/60 backdrop-blur-md">
+                    <div className="marketplace-panel p-4">
                         <div className="flex items-center justify-between gap-3">
                             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{t('feed.premiumDrops')}</p>
                             <Link href="/search?q=premium&type=digital&surface=products" className="text-[11px] font-black text-brand-600">{t('feed.seeAll')}</Link>
@@ -188,7 +188,7 @@ function FeedRightRail({ rails = [], posts = [], profile = null, isAuthenticated
     return (
         <aside className="hidden xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-2rem)] xl:self-start xl:flex-col xl:overflow-y-auto xl:pr-1 xl:[scrollbar-width:none] xl:[&::-webkit-scrollbar]:hidden" aria-label={t('feed.businessInfo')}>
             <div className="space-y-4">
-                <div className="rounded-2xl bg-white/78 p-4">
+                <div className="marketplace-panel p-4">
                     <div className="flex items-center justify-between gap-3">
                         <div>
                             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{t('feed.mostViewed')}</p>

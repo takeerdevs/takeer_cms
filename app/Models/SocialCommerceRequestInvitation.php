@@ -12,8 +12,8 @@ class SocialCommerceRequestInvitation extends Model
     use HasFactory;
 
     protected $fillable = [
-        'public_id', 'social_commerce_request_id', 'channel', 'recipient_encrypted', 'recipient_hash',
-        'token_hash', 'status', 'provider_reference', 'attempt_count', 'dedupe_key', 'message_snapshot',
+        'public_id', 'short_code', 'social_commerce_request_id', 'channel', 'recipient_encrypted', 'recipient_hash',
+        'token_hash', 'short_token_hash', 'status', 'provider_reference', 'attempt_count', 'dedupe_key', 'message_snapshot',
         'metadata', 'queued_at', 'sent_at', 'failed_at', 'clicked_at', 'claimed_at', 'expires_at', 'revoked_at',
     ];
 
@@ -45,10 +45,15 @@ class SocialCommerceRequestInvitation extends Model
 
     public function isClaimable(?string $plainToken): bool
     {
+        $tokenHash = $plainToken !== null ? hash('sha256', $plainToken) : null;
+
         return $plainToken !== null
             && $this->status !== 'revoked'
             && $this->status !== 'claimed'
             && $this->expires_at?->isFuture()
-            && hash_equals((string) $this->token_hash, hash('sha256', $plainToken));
+            && (
+                hash_equals((string) $this->token_hash, (string) $tokenHash)
+                || ($this->short_token_hash && hash_equals((string) $this->short_token_hash, (string) $tokenHash))
+            );
     }
 }

@@ -9,6 +9,14 @@ import { toast } from 'sonner';
 import { businessToolCopy } from '@/lib/businessToolCopy';
 import { useLocale } from '@/lib/i18n';
 
+// Service-provider modes remain in the backend configuration, but are hidden
+// from this launch UI. Removing this list later reactivates the existing setup.
+const DISABLED_SERVICE_MODE_KEYS = new Set(['services_bookings', 'custom_orders_quotes']);
+const DISABLED_SERVICE_MODULE_KEYS = new Set([
+    'services', 'custom_orders', 'quotes', 'bookings', 'availability',
+    'appointments', 'rooms', 'reservations', 'rentals', 'tour_departures',
+]);
+
 export default function Modules({ merchantUsername }) {
     const { locale, t, copy } = useLocale();
     const [loading, setLoading] = useState(true);
@@ -39,6 +47,7 @@ export default function Modules({ merchantUsername }) {
     const groupedModules = useMemo(() => {
         const modules = payload?.business_modules || {};
         return Object.entries(modules).reduce((groups, [key, module]) => {
+            if (DISABLED_SERVICE_MODULE_KEYS.has(key)) return groups;
             const group = module.group || 'Other';
             groups[group] = groups[group] || [];
             groups[group].push([key, module]);
@@ -48,11 +57,16 @@ export default function Modules({ merchantUsername }) {
 
     const selectedModeModules = useMemo(() => {
         const modes = payload?.commerce_modes || {};
-        return Array.from(new Set(commerceModes.flatMap((key) => modes[key]?.modules || [])));
+        return Array.from(new Set(commerceModes
+            .flatMap((key) => modes[key]?.modules || [])
+            .filter((key) => !DISABLED_SERVICE_MODULE_KEYS.has(key))));
     }, [commerceModes, payload?.commerce_modes]);
 
-    const recommendedModules = payload?.recommended_modules || [];
-    const recommendedModes = payload?.recommended_commerce_modes || [];
+    const recommendedModules = (payload?.recommended_modules || []).filter((key) => !DISABLED_SERVICE_MODULE_KEYS.has(key));
+    const recommendedModes = (payload?.recommended_commerce_modes || []).filter((key) => !DISABLED_SERVICE_MODE_KEYS.has(key));
+    const visibleCommerceModes = Object.entries(payload?.commerce_modes || {}).filter(([key]) => !DISABLED_SERVICE_MODE_KEYS.has(key));
+    const visibleCommerceModeCount = commerceModes.filter((key) => !DISABLED_SERVICE_MODE_KEYS.has(key)).length;
+    const visibleActiveModuleCount = activeModules.filter((key) => !DISABLED_SERVICE_MODULE_KEYS.has(key)).length;
     const toggleModule = (key) => {
         setActiveModules((prev) => prev.includes(key)
             ? prev.filter((module) => module !== key)
@@ -66,12 +80,21 @@ export default function Modules({ merchantUsername }) {
     };
 
     const applyCategoryPreset = () => {
-        setCommerceModes(recommendedModes);
-        setActiveModules((prev) => Array.from(new Set([...prev, ...recommendedModules])));
+        setCommerceModes((prev) => Array.from(new Set([
+            ...prev.filter((key) => DISABLED_SERVICE_MODE_KEYS.has(key)),
+            ...recommendedModes,
+        ])));
+        setActiveModules((prev) => Array.from(new Set([
+            ...prev.filter((key) => DISABLED_SERVICE_MODULE_KEYS.has(key)),
+            ...recommendedModules,
+        ])));
     };
 
     const applyModePreset = () => {
-        setActiveModules((prev) => Array.from(new Set([...prev, ...selectedModeModules])));
+        setActiveModules((prev) => Array.from(new Set([
+            ...prev.filter((key) => DISABLED_SERVICE_MODULE_KEYS.has(key)),
+            ...selectedModeModules,
+        ])));
     };
 
     const saveModules = async () => {
@@ -131,7 +154,7 @@ export default function Modules({ merchantUsername }) {
                                     <CardTitle>{t('merchantUi.salesTypes')}</CardTitle>
                                 </CardHeader>
                                 <CardContent className="grid gap-3 md:grid-cols-2">
-                                    {Object.entries(payload?.commerce_modes || {}).map(([key, mode]) => {
+                                    {visibleCommerceModes.map(([key, mode]) => {
                                         const selected = commerceModes.includes(key);
                                         return (
                                             <button key={key} type="button" onClick={() => toggleMode(key)} className={`rounded-lg border p-4 text-left transition ${selected ? 'border-brand-500 bg-brand-50 text-brand-950' : 'border-border hover:bg-muted/50'}`}>
@@ -176,8 +199,8 @@ export default function Modules({ merchantUsername }) {
                                         <CardTitle>{t('merchantUi.currentSetup')}</CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-3 text-sm">
-                                        <MiniStat label={t('merchantUi.salesTypeCount')} value={commerceModes.length} />
-                                        <MiniStat label={t('merchantUi.activeTools')} value={activeModules.length} />
+                                        <MiniStat label={t('merchantUi.salesTypeCount')} value={visibleCommerceModeCount} />
+                                        <MiniStat label={t('merchantUi.activeTools')} value={visibleActiveModuleCount} />
                                         <MiniStat label={t('merchantUi.recommendedTools')} value={recommendedModules.length} />
                                     </CardContent>
                                 </Card>

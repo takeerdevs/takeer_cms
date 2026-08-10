@@ -1738,7 +1738,7 @@ export default function ProductDetail({ product }) {
                 )}
 
                 {/* Content Area - Pulls up slightly over the image */}
-                <div className="relative z-10 -mt-6 rounded-t-3xl bg-background px-4 pt-6 pb-20 max-w-2xl mx-auto md:mt-0 md:rounded-none md:pt-10">
+                <div className="relative z-10 -mt-6 rounded-t-3xl bg-background px-4 pt-6 pb-6 max-w-2xl mx-auto md:mt-0 md:rounded-none md:pt-10">
                     {/* Product Title & Price */}
                     <div className="mb-6">
                         <div className="flex items-center gap-2 mb-2">

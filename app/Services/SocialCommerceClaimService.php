@@ -7,8 +7,10 @@ use App\Models\SocialCommerceRequest;
 use App\Models\SocialCommerceRequestInvitation;
 use App\Models\User;
 use App\Events\SocialCommerceSellerClaimed;
+use App\Events\SocialCommerceRequestClosed;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class SocialCommerceClaimService
@@ -85,5 +87,63 @@ class SocialCommerceClaimService
             $invitation->update(['status' => 'clicked', 'clicked_at' => now()]);
             $this->audit->record($invitation->request, 'social_invite_clicked', $invitation->request->status, $invitation->request->status, null, null, null, $invitation->channel);
         }
+    }
+
+    public function dismiss(SocialCommerceRequestInvitation $invitation, string $plainToken, ?Request $httpRequest = null): SocialCommerceRequest
+    {
+        [$dismissed, $evidencePath] = DB::transaction(function () use ($invitation, $plainToken, $httpRequest): array {
+            $lockedInvitation = SocialCommerceRequestInvitation::query()->whereKey($invitation->id)->lockForUpdate()->firstOrFail();
+            $socialRequest = SocialCommerceRequest::query()->whereKey($lockedInvitation->social_commerce_request_id)->lockForUpdate()->firstOrFail();
+
+            if (!$lockedInvitation->isClaimable($plainToken)) {
+                throw ValidationException::withMessages(['claim_token' => 'This invitation is invalid, expired, or already used.']);
+            }
+
+            if ($socialRequest->status !== SocialCommerceRequest::AWAITING_SELLER) {
+                throw ValidationException::withMessages(['request' => 'This request can no longer be dismissed from this invitation.']);
+            }
+
+            $from = $socialRequest->status;
+            $evidencePath = (string) $socialRequest->buyer_screenshot_path;
+            $socialRequest->transitionTo(SocialCommerceRequest::DECLINED);
+            $socialRequest->forceFill([
+                'original_url' => 'redacted://seller-dismissed',
+                'normalized_url' => 'redacted://seller-dismissed',
+                'preview_snapshot' => null,
+                'buyer_screenshot_path' => null,
+                'status' => SocialCommerceRequest::DECLINED,
+                'declined_at' => now(),
+                'closed_reason' => 'seller_not_listing',
+                'lock_version' => (int) $socialRequest->lock_version + 1,
+            ])->save();
+
+            $socialRequest->invitations()->whereIn('status', ['created', 'queued', 'sent', 'clicked'])->update([
+                'status' => 'revoked',
+                'revoked_at' => now(),
+            ]);
+
+            $this->audit->record($socialRequest, 'social_request_dismissed_by_recipient', $from, SocialCommerceRequest::DECLINED, $httpRequest, null, 'invitation_recipient', $lockedInvitation->channel, [
+                'reason' => 'seller_not_listing',
+                'invitation_public_id' => $lockedInvitation->public_id,
+                'evidence_removed' => $evidencePath !== '',
+            ]);
+
+            return [$socialRequest->fresh(), $evidencePath];
+        });
+
+        if (str_starts_with($evidencePath, 'private://')) {
+            $path = ltrim(str_replace('private://', '', $evidencePath), '/');
+            foreach (['s3', 'local'] as $disk) {
+                try {
+                    Storage::disk($disk)->delete($path);
+                } catch (\Throwable) {
+                    // The database reference is already cleared; retention cleanup can retry any remote failure.
+                }
+            }
+        }
+
+        event(new SocialCommerceRequestClosed($dismissed));
+
+        return $dismissed;
     }
 }

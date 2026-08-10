@@ -112,6 +112,9 @@ function DeliveryCoverageMap({ anchors, customerLat, customerLng, height = 220 }
         id: 'google-map-script',
         googleMapsApiKey,
         libraries: MAP_LIBRARIES,
+        version: 'weekly',
+        authReferrerPolicy: 'origin',
+        preventGoogleFontsLoading: true,
     });
     const center = validAnchors[0]
         ? { lat: validAnchors[0].lat, lng: validAnchors[0].lng }
@@ -158,9 +161,9 @@ function DeliveryCoverageMap({ anchors, customerLat, customerLng, height = 220 }
                             center={{ lat: anchor.lat, lng: anchor.lng }}
                             radius={anchor.radius * 1000}
                             options={{
-                                fillColor: '#0284c7',
+                                fillColor: '#cf3e23',
                                 fillOpacity: 0.12,
-                                strokeColor: '#0284c7',
+                                strokeColor: '#cf3e23',
                                 strokeOpacity: 0.8,
                                 strokeWeight: 2,
                             }}

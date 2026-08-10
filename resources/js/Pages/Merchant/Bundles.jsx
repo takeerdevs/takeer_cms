@@ -112,7 +112,6 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         { key: 'all', label: copy('All', 'Zote') },
         { key: 'physical', label: copy('Physical', 'Kushikika') },
         { key: 'digital', label: copy('Digital', 'Kidijitali') },
-        { key: 'service', label: copy('Service', 'Huduma') },
         { key: 'content', label: copy('Content', 'Maudhui') },
     ];
 
@@ -326,7 +325,9 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                 axios.get(`/merchant/${merchantUsername}/orders/api/commerce-summary`).catch(() => ({ data: null })),
             ]);
 
-            setProducts(productsRes.data?.data || []);
+            // Do not let older service records enter the bundle picker during the
+            // physical/digital launch. The backend data remains untouched.
+            setProducts((productsRes.data?.data || []).filter((product) => ['physical', 'digital'].includes(product.type)));
             setContentItems(contentRes.data?.data || []);
             setPosts(postsRes.data?.data || []);
             setBundles(bundleRes.data?.data || bundleRes.data?.bundles || []);

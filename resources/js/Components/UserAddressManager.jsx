@@ -210,6 +210,9 @@ export default function UserAddressManager({
         id: 'google-map-script',
         googleMapsApiKey: googleMapsApiKey,
         libraries: libraries,
+        version: 'weekly',
+        authReferrerPolicy: 'origin',
+        preventGoogleFontsLoading: true,
     });
 
     useEffect(() => {

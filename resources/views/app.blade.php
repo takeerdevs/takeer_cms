@@ -32,7 +32,12 @@
     <meta data-takeer-server-seo="true" name="twitter:card" content="{{ $seo['twitter_card'] ?? ($seoImage ? 'summary_large_image' : 'summary') }}">
     <meta data-takeer-server-seo="true" name="twitter:title" content="{{ $seoTitle }}">
     <meta data-takeer-server-seo="true" name="twitter:description" content="{{ $seoDescription }}">
-    <meta name="theme-color" content="#0284c7">
+    <meta name="theme-color" content="#cf3e23">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

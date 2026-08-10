@@ -61,10 +61,16 @@ class SocialCommerceRequestResource extends JsonResource
                 'kyc_status' => $this->claimedMerchant?->kyc_status,
                 'eligible_to_sell' => (bool) $this->claimedMerchant?->canSellProducts(),
             ] : null),
+            'product_url' => $this->whenLoaded('product', fn () => $this->product
+                ? route('product.show', ['product' => $this->product->slug ?: $this->product->id])
+                : null),
             'product' => $this->whenLoaded('product', fn () => $this->product ? [
                 'id' => $this->product->id,
                 'title' => $this->product->title,
                 'type' => $this->product->type,
+                'slug' => $this->product->slug,
+                'price' => $this->product->price !== null ? (float) $this->product->price : null,
+                'url' => route('product.show', ['product' => $this->product->slug ?: $this->product->id]),
             ] : null),
             'offer' => $this->offer_snapshot,
             'order' => $this->when($this->order_id, fn () => ['id' => $this->order_id, 'public_id' => $this->order?->public_id]),

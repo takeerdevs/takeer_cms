@@ -89,7 +89,10 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: googleMapsApiKey,
-        libraries: libraries
+        libraries: libraries,
+        version: 'weekly',
+        authReferrerPolicy: 'origin',
+        preventGoogleFontsLoading: true,
     });
 
     const autocompleteRef = useRef(null);
@@ -385,10 +388,23 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
         <Card className="glass-card shadow-sm mt-6">
             <CardHeader className="p-5 pb-2">
                     <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-muted-foreground uppercase tracking-wider">
-                    <MapPin className="h-4 w-4" /> {personalMode ? copy('Stock / pickup locations', 'Maeneo ya stock / pickup') : copy('Office / stock / shop locations', 'Maeneo ya ofisi / stock / duka')}
+                    <MapPin className="h-4 w-4" /> {personalMode ? copy('Business (Stock / Pickup) locations', 'Maeneo ya Biashara (Stock / Pickup)') : copy('Office / stock / shop locations', 'Maeneo ya ofisi / stock / duka')}
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-5 space-y-5">
+                <div className="grid gap-2 sm:grid-cols-3">
+                    {[
+                        [copy('1. Add your location', '1. Weka eneo lako'), copy('Shop, office, stock room, or home pickup.', 'Duka, ofisi, stoo, au pickup ya nyumbani.')],
+                        [copy('2. Choose pickup', '2. Chagua pickup'), copy('Allow customers to collect there if you want.', 'Ruhusu wateja kuchukua hapo ukitaka.')],
+                        [copy('3. Set delivery', '3. Weka delivery'), copy('Add only the areas and prices you currently offer.', 'Weka maeneo na bei unazotumia sasa tu.')],
+                    ].map(([title, hint]) => (
+                        <div key={title} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                            <p className="text-xs font-black text-slate-900">{title}</p>
+                            <p className="mt-1 text-[10px] font-semibold leading-4 text-slate-500">{hint}</p>
+                        </div>
+                    ))}
+                </div>
+
                 <div className="flex flex-col gap-3 rounded-2xl border border-brand-100 bg-brand-50/40 p-4 md:flex-row md:items-center md:justify-between">
                     <div>
                         <p className="text-xs font-black uppercase tracking-wide text-brand-700">
@@ -843,6 +859,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
     const [newTemplateName, setNewTemplateName] = useState('');
     const [isSavingTemplate, setIsSavingTemplate] = useState(false);
     const [isSavingPolicy, setIsSavingPolicy] = useState(false);
+    const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
 
     // Default to the first profile or the default one
     useEffect(() => {
@@ -955,7 +972,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
             <div className="text-center py-6 bg-muted/20 rounded-xl border border-dashed border-input">
                 <Truck className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-20" />
                 <p className="text-md text-muted-foreground font-bold mb-3">{copy('No shipping templates yet.', 'Bado hujaweka mipangilio ya usafirishaji.')}</p>
-                <p className="text-xs text-muted-foreground font-bold mb-3">{copy('Shipping templates group products that share the same delivery pricing. Create another template when products differ by weight, size, or transport cost, then choose the template on each product.', 'Mipangilio ya usafirishaji ni namna ya kujumuisha bidhaa zinazoweza safirishwa kwa bei ya usafirishaji sawa mfano bidhaa ndogo ndogo zinazotumia nauli moja zinaweza kua na mpangilio wake maalumu wa usafirishaji, na kama una bidhaa ambazo zinatumia nauli tofauti pengine sababu ya uzito au ukubwa, inashauriwa kuweka mpangilio mwingine wa usafirishaji nawe kwenye bidhaa husika unaweza kuchagua inatumia mpangilio upi wa usafirishaji. Unaweza pia katika bidhaa husika ukaweza mpangilio maalumu kwa hiyo bidhaa tu.')}</p>
+                <p className="mx-auto mb-3 max-w-lg text-xs font-semibold leading-5 text-muted-foreground">{copy('Create one setup for products that use the same delivery prices. You can add another later for heavier or larger products.', 'Tengeneza mpangilio mmoja kwa bidhaa zenye bei sawa ya delivery. Unaweza kuongeza mwingine baadaye kwa bidhaa nzito au kubwa.')}</p>
                 <Button size="sm" onClick={() => setIsAddingTemplate(true)} className="bg-brand-600 font-bold">
                     <Plus className="h-4 w-4 mr-1" /> {copy('Create first template', 'Tengeneza mpangilio wa kwanza')}
                 </Button>
@@ -1028,13 +1045,23 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
             </div>
 
             <div className="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">
-                {copy('Choose any template name that is meaningful to you; customers will not see it.', 'Weka jina lolote la mpangilio upendalo lenye maana kwako, halitaonekana kwa watumiaji.')}
+                {copy('These setup names are only for you. Customers will not see them.', 'Majina haya ya mipangilio ni kwa ajili yako tu. Wateja hawatayaona.')}
             </div>
 
             <div className="bg-white/50 p-4 rounded-2xl border border-brand-100 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200 min-h-[100px]">
                 {activeProfileId ? (
                     <div className="space-y-4">
                         {activeProfile && (
+                            <button
+                                type="button"
+                                onClick={() => setShowAdvancedSettings((current) => !current)}
+                                className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-bold text-slate-700 hover:bg-slate-50"
+                            >
+                                <span>{copy('Advanced coverage rules', 'Mipangilio ya ziada ya maeneo')}</span>
+                                {showAdvancedSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </button>
+                        )}
+                        {activeProfile && showAdvancedSettings && (
                             <div className="space-y-3 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
                                 <div>
                                         <p className="text-[10px] font-black uppercase tracking-widest text-sky-800">{copy('Delivery sections in this template', 'Sehemu za delivery kwenye template hii')}</p>

@@ -5,7 +5,7 @@ const BG_MAP = {
     gradient_midnight: 'linear-gradient(135deg, #1e1b4b, #4c1d95)',
     gradient_fire: 'linear-gradient(135deg, #ef4444, #f97316)',
     solid_black: '#000000',
-    solid_brand: '#0284c7',
+    solid_brand: '#cf3e23',
 };
 
 export function getShortPostPresentation({ text = '', bgStyle = null, hasMedia = false }) {

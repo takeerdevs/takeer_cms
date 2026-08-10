@@ -68,7 +68,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
     const isReachingEnd = data && data[data.length - 1]?.posts.links.next === null;
     const [isLoadingNext, setIsLoadingNext] = useState(false);
     const [editMode, setEditMode] = useState(false);
-    const [sectionOrder, setSectionOrder] = useState(['featured', 'memberships', 'events', 'premium_media', 'commissions', 'downloads', 'content', 'courses', 'bundles', 'services', 'products', 'links']);
+    const [sectionOrder, setSectionOrder] = useState(['featured', 'memberships', 'events', 'premium_media', 'commissions', 'downloads', 'content', 'courses', 'bundles', 'products', 'links']);
     const [dragKey, setDragKey] = useState(null);
     const [links, setLinks] = useState([]);
     const [customSections, setCustomSections] = useState([]);
@@ -190,7 +190,6 @@ export default function MiniStore({ merchantSlug, initialData }) {
         const rankProducts = (items) => [...items].sort((a, b) => discoveryScore(b, productDiscovery) - discoveryScore(a, productDiscovery));
         const products = rankProducts(allProducts.filter((product) => product.type === 'physical'));
         const downloads = rankProducts(allProducts.filter((product) => product.type === 'digital' && !['video_stream', 'audio_stream', 'gallery_pack', 'live_event', 'custom_delivery'].includes(product.digital_delivery_type)));
-        const services = rankProducts(allProducts.filter((product) => product.type === 'service'));
         const events = rankProducts(allProducts.filter((product) => product.type === 'digital' && product.digital_delivery_type === 'live_event'));
         const premiumMedia = rankProducts(allProducts.filter((product) => product.type === 'digital' && ['video_stream', 'audio_stream', 'gallery_pack'].includes(product.digital_delivery_type)));
         const commissions = rankProducts(allProducts.filter((product) => product.type === 'digital' && product.digital_delivery_type === 'custom_delivery'));
@@ -227,7 +226,6 @@ export default function MiniStore({ merchantSlug, initialData }) {
             { key: 'commissions', title: copy('Custom Work', 'Kazi maalum'), items: sectionItemList('commissions', commissions), href: `/m/${merchantSlug}/downloads` },
             { key: 'products', title: copy('Products', 'Bidhaa'), items: sectionItemList('products', products), href: `/m/${merchantSlug}/products` },
             { key: 'downloads', title: copy('Downloads', 'Vipakuliwa'), items: sectionItemList('downloads', downloads), href: `/m/${merchantSlug}/downloads` },
-            { key: 'services', title: copy('Services', 'Huduma'), items: sectionItemList('services', services), href: `/m/${merchantSlug}/services` },
             { key: 'content', title: copy('Knowledge', 'Maarifa'), items: sectionItemList('content', contentItems), href: `/m/${merchantSlug}/content` },
             { key: 'courses', title: copy('Courses', 'Kozi'), items: sectionItemList('courses', courseBundles), href: `/m/${merchantSlug}/courses` },
             { key: 'bundles', title: copy('Bundles', 'Vifurushi'), items: sectionItemList('bundles', regularBundles), href: `/m/${merchantSlug}/bundles` },
@@ -258,11 +256,10 @@ export default function MiniStore({ merchantSlug, initialData }) {
     const featuredProduct = useMemo(() => {
         const allProducts = sections.find(s => s.key === 'products')?.items || [];
         const allDownloads = sections.find(s => s.key === 'downloads')?.items || [];
-        const allServices = sections.find(s => s.key === 'services')?.items || [];
         const allEvents = sections.find(s => s.key === 'events')?.items || [];
         const allMedia = sections.find(s => s.key === 'premium_media')?.items || [];
         const allCommissions = sections.find(s => s.key === 'commissions')?.items || [];
-        const pool = [...allEvents, ...allMedia, ...allCommissions, ...allDownloads, ...allServices, ...allProducts]
+        const pool = [...allEvents, ...allMedia, ...allCommissions, ...allDownloads, ...allProducts]
             .sort((a, b) => discoveryScore(b, productDiscovery) - discoveryScore(a, productDiscovery));
         if (featuredId) return pool.find(p => String(p.id) === String(featuredId)) || pool[0] || null;
         return pool[0] || null;
@@ -564,11 +561,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                             </div>
                                         </div>
                                     )}
-                                    {editMode && section.key === 'services' && (serviceAreaType || serviceOpenDaysCount > 0 || serviceLocations.length > 0) && (
-                                        <p className="text-xs text-muted-foreground">
-                                            {serviceAreaType ? `${serviceAreaType} ${copy('service', 'huduma')}` : copy('Service', 'Huduma')}{serviceOpenDaysCount > 0 ? ` • ${copy('Open', 'Imefunguliwa')} ${serviceOpenDaysCount} ${copy('days/week', 'siku/wiki')}` : ''}{serviceLocations.length > 0 ? ` • ${serviceLocations.slice(0, 2).join(', ')}` : ''}
-                                        </p>
-                                    )}
+                                    {/* Service storefront metadata is deferred with the service launch. */}
 
                                     {section.key === 'featured' ? (
                                         featuredProduct ? (
@@ -790,7 +783,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                     editMode={editMode}
                                                     isOwner={isOwner}
                                                     productDiscovery={productDiscovery}
-                                                    serviceLocations={section.key === 'services' ? serviceLocations : []}
+                                                    serviceLocations={[]}
                                                     onLayoutChange={(layout) => setItemLayout(product, layout)}
                                                     onFeature={() => setFeaturedId(product.id)}
                                                     onRemove={() => removeSectionItem(section.key, product, idx)}
@@ -1068,7 +1061,6 @@ function StorefrontItemPicker({
         { key: 'all', label: copy('All', 'Zote') },
         { key: 'physical', label: copy('Products', 'Bidhaa') },
         { key: 'digital', label: copy('Downloads', 'Vipakuliwa') },
-        { key: 'service', label: copy('Services', 'Huduma') },
         { key: 'content', label: copy('Content', 'Maudhui') },
         { key: 'bundle', label: copy('Bundles', 'Vifurushi') },
         { key: 'membership', label: copy('Memberships', 'Uanachama') },
@@ -1095,7 +1087,7 @@ function StorefrontItemPicker({
                             value={query}
                             onChange={(e) => onQueryChange(e.target.value)}
                             className="h-10 w-full rounded-xl border border-border pl-9 pr-3 text-sm"
-                            placeholder={copy('Search products, downloads, services...', 'Tafuta bidhaa, vipakuliwa, huduma...')}
+                            placeholder={copy('Search products and downloads...', 'Tafuta bidhaa na vipakuliwa...')}
                             disabled={filter === 'link'}
                         />
                     </div>

@@ -61,6 +61,46 @@ class SocialCommerceInvitationService
             throw ValidationException::withMessages(['recipient' => 'This seller contact has opted out of Takeer invitations.']);
         }
         return DB::transaction(function () use ($request, $channel, $recipient, $recipientHash, $httpRequest): array {
+            if ($channel === 'copy') {
+                $existingInvitationQuery = $request->invitations()
+                    ->where('channel', 'copy')
+                    ->whereNotIn('status', ['revoked', 'expired', 'failed', 'opted_out'])
+                    ->where('expires_at', '>', now());
+
+                if ($recipientHash) {
+                    $existingInvitationQuery->where('recipient_hash', $recipientHash);
+                } else {
+                    $existingInvitationQuery->whereNull('recipient_hash');
+                }
+
+                $existingInvitation = $existingInvitationQuery->latest('id')->first();
+                if ($existingInvitation) {
+                    $shortClaimUrl = $existingInvitation->short_code
+                        ? rtrim((string) config('app.url'), '/') . '/sb/' . $existingInvitation->short_code
+                        : null;
+
+                    $this->audit->record(
+                        $request,
+                        'social_invite_reused',
+                        $request->status,
+                        $request->status,
+                        $httpRequest,
+                        $request->buyer_id,
+                        'user',
+                        'copy',
+                        ['invitation_public_id' => $existingInvitation->public_id],
+                    );
+
+                    return [
+                        'invitation' => $existingInvitation,
+                        'claim_url' => $shortClaimUrl,
+                        'short_claim_url' => $shortClaimUrl,
+                        'claim_token' => null,
+                        'message' => (string) data_get($existingInvitation->message_snapshot, 'en', ''),
+                    ];
+                }
+            }
+
             $count = $request->invitations()->whereNotIn('status', ['revoked', 'expired'])->count();
             if ($count >= (int) config('social_commerce.max_invites_per_request', 3)) {
                 throw ValidationException::withMessages(['invitation' => 'Invitation limit reached for this request.']);
@@ -74,18 +114,25 @@ class SocialCommerceInvitationService
             $tokenHash = hash('sha256', $plainToken);
             $expiresAt = min($request->expires_at ?: now()->addHours(72), now()->addHours((int) config('social_commerce.request_expiry_hours', 72)));
             $publicId = Str::random(20);
+            do {
+                $shortCode = Str::random(16);
+            } while (SocialCommerceRequestInvitation::query()->where('short_code', $shortCode)->exists());
+
             $claimUrl = rtrim((string) config('app.url'), '/') . '/social-buy/claim/' . $publicId . '#token=' . $plainToken;
+            $shortClaimUrl = rtrim((string) config('app.url'), '/') . '/sb/' . $shortCode;
             $expiryText = $expiresAt->format('Y-m-d H:i');
             $message = "A customer wants to buy the item in this original social post: {$request->original_url} The customer sent the request through Takeer. Confirm the product, price, stock, and delivery, then use the protected Takeer request link. Do not request payment outside Takeer. Expires {$expiryText}.";
 
             $isSms = $channel === 'sms';
             $invitation = SocialCommerceRequestInvitation::create([
                 'public_id' => $publicId,
+                'short_code' => $shortCode,
                 'social_commerce_request_id' => $request->id,
                 'channel' => $channel,
                 'recipient_encrypted' => $recipient !== '' ? $recipient : null,
                 'recipient_hash' => $recipientHash,
                 'token_hash' => $tokenHash,
+                'short_token_hash' => hash('sha256', $shortCode),
                 'status' => $isSms ? 'created' : 'sent',
                 'attempt_count' => 0,
                 'dedupe_key' => "social-invite:{$request->id}:{$channel}:" . ($recipientHash ?: 'link') . ':' . ($count + 1),
@@ -107,7 +154,13 @@ class SocialCommerceInvitationService
                 $this->audit->record($request, 'social_invite_sent', $request->status, $request->status, $httpRequest, $request->buyer_id, 'user', $channel, ['invitation_public_id' => $invitation->public_id]);
             }
 
-            return ['invitation' => $invitation, 'claim_url' => $claimUrl, 'claim_token' => $plainToken, 'message' => $message];
+            return [
+                'invitation' => $invitation,
+                'claim_url' => $claimUrl,
+                'short_claim_url' => $shortClaimUrl,
+                'claim_token' => $plainToken,
+                'message' => $message,
+            ];
         });
     }
 
