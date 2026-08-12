@@ -41,8 +41,10 @@ export default function PhysicalPublishPanel({
     setSelectedShippingProfileId,
     deliveryPromiseOverride = null,
     faqEditor = null,
+    termsConsent = null,
     onPublish,
     disabledReason,
+    termsDisabledReason = null,
 }) {
     const { copy } = useLocale()
     const content = (
@@ -75,10 +77,11 @@ export default function PhysicalPublishPanel({
             )}
 
             {faqEditor}
+            {termsConsent}
             <Button
                 className="h-14 w-full rounded-xl bg-brand-600 text-lg font-bold text-white shadow-lg shadow-brand-600/20 hover:bg-brand-700"
                 onClick={onPublish}
-                disabled={Boolean(disabledReason)}
+                disabled={Boolean(disabledReason) || Boolean(termsDisabledReason)}
             >
                 {copy('Publish to shop', 'Weka sokoni')} <ChevronRight className="ml-2 h-5 w-5" />
             </Button>

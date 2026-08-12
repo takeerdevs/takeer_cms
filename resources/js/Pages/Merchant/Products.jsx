@@ -1569,6 +1569,11 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                             <p className="font-bold text-sm line-clamp-2 text-left hover:text-brand-700">
                                                 {product.title}
                                             </p>
+                                            {product.product_code && (
+                                                <p className="mt-1 font-mono text-[11px] font-black tracking-[0.12em] text-brand-700">
+                                                    {copy('Product No.', 'Namba ya bidhaa')} {product.product_code}
+                                                </p>
+                                            )}
                                             {product.status === 'draft' && (
                                                 <p className="mt-1 text-[11px] font-semibold text-amber-700">
                                                     {copy('Continue completing it in the upload editor.', 'Endelea kuikamilisha kwenye upload editor.')}

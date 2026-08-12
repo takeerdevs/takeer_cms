@@ -31,10 +31,10 @@ export default function RequestStatus({ request }) {
         <AppLayout>
             <Head title={`${copy('Request status', 'Hali ya ombi')} | Takeer`} />
             <div className="mx-auto max-w-3xl space-y-5 px-4 pb-24 pt-6 sm:pt-10">
-                <Button asChild variant="ghost" className="-ml-3"><Link href="/buy-from-social-media"><ArrowLeft className="mr-2 h-4 w-4" />{copy('Buy from social media', 'Nunua kutoka mitandao ya kijamii')}</Link></Button>
+                <Button asChild variant="ghost" className="-ml-3"><Link href="/buy-from-social-media"><ArrowLeft className="mr-2 h-4 w-4" />{copy('Buy from online sellers', 'Nunua kwa wauzaji wa mtandaoni')}</Link></Button>
                 <Card>
                     <CardHeader className="border-b border-border/70 bg-muted/20">
-                        <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-wider text-brand-700"><span className="rounded-full bg-brand-50 px-2.5 py-1">{data.platform}</span><StatusPill status={data.status} /></div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-wider text-brand-700"><span className="rounded-full bg-brand-50 px-2.5 py-1">{data.source?.label || data.platform}</span><StatusPill status={data.status} /></div>
                         <CardTitle className="pt-1 text-2xl">{data.buyer_notes?.product || data.preview?.snapshot?.title || copy('Social-commerce request', 'Ombi la ununuzi wa kijamii')}</CardTitle>
                         <CardDescription>{copy('Request', 'Ombi')} {data.public_id} · {formatStatus(data.status)}</CardDescription>
                     </CardHeader>
@@ -56,7 +56,7 @@ export default function RequestStatus({ request }) {
                                 </div>
                             </div>
                             {data.buyer_evidence?.screenshot_url && <div className="mt-4 overflow-hidden rounded-xl border border-sky-200 bg-slate-950 p-2"><img src={data.buyer_evidence.screenshot_url} alt={copy('Selected product evidence', 'Ushahidi wa bidhaa iliyochaguliwa')} className="max-h-[34rem] w-full object-contain" loading="lazy" /></div>}
-                            {data.original_url && <a href={data.original_url} target="_blank" rel="noreferrer" className="mt-4 inline-flex max-w-full items-center gap-2 text-xs font-bold text-brand-700 hover:underline"><ExternalLink className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{copy('Open original social post', 'Fungua post ya awali kuhakiki bidhaa ni yako')}</span></a>}
+                            {data.original_url && <a href={data.original_url} target="_blank" rel="noreferrer" className="mt-4 inline-flex max-w-full items-center gap-2 text-xs font-bold text-brand-700 hover:underline"><ExternalLink className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{copy('Open original online listing', 'Fungua tangazo la awali mtandaoni')}</span></a>}
                         </div>
 
                         {data.offer && <Card className="border-emerald-200 bg-emerald-50/60 shadow-none"><CardContent className="space-y-3 p-4 sm:p-5"><div className="flex items-center gap-2 text-emerald-800"><CheckCircle2 className="h-5 w-5" /><p className="font-black">{copy('Seller-confirmed offer', 'Offer iliyothibitishwa na Muuzaji')}</p></div><p className="text-sm text-emerald-900">{data.offer.product_title} · {data.offer.quantity} × {data.offer.unit_price} {data.offer.currency_code} + {data.offer.shipping_fee} {copy('delivery', 'delivery')}</p><Button asChild className="w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto"><Link href={`/social-commerce/requests/${data.public_id}/offer`}>{copy('Review offer', 'Kagua offer')}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button></CardContent></Card>}

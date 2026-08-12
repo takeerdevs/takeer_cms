@@ -9,6 +9,7 @@ use App\Models\Merchant;
 use App\Models\Post;
 use App\Services\ContentPolicyService;
 use App\Services\LongFormDocumentService;
+use App\Services\MerchantSellingReadinessService;
 use App\Services\PulseNotificationService;
 use App\Support\MerchantPermissions;
 use Illuminate\Http\JsonResponse;
@@ -150,9 +151,10 @@ class MerchantContentController extends Controller
         mixed $merchant,
         ContentItem $contentItem,
         ContentPolicyService $policyService,
-        LongFormDocumentService $documentService
+        LongFormDocumentService $documentService,
+        MerchantSellingReadinessService $sellingReadiness,
     ): JsonResponse {
-        return $this->update($request, $contentItem, $policyService, $documentService);
+        return $this->update($request, $contentItem, $policyService, $documentService, $sellingReadiness);
     }
 
     public function scopedDestroy(Request $request, mixed $merchant, ContentItem $contentItem): JsonResponse
@@ -200,7 +202,12 @@ class MerchantContentController extends Controller
         return response()->json(['content_item' => $contentItem]);
     }
 
-    public function store(Request $request, ContentPolicyService $policyService, LongFormDocumentService $documentService): JsonResponse
+    public function store(
+        Request $request,
+        ContentPolicyService $policyService,
+        LongFormDocumentService $documentService,
+        MerchantSellingReadinessService $sellingReadiness,
+    ): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
 
@@ -213,7 +220,29 @@ class MerchantContentController extends Controller
             'price' => 'nullable|numeric|min:0',
             'currency_id' => 'nullable|integer|exists:currencies,id',
             'bg_style' => 'nullable|string|in:gradient_sunset,gradient_ocean,gradient_forest,gradient_midnight,gradient_fire,solid_black,solid_brand,solid_white',
+            'accept_merchant_terms' => 'nullable|boolean',
         ]);
+
+        if (($validated['visibility'] ?? 'draft') === 'published' && (float) ($validated['price'] ?? 0) > 0) {
+            try {
+                $sellingReadiness->acceptIfRequested($request->user(), $request, $merchant);
+            } catch (\RuntimeException $exception) {
+                return response()->json([
+                    'message' => $exception->getMessage(),
+                    'verification_url' => '/legal',
+                    'required_step' => 'legal',
+                ], 403);
+            }
+
+            $readiness = $sellingReadiness->check($request->user(), $merchant);
+            if (! $readiness['ready']) {
+                return response()->json([
+                    'message' => $readiness['message'],
+                    'verification_url' => $readiness['verification_url'],
+                    'required_step' => $readiness['step'],
+                ], 403);
+            }
+        }
 
         if (($validated['format'] ?? LongFormDocumentService::FORMAT) === LongFormDocumentService::FORMAT) {
             $documentService->assertValid($validated['body']);
@@ -244,7 +273,13 @@ class MerchantContentController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, ContentItem $contentItem, ContentPolicyService $policyService, LongFormDocumentService $documentService): JsonResponse
+    public function update(
+        Request $request,
+        ContentItem $contentItem,
+        ContentPolicyService $policyService,
+        LongFormDocumentService $documentService,
+        MerchantSellingReadinessService $sellingReadiness,
+    ): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
         $this->ensureOwnership($merchant->id, $contentItem->merchant_id);
@@ -258,7 +293,32 @@ class MerchantContentController extends Controller
             'price' => 'nullable|numeric|min:0',
             'currency_id' => 'nullable|integer|exists:currencies,id',
             'bg_style' => 'nullable|string|in:gradient_sunset,gradient_ocean,gradient_forest,gradient_midnight,gradient_fire,solid_black,solid_brand,solid_white',
+            'accept_merchant_terms' => 'nullable|boolean',
         ]);
+
+        $effectivePrice = array_key_exists('price', $validated) ? $validated['price'] : $contentItem->price;
+        $publishingPaidContent = ($validated['visibility'] ?? $contentItem->visibility) === 'published'
+            && (float) ($effectivePrice ?? 0) > 0;
+        if ($publishingPaidContent) {
+            try {
+                $sellingReadiness->acceptIfRequested($request->user(), $request, $merchant);
+            } catch (\RuntimeException $exception) {
+                return response()->json([
+                    'message' => $exception->getMessage(),
+                    'verification_url' => '/legal',
+                    'required_step' => 'legal',
+                ], 403);
+            }
+
+            $readiness = $sellingReadiness->check($request->user(), $merchant);
+            if (! $readiness['ready']) {
+                return response()->json([
+                    'message' => $readiness['message'],
+                    'verification_url' => $readiness['verification_url'],
+                    'required_step' => $readiness['step'],
+                ], 403);
+            }
+        }
 
         $title = $validated['title'] ?? $contentItem->title;
         $body = $validated['body'] ?? $contentItem->body;

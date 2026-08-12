@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Contracts\SocialCommerceProvider;
 use App\Services\SocialCommerce\FacebookMarketplaceSocialCommerceProvider;
 use App\Services\SocialCommerce\InstagramSocialCommerceProvider;
+use App\Services\SocialCommerce\GenericWebSocialCommerceProvider;
 use InvalidArgumentException;
 
 class SocialCommerceProviderRegistry
@@ -15,8 +16,9 @@ class SocialCommerceProviderRegistry
     public function __construct(
         InstagramSocialCommerceProvider $instagram,
         FacebookMarketplaceSocialCommerceProvider $facebook,
+        GenericWebSocialCommerceProvider $web,
     ) {
-        $this->providers = [$instagram, $facebook];
+        $this->providers = [$instagram, $facebook, $web];
     }
 
     public function providerFor(string $url): SocialCommerceProvider
@@ -27,7 +29,7 @@ class SocialCommerceProviderRegistry
             }
         }
 
-        throw new InvalidArgumentException('Paste a supported Instagram post/reel, Facebook Marketplace item, or Facebook share link.');
+        throw new InvalidArgumentException('Paste a valid public product link beginning with http:// or https://.');
     }
 
     public function normalize(string $url): array

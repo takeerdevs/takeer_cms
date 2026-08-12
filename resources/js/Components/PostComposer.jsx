@@ -1,14 +1,14 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { usePage, router } from '@inertiajs/react';
+import { Link, usePage, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Image, ShoppingBag, BookOpenText, Lock, Crown, Package, History, RotateCcw, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import LongFormBlockEditor from '@/Components/LongFormBlockEditor';
-import PolicyNotice from '@/Components/PolicyNotice';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { hasMerchantPermission } from '@/lib/merchantPermissions';
 import { useLocale } from '@/lib/i18n';
+import { REQUIRED_MERCHANT_DOCUMENT_TYPES } from '@/lib/legalDocuments';
 
 const BG_OPTIONS = [
     { key: null, label: 'Normal', preview: '' },
@@ -223,7 +223,13 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     const [showLongDrafts, setShowLongDrafts] = useState(false);
     const [longVersions, setLongVersions] = useState([]);
     const [deletingLongDraftId, setDeletingLongDraftId] = useState(null);
+    const [longFormUploadsPending, setLongFormUploadsPending] = useState(false);
     const [shortPrice, setShortPrice] = useState('');
+    const [merchantTermsAccepted, setMerchantTermsAccepted] = useState(false);
+    const [merchantTermsReady, setMerchantTermsReady] = useState(false);
+    const [merchantTermsLoading, setMerchantTermsLoading] = useState(false);
+    const [merchantTermsConsent, setMerchantTermsConsent] = useState(false);
+    const [commerceKycComplete, setCommerceKycComplete] = useState(null);
 
     // Support for legacy/old product selection if still needed by some logic
     const [products, setProducts] = useState([]);
@@ -273,8 +279,52 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     const isPaidShortUnlock = hasSingleUnlockPrice && parsedShortPrice > 0;
     const shouldShowShortTitleInput = composerMode === 'short' && isPaidShortUnlock;
     const shouldRequireShortTitle = shouldShowShortTitleInput;
-    const selectedProfileKycComplete = ['verified', 'approved'].includes(String(selectedProfile?.kyc_status || '').toLowerCase())
+    const profileKycComplete = ['verified', 'approved'].includes(String(selectedProfile?.kyc_status || '').toLowerCase())
         || Boolean(selectedProfile?.is_verified);
+    const selectedProfileKycComplete = commerceKycComplete ?? profileKycComplete;
+    const requiresMerchantTerms = Boolean(selectedProfile);
+    const merchantTermsDisabledReason = !requiresMerchantTerms
+        ? null
+        : merchantTermsLoading
+            ? copy('Checking merchant terms...', 'Inaangalia masharti ya mfanyabiashara...')
+            : !merchantTermsReady
+                ? copy('Merchant terms are not active yet.', 'Masharti ya mfanyabiashara bado hayajawezeshwa.')
+                : !merchantTermsAccepted && !merchantTermsConsent
+                    ? copy('Accept the merchant terms before publishing.', 'Kubali masharti ya mfanyabiashara kabla ya kuchapisha.')
+                    : null;
+
+    const merchantTermsConsentNotice = !requiresMerchantTerms || merchantTermsAccepted ? null : (
+        <div className="space-y-2">
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
+                {copy('By publishing this post, you confirm that you will follow Takeer’s applicable legal, merchant, payment, refund, privacy, and content rules.', 'Kwa kuchapisha post hii, unathibitisha kuwa utafuata sheria, masharti na sera za Takeer zinazohusika kuhusu biashara, malipo, marejesho, faragha na content.')}{' '}
+                <Link href="/legal" className="font-black underline underline-offset-2">
+                    {copy('Read the Legal Center before continuing.', 'Soma Kituo cha Sheria kabla ya kuendelea.')}
+                </Link>
+            </p>
+            <label className={cn(
+                'flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm',
+                merchantTermsConsent
+                    ? 'border-brand-200 bg-brand-50 text-brand-800'
+                    : merchantTermsReady
+                        ? 'cursor-pointer border-border bg-card text-foreground hover:border-brand-300'
+                        : 'border-border bg-muted/30 text-muted-foreground'
+            )}>
+                <input
+                    type="checkbox"
+                    checked={merchantTermsConsent}
+                    onChange={(event) => setMerchantTermsConsent(event.target.checked)}
+                    disabled={merchantTermsLoading || !merchantTermsReady}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span>{copy('I have read, understood, and agree to follow the merchant terms before publishing.', 'Nimesoma, nimeelewa, na nakubali kufuata masharti ya mfanyabiashara kabla ya kuchapisha.')}</span>
+            </label>
+            {!merchantTermsLoading && !merchantTermsReady && (
+                <p className="px-1 text-xs font-semibold text-amber-700">
+                    {copy('Merchant terms are not active yet. An administrator must activate them before this post can be published.', 'Masharti ya mfanyabiashara bado hayajawezeshwa. Admin lazima ayawashe kabla ya post hii kuchapishwa.')}
+                </p>
+            )}
+        </div>
+    );
 
     // Default to is_default profile
     useEffect(() => {
@@ -318,6 +368,14 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
         setShortPrice('');
         setShortTitle('');
     }, [selectedProfile, selectedProfileKycComplete]);
+
+    useEffect(() => {
+        setCommerceKycComplete(null);
+        setMerchantTermsAccepted(false);
+        setMerchantTermsReady(false);
+        setMerchantTermsConsent(false);
+        if (selectedProfile?.id) fetchMerchantTermsAndKyc();
+    }, [selectedProfile?.id]);
 
     useEffect(() => {
         if (!isOpen || composerMode !== 'long' || !selectedProfile?.id) return;
@@ -525,6 +583,64 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
         }
     };
 
+    const fetchMerchantTermsAndKyc = async () => {
+        if (!selectedProfile?.id) return;
+
+        setMerchantTermsLoading(true);
+        try {
+            const [legalResult, kycResult] = await Promise.allSettled([
+                axios.get('/api/legal/documents', {
+                    params: { merchant_id: selectedProfile.id },
+                }),
+                axios.get(merchantApiBase + '/kyc/api'),
+            ]);
+
+            if (legalResult.status === 'rejected') {
+                throw legalResult.reason;
+            }
+
+            const requiredDocuments = (legalResult.value.data?.documents || []).filter((document) => document.required !== false);
+            const requiredDocumentCount = REQUIRED_MERCHANT_DOCUMENT_TYPES.length;
+            setMerchantTermsReady(requiredDocuments.length === requiredDocumentCount);
+            setMerchantTermsAccepted(requiredDocuments.length === requiredDocumentCount && requiredDocuments.every((document) => document.accepted));
+
+            if (kycResult.status === 'fulfilled') {
+                const kycResponse = kycResult.value.data || {};
+                const merchantKycStatus = String(kycResponse.merchant_kyc_status || '').toLowerCase();
+                const submittedKycStatus = String(kycResponse.kyc?.status || '').toLowerCase();
+                setCommerceKycComplete(
+                    Boolean(kycResponse.is_verified)
+                    || ['approved', 'verified'].includes(merchantKycStatus)
+                    || ['approved', 'verified'].includes(submittedKycStatus)
+                );
+            }
+        } catch (error) {
+            console.error('Failed to load merchant commerce terms', error);
+            setMerchantTermsReady(false);
+            setMerchantTermsAccepted(false);
+            toast.error(copy('Could not check merchant terms. Please try again.', 'Imeshindikana kuangalia masharti ya mfanyabiashara. Jaribu tena.'));
+        } finally {
+            setMerchantTermsLoading(false);
+        }
+    };
+
+    const handleRestrictionToggle = () => {
+        if (isRestricted) {
+            setIsRestricted(false);
+            setSelectedPromotables([]);
+            setShortPrice('');
+            setShortTitle('');
+            return;
+        }
+
+        if (!selectedProfileKycComplete) {
+            toast.error(copy('Complete KYC before locking content for payment.', 'Kamilisha KYC kabla ya kufunga content kwa malipo.'));
+            return;
+        }
+
+        setIsRestricted(true);
+    };
+
     useEffect(() => {
         if (showProducts || isRestricted) {
             fetchPromotables();
@@ -559,6 +675,11 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
         setSelectedPromotables([]); setPromotedProduct(null); setIsRestricted(false);
         setShortPrice(''); setShortTitle(''); setActivePromotionTab('plan');
         setShowBg(false); setShowProducts(false);
+        setMerchantTermsAccepted(false);
+        setMerchantTermsReady(false);
+        setMerchantTermsLoading(false);
+        setMerchantTermsConsent(false);
+        setCommerceKycComplete(null);
         setComposerMode('short');
         setLongForm({
             id: null,
@@ -572,6 +693,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
         setLongAutosaveStatus('Draft not saved yet');
         setLastLongAutosaveSignature('');
         setLongVersions([]);
+        setLongFormUploadsPending(false);
         setShowLongDrafts(false);
         setForwarderRouteId('');
     };
@@ -585,12 +707,20 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
         }
         if (composerMode === 'short' && !text.trim() && mediaFiles.length === 0) return;
         if (composerMode === 'long' && (!longForm.title.trim() || !longForm.body.trim())) return;
+        if (composerMode === 'long' && longFormUploadsPending) {
+            toast.error(copy('Wait for all attachments to finish uploading before publishing.', 'Subiri attachments zote zikamilike kupakia kabla ya kuchapisha.'));
+            return;
+        }
         if (shouldRequireShortTitle && !shortTitle.trim()) {
             toast.error(copy('Paid short content must have a clear title.', 'Content fupi ya kulipia lazima iwe na kichwa wazi.'));
             return;
         }
         if (hasSingleUnlockPrice && parsedShortPrice !== null && parsedShortPrice < 0) {
             toast.error(copy('Unlock price cannot be negative.', 'Bei ya kufungua content haiwezi kuwa hasi.'));
+            return;
+        }
+        if (merchantTermsDisabledReason) {
+            toast.error(merchantTermsDisabledReason);
             return;
         }
 
@@ -663,6 +793,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                 promotables: selectedPromotables.map(p => ({ id: p.id, type: p.type })),
                 product_id: promotedProduct?.id || null,
                 restricted_price: shouldLockPost ? parsedShortPrice : null,
+                accept_merchant_terms: requiresMerchantTerms && !merchantTermsAccepted && merchantTermsConsent,
                 forwarder_route_id: forwarderRouteId || null,
             };
 
@@ -678,7 +809,19 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
 
         } catch (error) {
             console.error('Publishing failed:', error);
-            toast.error(error.response?.data?.message || copy('Failed to publish post. Please try again.', 'Imeshindikana kuchapisha post. Jaribu tena.'));
+            const message = error.response?.data?.message || copy('Failed to publish post. Please try again.', 'Imeshindikana kuchapisha post. Jaribu tena.');
+            const verificationUrl = error.response?.data?.verification_url;
+            const requiredStep = error.response?.data?.required_step;
+            if (verificationUrl && requiredStep !== 'legal') {
+                toast.error(message, {
+                    action: {
+                        label: copy('Open merchant setup', 'Fungua usajili wa mfanyabiashara'),
+                        onClick: () => router.visit(verificationUrl),
+                    },
+                });
+            } else {
+                toast.error(message);
+            }
             setSubmitting(false);
         }
     };
@@ -729,7 +872,9 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                 submitting
                                 || (merchantProfiles.length > 0 && !selectedProfile)
                                 || (composerMode === 'short' ? (!text.trim() && mediaFiles.length === 0) : (!longForm.title.trim() || !longForm.body.trim()))
+                                || (composerMode === 'long' && longFormUploadsPending)
                                 || (shouldRequireShortTitle && !shortTitle.trim())
+                                || Boolean(merchantTermsDisabledReason)
                             }
                             className="h-10 px-6 rounded-full bg-brand-600 text-white text-sm font-bold disabled:opacity-40 transition-all hover:bg-brand-700 shadow-lg shadow-brand-500/20 drop-shadow-sm active:scale-95"
                         >
@@ -969,6 +1114,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                             uploadUrl={`${merchantApiBase}/content/upload/media`}
                                             uploadFields={merchantPayload}
                                             bookmarkSearchUrl={`${merchantApiBase}/posts/api`}
+                                            onUploadActivityChange={setLongFormUploadsPending}
                                         />
                                     </div>
                                 </div>
@@ -1026,29 +1172,17 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                             </div>
                                             <p className="text-[10px] text-muted-foreground mt-0.5">
                                                 {selectedProfileKycComplete
-                                                    ? copy('Toggle to lock this content behind a paywall', 'Washa ili kufunga content nyuma ya malipo')
+                                                    ? copy('Accept the merchant terms below before publishing paid content', 'Kubali masharti ya mfanyabiashara hapa chini kabla ya kuchapisha content ya kulipia')
                                                     : copy('Complete KYC before locking content for payment', 'Kamilisha KYC kabla ya kufunga content kwa malipo')}
                                             </p>
                                         </div>
                                         <button
-                                            onClick={() => {
-                                                if (!selectedProfileKycComplete) {
-                                                    toast.error(copy('Complete KYC before locking content for payment.', 'Kamilisha KYC kabla ya kufunga content kwa malipo.'));
-                                                    return;
-                                                }
-
-                                                const next = !isRestricted;
-                                                setIsRestricted(next);
-                                                if (!next) {
-                                                    setSelectedPromotables([]);
-                                                    setShortPrice('');
-                                                    setShortTitle('');
-                                                }
-                                            }}
-                                            disabled={!selectedProfileKycComplete}
+                                            type="button"
+                                            onClick={handleRestrictionToggle}
+                                            aria-label={copy('Enable paid content', 'Washa content ya kulipia')}
                                             className={cn(
                                                 "relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
-                                                selectedProfileKycComplete ? "cursor-pointer" : "cursor-not-allowed",
+                                                "cursor-pointer",
                                                 isRestricted ? "bg-brand-600" : "bg-muted"
                                             )}
                                         >
@@ -1173,7 +1307,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                 </div>
                             </div>
 
-                            <PolicyNotice />
+                            {merchantTermsConsentNotice}
 
                             <div className="flex flex-col items-center gap-3 py-2">
                                 <span className="text-sm font-black uppercase tracking-[0.35em] text-brand-600">{copy('OR', 'AU')}</span>

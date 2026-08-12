@@ -32,8 +32,8 @@ use App\Http\Resources\ProductResource;
 use App\Services\EntitlementService;
 use App\Services\AiCreditService;
 use App\Services\GalleryImageService;
-use App\Services\LegalAcceptanceService;
 use App\Services\MediaUploadService;
+use App\Services\MerchantSellingReadinessService;
 use App\Services\ProductIntelligenceService;
 use App\Services\PulseNotificationService;
 use App\Support\MerchantPermissions;
@@ -247,7 +247,7 @@ class UploadController extends Controller
         if (! $isFreePostMedia && $merchant && ! $merchant->canSellProducts()) {
             return response()->json([
                 'message' => 'Complete KYC before uploading product or private commerce files.',
-                'verification_url' => "/merchant/{$merchant->username}/verification",
+                'verification_url' => "/merchant/{$merchant->username}/kyc",
             ], 403);
         }
 
@@ -324,7 +324,7 @@ class UploadController extends Controller
         if ($merchant && ! $merchant->canSellProducts()) {
             return response()->json([
                 'message' => 'Complete KYC before uploading product or private commerce files.',
-                'verification_url' => "/merchant/{$merchant->username}/verification",
+                'verification_url' => "/merchant/{$merchant->username}/kyc",
             ], 403);
         }
 
@@ -550,7 +550,7 @@ class UploadController extends Controller
         if (! $merchantProfile->canSellProducts()) {
             return response()->json([
                 'message' => 'Complete KYC before creating product listings.',
-                'verification_url' => "/merchant/{$merchantProfile->username}/verification",
+                'verification_url' => "/merchant/{$merchantProfile->username}/kyc",
             ], 403);
         }
 
@@ -688,7 +688,7 @@ class UploadController extends Controller
         if (! $merchantProfile->canSellProducts()) {
             return response()->json([
                 'message' => 'Complete KYC before creating product listings.',
-                'verification_url' => "/merchant/{$merchantProfile->username}/verification",
+                'verification_url' => "/merchant/{$merchantProfile->username}/kyc",
             ], 403);
         }
 
@@ -751,13 +751,26 @@ class UploadController extends Controller
     /**
      * Finalize the product, store images, and create a social post.
      */
-    public function publishProduct(Request $request, MediaUploadService $mediaService, EntitlementService $entitlementService, LegalAcceptanceService $legalAcceptance): JsonResponse
+    public function publishProduct(Request $request, MediaUploadService $mediaService, EntitlementService $entitlementService, MerchantSellingReadinessService $sellingReadiness): JsonResponse
     {
-        $merchantForLegal = $this->merchantFromRequest($request);
+        $merchantProfile = $this->merchantFromRequest($request);
         try {
-            $legalAcceptance->assertMerchantReady($request->user(), (int) $merchantForLegal->id);
+            $sellingReadiness->acceptIfRequested($request->user(), $request, $merchantProfile);
         } catch (\RuntimeException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 503);
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'verification_url' => '/legal',
+                'required_step' => 'legal',
+            ], 403);
+        }
+
+        $readiness = $sellingReadiness->check($request->user(), $merchantProfile);
+        if (! $readiness['ready']) {
+            return response()->json([
+                'message' => $readiness['message'],
+                'verification_url' => $readiness['verification_url'],
+                'required_step' => $readiness['step'],
+            ], 403);
         }
 
         $request->validate([
@@ -1122,13 +1135,14 @@ class UploadController extends Controller
             'publish_targets.instagram' => 'nullable|boolean',
             'publish_targets.facebook' => 'nullable|boolean',
             'publish_targets.x' => 'nullable|boolean',
+            'accept_merchant_terms' => 'nullable|boolean',
         ]);
 
         $merchantProfile = $this->merchantFromRequest($request);
         if (! $merchantProfile->canSellProducts()) {
             return response()->json([
                 'message' => 'Complete KYC before publishing products.',
-                'verification_url' => "/merchant/{$merchantProfile->username}/verification",
+                'verification_url' => "/merchant/{$merchantProfile->username}/kyc",
             ], 403);
         }
 
@@ -1278,7 +1292,7 @@ class UploadController extends Controller
             if ((bool) ($effectiveCategory->requires_verified_business ?? false) && ! $merchantProfile->hasVerifiedBusinessKyc()) {
                 return response()->json([
                     'message' => 'Category hii inahitaji verified merchant/KYB kabla ya kuchapishwa.',
-                    'verification_url' => "/merchant/{$merchantProfile->username}/verification",
+                    'verification_url' => "/merchant/{$merchantProfile->username}/kyc",
                 ], 403);
             }
         }
@@ -2583,7 +2597,7 @@ class UploadController extends Controller
         if ($requiredDocuments->contains('identity') && ! $kycApproved) {
             return response()->json([
                 'message' => 'Huduma zinahitaji KYC iliyothibitishwa kabla ya kuchapishwa. Tafadhali kamilisha Verification Center kwanza.',
-                'verification_url' => "/merchant/{$merchant->username}/verification",
+                'verification_url' => "/merchant/{$merchant->username}/kyc",
             ], 403);
         }
 
@@ -2594,7 +2608,7 @@ class UploadController extends Controller
         if ($missing->isNotEmpty()) {
             return response()->json([
                 'message' => 'Huduma hii inahitaji nyaraka zaidi kabla ya kuchapishwa: ' . $this->trustDocumentLabels($missing->all()) . '. Tafadhali zipakie Verification Center.',
-                'verification_url' => "/merchant/{$merchant->username}/verification",
+                'verification_url' => "/merchant/{$merchant->username}/kyc",
                 'missing_documents' => $missing->all(),
             ], 403);
         }
@@ -2602,7 +2616,7 @@ class UploadController extends Controller
         if ($category->requires_manual_review && ! $kycApproved) {
             return response()->json([
                 'message' => 'Huduma hii inahitaji review ya Takeer kabla ya kuchapishwa. Tafadhali kamilisha Verification Center kwanza.',
-                'verification_url' => "/merchant/{$merchant->username}/verification",
+                'verification_url' => "/merchant/{$merchant->username}/kyc",
             ], 403);
         }
 

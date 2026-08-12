@@ -56,7 +56,7 @@ export default function PhysicalStockEditor({
                             value={locationInventories[loc.id] || ''}
                             onChange={(e) => setLocationInventories((prev) => ({ ...prev, [loc.id]: e.target.value }))}
                         />
-                        <p className="text-[10px] font-semibold text-slate-500">{stockUnitLabel} {copy('in stock', 'iliyopo')}</p>
+                        <p className="text-[10px] font-semibold text-slate-500">{stockUnitLabel} {copy('in stock', 'zilizopo stock')}</p>
                     </div>
                 ))}
             </div>

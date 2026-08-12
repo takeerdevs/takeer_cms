@@ -168,8 +168,8 @@ export default function Claim({ invitation, request }) {
                                 ) : ownedProfiles.length > 0 ? (
                                     <div className="space-y-3">
                                         <div>
-                                            <p className="text-sm font-black">{copy('Which verified seller account should handle this order?', 'Akaunti ipi ya seller iliyothibitishwa ishughulikie oda hii?')}</p>
-                                            <p className="mt-1 text-xs text-muted-foreground">{copy('Only verified profiles can receive and prepare a buyer request.', 'Profile zilizothibitishwa pekee ndizo zinaweza kupokea na kuandaa ombi la buyer.')}</p>
+                                            <p className="text-sm font-black">{copy('Which verified seller account should handle this order?', 'Akaunti ipi iliyothibitishwa ishughulikie oda hii?')}</p>
+                                            <p className="mt-1 text-xs text-muted-foreground">{copy('Only verified profiles can receive and prepare a buyer request.', 'Profile zilizothibitishwa pekee ndizo zinaweza kupokea na kuandaa ombi la Mteja.')}</p>
                                         </div>
                                         <div className="grid gap-2 sm:grid-cols-2">
                                             {ownedProfiles.map((profile) => (
@@ -177,7 +177,7 @@ export default function Claim({ invitation, request }) {
                                                     <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-brand-500 to-orange-500 text-sm font-black text-white">{profile.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : (profile.display_name || 'S').slice(0, 1).toUpperCase()}</span>
                                                     <span className="min-w-0">
                                                         <span className="block truncate text-sm font-black">{profile.display_name}</span>
-                                                        <span className="block truncate text-xs text-muted-foreground">@{profile.username} · {copy('verified', 'imethibitishwa')}</span>
+                                                        <span className="block truncate text-xs text-muted-foreground">@{profile.username}</span>
                                                     </span>
                                                     {String(merchantId) === String(profile.id) && <CheckCircle2 className="ml-auto h-5 w-5 shrink-0 text-brand-600" />}
                                                 </button>
@@ -194,7 +194,7 @@ export default function Claim({ invitation, request }) {
                                             </div>
                                         </div>
                                         {verificationProfile?.username ? (
-                                            <Button asChild className="mt-4 w-full"><Link href={'/merchant/' + verificationProfile.username + '/verification'}>{copy('Continue verification', 'Endelea na uthibitisho')}</Link></Button>
+                                            <Button asChild className="mt-4 w-full"><Link href={'/merchant/' + verificationProfile.username + '/kyc'}>{copy('Continue verification', 'Endelea na uthibitisho')}</Link></Button>
                                         ) : (
                                             <Button type="button" onClick={createSellerProfile} disabled={busy} className="mt-4 w-full">{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{copy('Prepare personal seller profile', 'Andaa personal seller profile')}</Button>
                                         )}

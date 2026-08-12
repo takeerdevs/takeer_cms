@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/Dialog';
-import { ArrowLeft, Eye, ShoppingCart, Pencil, Trash2, Package, Boxes, Loader2, MapPin, Link as LinkIcon, FileText, PlayCircle, CalendarClock, Users, Send, CheckCircle2, XCircle, Clock, Save, Sparkles, Upload, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Eye, ShoppingCart, Pencil, Trash2, Package, Boxes, Loader2, MapPin, Link as LinkIcon, FileText, PlayCircle, CalendarClock, Users, Send, CheckCircle2, XCircle, Clock, Save, Sparkles, Upload, ShieldCheck, Copy, Download, QrCode } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { QRCodeCanvas } from 'qrcode.react';
 import VideoPlayer from '@/Components/VideoPlayer';
 import { productPriceLabel, productStockLabel } from '@/lib/productUnits';
 import { useLocale } from '@/lib/i18n';
@@ -28,6 +29,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
     const [tryOnSaving, setTryOnSaving] = useState(false);
     const [tryOnUploading, setTryOnUploading] = useState(false);
     const [now, setNow] = useState(Date.now());
+    const productQrRef = useRef(null);
     const [liveEventForm, setLiveEventForm] = useState({
         live_event_starts_at: '',
         live_event_duration_minutes: '',
@@ -294,6 +296,31 @@ export default function ProductDetails({ merchantUsername, productId }) {
         return Object.values(locMap);
     }, [product]);
 
+    const productPermalink = product ? route('product.show', product.slug || product.id) : '';
+
+    const copyText = async (value, successMessage) => {
+        if (!value) return;
+
+        try {
+            await navigator.clipboard.writeText(value);
+            toast.success(successMessage);
+        } catch (error) {
+            toast.error(copy('Could not copy. Please copy it manually.', 'Imeshindikana kunakili. Tafadhali nakili mwenyewe.'));
+        }
+    };
+
+    const downloadProductQr = () => {
+        const canvas = productQrRef.current;
+        if (!canvas) return;
+
+        const download = document.createElement('a');
+        const filenameCode = String(product?.product_code || `product-${product?.id}`).toLowerCase();
+        download.download = `takeer-${filenameCode}-product-qr.png`;
+        download.href = canvas.toDataURL('image/png');
+        download.click();
+        toast.success(copy('Product QR code downloaded.', 'QR code ya bidhaa imepakuliwa.'));
+    };
+
     const handleDelete = async () => {
         if (!product) return;
         if (!confirm('Urhakika unataka kufuta bidhaa hii?')) return;
@@ -389,6 +416,107 @@ export default function ProductDetails({ merchantUsername, productId }) {
 
                                 <div className="rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
                                     {copy('A product with orders cannot be deleted. Use Edit to set quantity to 0 if you want to stop selling it.', 'Bidhaa yenye oda haiwezi kufutwa. Tumia Hariri kuweka quantity kuwa 0 kama unataka kuisimamisha kuuza.')}
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="overflow-hidden border-brand-100">
+                            <CardContent className="p-0">
+                                <div className="border-b border-brand-100 bg-gradient-to-r from-brand-50 via-white to-sky-50 px-4 py-4 md:px-5">
+                                    <p className="flex items-center gap-2 text-sm font-black text-slate-950">
+                                        <QrCode className="h-4 w-4 text-brand-600" />
+                                        {copy('Share this product', 'Shiriki bidhaa hii')}
+                                    </p>
+                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                        {copy('Use the product code in livestreams, videos and images, or share the QR code to open the product page directly.', 'Tumia namba ya bidhaa kwenye livestream, video na picha, au shiriki QR code kufungua ukurasa wa bidhaa moja kwa moja.')}
+                                    </p>
+                                </div>
+
+                                <div className="grid gap-5 p-4 md:grid-cols-[minmax(0,1fr)_260px] md:p-5">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-700">
+                                                {copy('Product code', 'Namba ya bidhaa')}
+                                            </p>
+                                            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                                                <div className="flex min-h-16 flex-1 items-center rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50 px-4">
+                                                    <span className="font-mono text-3xl font-black tracking-[0.16em] text-brand-700 md:text-4xl">
+                                                        {product.product_code || copy('Not assigned', 'Haijapewa')}
+                                                    </span>
+                                                </div>
+                                                {product.product_code && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        className="min-h-12 rounded-xl font-black sm:min-h-16"
+                                                        onClick={() => copyText(product.product_code, copy('Product code copied.', 'Namba ya bidhaa imenakiliwa.'))}
+                                                    >
+                                                        <Copy className="mr-2 h-4 w-4" />
+                                                        {copy('Copy code', 'Nakili namba')}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                                                {copy('Customers can enter this code in Takeer. Add it to product photos, videos, pinned comments, or mention it during a live sale.', 'Wateja wanaweza kuingiza namba hii Takeer. Iweke kwenye picha, video, pinned comments, au itaje unapouza live.')}
+                                            </p>
+                                        </div>
+
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                                                {copy('Permanent product link', 'Kiungo cha kudumu cha bidhaa')}
+                                            </p>
+                                            <p className="mt-1 truncate text-sm font-semibold text-slate-800" title={productPermalink}>{productPermalink}</p>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="rounded-xl"
+                                                    onClick={() => copyText(productPermalink, copy('Product link copied.', 'Kiungo cha bidhaa kimenakiliwa.'))}
+                                                >
+                                                    <LinkIcon className="mr-1.5 h-3.5 w-3.5" />
+                                                    {copy('Copy link', 'Nakili kiungo')}
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="rounded-xl"
+                                                    onClick={() => router.visit(productPermalink)}
+                                                >
+                                                    <Eye className="mr-1.5 h-3.5 w-3.5" />
+                                                    {copy('Open product', 'Fungua bidhaa')}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
+                                        <div className="rounded-2xl border border-slate-100 bg-white p-2">
+                                            <QRCodeCanvas
+                                                ref={productQrRef}
+                                                value={productPermalink}
+                                                size={512}
+                                                level="H"
+                                                includeMargin
+                                                className="h-[200px] w-[200px]"
+                                            />
+                                        </div>
+                                        <p className="mt-3 text-xs font-black text-slate-900">
+                                            {copy('QR opens the product page', 'QR inafungua ukurasa wa bidhaa')}
+                                        </p>
+                                        <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                                            {copy('It contains the permalink—not the product code.', 'Ina permalink—siyo namba ya bidhaa.')}
+                                        </p>
+                                        <Button
+                                            type="button"
+                                            className="mt-3 w-full rounded-xl bg-brand-600 font-black text-white hover:bg-brand-700"
+                                            onClick={downloadProductQr}
+                                        >
+                                            <Download className="mr-2 h-4 w-4" />
+                                            {copy('Download QR PNG', 'Pakua QR PNG')}
+                                        </Button>
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>

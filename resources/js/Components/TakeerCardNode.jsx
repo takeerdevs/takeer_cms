@@ -87,14 +87,15 @@ const PANEL_CARD_TYPES = [
     'video',
 ];
 
-const TakeerCardContext = React.createContext({uploadFile: null, bookmarkSearchUrl: null});
+const TakeerCardContext = React.createContext({uploadFile: null, uploadStates: {}, bookmarkSearchUrl: null});
 
-export function TakeerCardProvider({children, uploadFile, bookmarkSearchUrl}) {
+export function TakeerCardProvider({children, uploadFile, uploadStates = {}, bookmarkSearchUrl}) {
     const [editor] = useLexicalComposerContext();
     const contextValue = React.useMemo(() => ({
         uploadFile: uploadFile ? (args) => uploadFile({...args, editor}) : null,
+        uploadStates,
         bookmarkSearchUrl,
-    }), [bookmarkSearchUrl, editor, uploadFile]);
+    }), [bookmarkSearchUrl, editor, uploadFile, uploadStates]);
 
     return (
         <TakeerCardContext.Provider value={contextValue}>
@@ -379,15 +380,20 @@ function EmailCtaSettings({data, update, onUploadImage}) {
 }
 
 function CardSettingsPanel({cardType, data, onChange, panelRef, position, nodeKey}) {
-    const {uploadFile} = React.useContext(TakeerCardContext);
+    const {uploadFile, uploadStates} = React.useContext(TakeerCardContext);
     const mediaInputRef = React.useRef(null);
+    const isUploading = uploadStates[nodeKey]?.status === 'uploading';
     const update = (key, value) => onChange({...data, [key]: value});
     const uploadMedia = async (event) => {
         const files = Array.from(event.target.files || []);
-        for (const file of files.slice(0, cardType === 'gallery' ? 9 : 1)) {
-            await uploadFile?.({file, cardType, nodeKey});
-        }
         event.target.value = '';
+        try {
+            for (const file of files.slice(0, cardType === 'gallery' ? 9 : 1)) {
+                await uploadFile?.({file, cardType, nodeKey});
+            }
+        } catch {
+            // The shared uploader renders the card-level error and toast.
+        }
     };
 
     if (typeof document === 'undefined') return null;
@@ -402,7 +408,7 @@ function CardSettingsPanel({cardType, data, onChange, panelRef, position, nodeKe
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
             >
-                <EmailCtaSettings data={data} update={update} onUploadImage={(file) => uploadFile?.({file, cardType: 'email_cta', nodeKey})} />
+                <EmailCtaSettings data={data} update={update} onUploadImage={(file) => uploadFile?.({file, cardType: 'email_cta', nodeKey})?.catch(() => {})} />
             </div>,
             document.body,
         );
@@ -523,7 +529,7 @@ function CardSettingsPanel({cardType, data, onChange, panelRef, position, nodeKe
             onClick={(event) => event.stopPropagation()}
         >
             {content}
-            {UPLOAD_CARD_TYPES.includes(cardType) ? <input ref={mediaInputRef} type="file" className="hidden" accept={cardType === 'video' ? 'video/*' : cardType === 'audio' ? 'audio/*' : cardType === 'file' ? '*/*' : 'image/*'} multiple={cardType === 'gallery'} onChange={uploadMedia} /> : null}
+            {UPLOAD_CARD_TYPES.includes(cardType) ? <input ref={mediaInputRef} type="file" className="hidden" disabled={isUploading} accept={cardType === 'video' ? 'video/*' : cardType === 'audio' ? 'audio/*' : cardType === 'file' ? '*/*' : 'image/*'} multiple={cardType === 'gallery'} onChange={uploadMedia} /> : null}
         </div>,
         document.body,
     );
@@ -682,8 +688,10 @@ function CardCaption({value, onChange, placeholder, isEditing}) {
 }
 
 function MediaCard({cardType, data, onChange, nodeKey, isEditing}) {
-    const {uploadFile} = React.useContext(TakeerCardContext);
+    const {uploadFile, uploadStates} = React.useContext(TakeerCardContext);
     const inputRef = React.useRef(null);
+    const uploadState = uploadStates[nodeKey] || null;
+    const isUploading = uploadState?.status === 'uploading';
     const hasMedia = cardType === 'gallery' ? (data.images || []).length > 0 : Boolean(data.src || data.url);
     const updateWithFile = async (file) => {
         if (!file) return;
@@ -701,44 +709,75 @@ function MediaCard({cardType, data, onChange, nodeKey, isEditing}) {
 
     const handleFiles = async (event) => {
         const files = Array.from(event.target.files || []);
-        for (const file of files.slice(0, cardType === 'gallery' ? 9 : 1)) {
-            await updateWithFile(file);
-        }
         event.target.value = '';
+        try {
+            for (const file of files.slice(0, cardType === 'gallery' ? 9 : 1)) {
+                await updateWithFile(file);
+            }
+        } catch {
+            // The uploader owns the visible error state and toast. Leave the
+            // card in place so the author can retry immediately.
+        }
     };
+
+    const uploadFeedback = uploadState ? (
+        <div
+            className={`absolute inset-x-0 bottom-0 z-20 border-t px-4 py-3 backdrop-blur-md ${uploadState.status === 'error' ? 'border-rose-200 bg-rose-50/95 text-rose-800' : 'border-brand-200 bg-white/95 text-slate-700'}`}
+            role={uploadState.status === 'error' ? 'alert' : 'status'}
+            aria-live="polite"
+        >
+            <div className="flex items-center justify-between gap-3 text-xs font-semibold">
+                <span className="min-w-0 truncate">
+                    {uploadState.status === 'error'
+                        ? uploadState.error || 'Upload failed. Select the file to retry.'
+                        : uploadState.status === 'complete'
+                            ? `${uploadState.fileName || 'Attachment'} uploaded`
+                            : `Uploading ${uploadState.fileName || 'attachment'}...`}
+                </span>
+                {uploadState.status !== 'error' ? <span className="shrink-0 tabular-nums">{uploadState.progress || 0}%</span> : null}
+            </div>
+            {uploadState.status !== 'error' ? (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+                    <div className="h-full rounded-full bg-brand-600 transition-[width] duration-150" style={{width: `${uploadState.progress || 0}%`}} />
+                </div>
+            ) : null}
+        </div>
+    ) : null;
 
     if (!hasMedia) {
         if (!isEditing) return <div className="min-h-20 border border-slate-200 bg-slate-50" />;
         return (
-            <>
-                <GhostMediaPlaceholder cardType={cardType} onSelect={() => inputRef.current?.click()} />
-                <input ref={inputRef} type="file" className="hidden" accept={cardType === 'video' ? 'video/*' : cardType === 'audio' ? 'audio/*' : cardType === 'gallery' || cardType === 'image' ? 'image/*' : '*/*'} multiple={cardType === 'gallery'} onChange={handleFiles} />
-            </>
+            <div className="relative overflow-hidden">
+                <GhostMediaPlaceholder cardType={cardType} onSelect={() => !isUploading && inputRef.current?.click()} />
+                <input ref={inputRef} type="file" className="hidden" disabled={isUploading} accept={cardType === 'video' ? 'video/*' : cardType === 'audio' ? 'audio/*' : cardType === 'gallery' || cardType === 'image' ? 'image/*' : '*/*'} multiple={cardType === 'gallery'} onChange={handleFiles} />
+                {uploadFeedback}
+            </div>
         );
     }
 
     if (cardType === 'gallery') {
         return (
-            <div className="overflow-hidden border border-slate-200 bg-slate-50">
+            <div className="relative overflow-hidden border border-slate-200 bg-slate-50">
                 <div className="grid grid-cols-3 gap-1 p-1">{(data.images || []).map((src, index) => <img key={`${src}-${index}`} src={src} alt="" className="aspect-square w-full object-cover" />)}</div>
                 <CardCaption isEditing={isEditing} value={data.caption} onChange={(value) => onChange({...data, caption: value})} placeholder="Type caption for gallery (optional)" />
+                {uploadFeedback}
             </div>
         );
     }
 
     if (cardType === 'image') {
-        return <div className="overflow-hidden border border-slate-200 bg-slate-50"><img src={data.src || data.url} alt={data.alt || ''} className="max-h-[520px] w-full object-contain" /><CardCaption isEditing={isEditing} value={data.caption} onChange={(value) => onChange({...data, caption: value})} placeholder="Type caption for image (optional)" /></div>;
+        return <div className="relative overflow-hidden border border-slate-200 bg-slate-50"><img src={data.src || data.url} alt={data.alt || ''} className="max-h-[520px] w-full object-contain" /><CardCaption isEditing={isEditing} value={data.caption} onChange={(value) => onChange({...data, caption: value})} placeholder="Type caption for image (optional)" />{uploadFeedback}</div>;
     }
 
     if (cardType === 'video') {
-        return <div className="overflow-hidden border border-slate-200 bg-slate-50"><video controls={isEditing} loop={Boolean(data.loop)} src={data.src || data.url} className="max-h-[520px] w-full bg-black" /><CardCaption isEditing={isEditing} value={data.caption} onChange={(value) => onChange({...data, caption: value})} placeholder="Type caption for video (optional)" /></div>;
+        return <div className="relative overflow-hidden border border-slate-200 bg-slate-50"><video controls={isEditing} loop={Boolean(data.loop)} src={data.src || data.url} className="max-h-[520px] w-full bg-black" /><CardCaption isEditing={isEditing} value={data.caption} onChange={(value) => onChange({...data, caption: value})} placeholder="Type caption for video (optional)" />{uploadFeedback}</div>;
     }
 
     if (cardType === 'audio') {
-        return <div className="flex items-center gap-4 rounded-md border border-slate-300 bg-white p-4"><Music2 className="size-8 text-slate-400" strokeWidth={1.5} /><div className="min-w-0 flex-1">{isEditing ? <input data-card-control className="w-full border-0 bg-transparent text-lg font-bold outline-none" value={data.title || ''} onChange={(event) => onChange({...data, title: event.target.value})} placeholder="Add a title..." /> : <div className="text-lg font-bold">{data.title || data.name || 'Audio'}</div>}<audio controls={isEditing} src={data.src || data.url} className="mt-2 w-full" /></div></div>;
+        return <div className="relative flex items-center gap-4 overflow-hidden rounded-md border border-slate-300 bg-white p-4"><Music2 className="size-8 text-slate-400" strokeWidth={1.5} /><div className="min-w-0 flex-1">{isEditing ? <input data-card-control className="w-full border-0 bg-transparent text-lg font-bold outline-none" value={data.title || ''} onChange={(event) => onChange({...data, title: event.target.value})} placeholder="Add a title..." /> : <div className="text-lg font-bold">{data.title || data.name || 'Audio'}</div>}<audio controls={isEditing} src={data.src || data.url} className="mt-2 w-full" /></div>{uploadFeedback}</div>;
     }
 
-    return <div className="flex items-center justify-between rounded-md border border-slate-300 bg-white p-4"><div className="min-w-0">{isEditing ? <><input data-card-control className="w-full border-0 bg-transparent text-lg font-bold outline-none" value={data.title || ''} onChange={(event) => onChange({...data, title: event.target.value})} placeholder="Add a title..." /><input data-card-control className="mt-1 w-full border-0 bg-transparent text-sm text-slate-500 outline-none" value={data.description || ''} onChange={(event) => onChange({...data, description: event.target.value})} placeholder="Add a description..." /></> : <><div className="text-lg font-bold">{data.title || data.name || 'File'}</div>{data.description ? <div className="mt-1 text-sm text-slate-500">{data.description}</div> : null}</>}<p className="mt-2 text-sm text-slate-600">{data.name || 'Uploaded file'}</p></div><Paperclip className="size-8 text-emerald-500" /> </div>;
+    return <div className="relative flex items-center justify-between overflow-hidden rounded-md border border-slate-300 bg-white p-4"><div className="min-w-0">{isEditing ? <><input data-card-control className="w-full border-0 bg-transparent text-lg font-bold outline-none" value={data.title || ''} onChange={(event) => onChange({...data, title: event.target.value})} placeholder="Add a title..." /><input data-card-control className="mt-1 w-full border-0 bg-transparent text-sm text-slate-500 outline-none" value={data.description || ''} onChange={(event) => onChange({...data, description: event.target.value})} placeholder="Add a description..." /></> : <><div className="text-lg font-bold">{data.title || data.name || 'File'}</div>{data.description ? <div className="mt-1 text-sm text-slate-500">{data.description}</div> : null}</>}<p className="mt-2 text-sm text-slate-600">{data.name || 'Uploaded file'}</p></div><Paperclip className="size-8 text-emerald-500" />{uploadFeedback}</div>;
 }
 
 function UrlInputCard({cardType, data, onChange, isEditing}) {

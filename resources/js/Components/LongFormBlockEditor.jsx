@@ -390,10 +390,16 @@ function FloatingFormatToolbarPlugin({ containerRef }) {
     );
 }
 
-async function uploadCardFileToNode({ editor, file, nodeKey, cardType, uploadUrl, uploadFields, onUploadingChange, copy }) {
+async function uploadCardFileToNode({ editor, file, nodeKey, cardType, uploadUrl, uploadFields, onUploadStateChange, copy }) {
     if (!file) return;
 
-    onUploadingChange(true);
+    onUploadStateChange(nodeKey, {
+        status: 'uploading',
+        progress: 0,
+        fileName: file.name || '',
+        fileSize: file.size || 0,
+        error: '',
+    });
     try {
         const formData = new FormData();
         formData.append('file', file);
@@ -405,6 +411,24 @@ async function uploadCardFileToNode({ editor, file, nodeKey, cardType, uploadUrl
 
         const response = await axios.post(uploadUrl, formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
+            onUploadProgress: (event) => {
+                const total = event.total || file.size || 0;
+                const progress = typeof event.progress === 'number'
+                    ? Math.round(event.progress * 100)
+                    : total > 0
+                        ? Math.round((event.loaded / total) * 100)
+                        : 0;
+
+                // Keep 100% for the point at which the server has stored the
+                // file and returned its permanent URL.
+                onUploadStateChange(nodeKey, {
+                    status: 'uploading',
+                    progress: Math.max(1, Math.min(99, progress)),
+                    fileName: file.name || '',
+                    fileSize: file.size || 0,
+                    error: '',
+                });
+            },
         });
         const src = response.data?.url;
         if (!src) throw new Error('The upload response did not include a URL.');
@@ -425,10 +449,25 @@ async function uploadCardFileToNode({ editor, file, nodeKey, cardType, uploadUrl
             }
             node.setData(next);
         });
+        onUploadStateChange(nodeKey, {
+            status: 'complete',
+            progress: 100,
+            fileName: file.name || '',
+            fileSize: file.size || 0,
+            error: '',
+        });
+        return response.data;
     } catch (error) {
-        toast.error(error.response?.data?.message || copy('Upload failed.', 'Imeshindikana kupakia.'));
-    } finally {
-        onUploadingChange(false);
+        const message = error.response?.data?.message || copy('Upload failed. Please try again.', 'Imeshindikana kupakia. Tafadhali jaribu tena.');
+        onUploadStateChange(nodeKey, {
+            status: 'error',
+            progress: 0,
+            fileName: file.name || '',
+            fileSize: file.size || 0,
+            error: message,
+        });
+        toast.error(message);
+        throw error;
     }
 }
 
@@ -896,9 +935,34 @@ export default function LongFormBlockEditor({
     uploadUrl = '/merchant/content/upload/media',
     uploadFields = {},
     bookmarkSearchUrl = '/merchant/posts/api',
+    onUploadActivityChange,
 }) {
     const { copy } = useLocale();
-    const [uploadingImage, setUploadingImage] = useState(false);
+    const [uploadStates, setUploadStates] = useState({});
+    const handleUploadStateChange = useCallback((nodeKey, nextState) => {
+        setUploadStates((current) => ({
+            ...current,
+            [nodeKey]: nextState,
+        }));
+    }, []);
+    useEffect(() => {
+        const completedKeys = Object.entries(uploadStates)
+            .filter(([, upload]) => upload?.status === 'complete')
+            .map(([nodeKey]) => nodeKey);
+        if (completedKeys.length === 0) return undefined;
+
+        const timer = window.setTimeout(() => {
+            setUploadStates((current) => {
+                const next = {...current};
+                completedKeys.forEach((nodeKey) => {
+                    if (next[nodeKey]?.status === 'complete') delete next[nodeKey];
+                });
+                return next;
+            });
+        }, 1800);
+
+        return () => window.clearTimeout(timer);
+    }, [uploadStates]);
     const uploadCardFile = useCallback(({editor, file, nodeKey, cardType}) => uploadCardFileToNode({
         editor,
         file,
@@ -906,9 +970,14 @@ export default function LongFormBlockEditor({
         cardType,
         uploadUrl,
         uploadFields,
-        onUploadingChange: setUploadingImage,
+        onUploadStateChange: handleUploadStateChange,
         copy,
-    }), [copy, uploadFields, uploadUrl]);
+    }), [copy, handleUploadStateChange, uploadFields, uploadUrl]);
+    const activeUploads = Object.values(uploadStates).filter((upload) => upload?.status === 'uploading');
+    useEffect(() => {
+        onUploadActivityChange?.(activeUploads.length > 0);
+        return () => onUploadActivityChange?.(false);
+    }, [activeUploads.length, onUploadActivityChange]);
     const initialState = useMemo(() => parseLexicalState(value), [value]);
 
     const initialConfig = useMemo(() => ({
@@ -924,14 +993,21 @@ export default function LongFormBlockEditor({
     return (
         <div className="space-y-2">
             <LexicalComposer initialConfig={initialConfig}>
-                <TakeerCardProvider uploadFile={uploadCardFile} bookmarkSearchUrl={bookmarkSearchUrl}>
+                <TakeerCardProvider uploadFile={uploadCardFile} uploadStates={uploadStates} bookmarkSearchUrl={bookmarkSearchUrl}>
                     <EditorShell
                         placeholder={copy(placeholder, placeholder === 'Start writing your long-form content...' ? 'Anza kuandika content yako ndefu...' : placeholder)}
                         onChange={(editorState) => onChange?.(JSON.stringify(editorState.toJSON()))}
                     />
                 </TakeerCardProvider>
             </LexicalComposer>
-            {uploadingImage ? <p className="text-xs text-muted-foreground">{copy('Uploading image...', 'Inapakia picha...')}</p> : null}
+            {activeUploads.length > 0 ? (
+                <p className="text-xs font-semibold text-brand-700" role="status" aria-live="polite">
+                    {copy(
+                        `Uploading ${activeUploads.length} attachment${activeUploads.length === 1 ? '' : 's'}...`,
+                        `Inapakia attachment ${activeUploads.length}...`,
+                    )}
+                </p>
+            ) : null}
         </div>
     );
 }

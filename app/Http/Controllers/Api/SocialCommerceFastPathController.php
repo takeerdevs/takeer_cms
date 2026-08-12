@@ -24,6 +24,14 @@ class SocialCommerceFastPathController extends Controller
 
         $product = $match['product'];
         $productUrl = route('product.show', ['product' => $product->slug ?: $product->id]);
+        $sourceHost = strtolower((string) parse_url((string) data_get($match, 'link.normalized_url'), PHP_URL_HOST));
+        $sourceHost = preg_replace('/^www\./', '', $sourceHost);
+        $source = $match['link']['platform'] === 'web' ? ($sourceHost ?: 'web') : $match['link']['platform'];
+        $trackingUrl = $productUrl.'?'.http_build_query([
+            'source' => 'link_buy',
+            'utm_source' => $source,
+            'utm_medium' => 'external_product_link',
+        ]);
 
         return response()->json([
             'matched' => true,
@@ -38,8 +46,11 @@ class SocialCommerceFastPathController extends Controller
                 'slug' => $product->slug,
                 'price' => $product->price !== null ? (float) $product->price : null,
                 'url' => $productUrl,
+                'tracking_url' => $trackingUrl,
             ],
             'product_url' => $productUrl,
+            'tracking_url' => $trackingUrl,
+            'source' => ['key' => $match['link']['platform'], 'label' => $source, 'domain' => $sourceHost ?: null],
             'provenance' => $match['provenance'],
         ]);
     }

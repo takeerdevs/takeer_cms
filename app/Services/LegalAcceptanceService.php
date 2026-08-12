@@ -94,10 +94,36 @@ class LegalAcceptanceService
         return $documents;
     }
 
+    /**
+     * Record the merchant click-wrap acceptance after confirming every
+     * required merchant document is currently active.
+     */
+    public function acceptMerchant(User $user, Request $request, int $merchantId): Collection
+    {
+        $documents = $this->documentsForAcceptance($merchantId);
+        $missingDocuments = collect(self::REQUIRED_MERCHANT_DOCUMENTS)->diff($documents->pluck('document_type'));
+
+        if ($missingDocuments->isNotEmpty()) {
+            throw new RuntimeException('Required legal and PSP documents are not active yet.');
+        }
+
+        $this->recordFor($user, $request, $merchantId, $documents, 'user_clickwrap');
+
+        return $documents;
+    }
+
     public function documentsForAcceptance(?int $merchantId): Collection
     {
         return $merchantId
             ? $this->currentDocuments(self::REQUIRED_MERCHANT_DOCUMENTS)
             : $this->currentDocuments(self::REQUIRED_CHECKOUT_DOCUMENTS);
+    }
+
+    public function merchantDocumentsForDisplay(): Collection
+    {
+        return $this->currentDocuments(array_values(array_unique([
+            'buyer_terms',
+            ...self::REQUIRED_MERCHANT_DOCUMENTS,
+        ])));
     }
 }

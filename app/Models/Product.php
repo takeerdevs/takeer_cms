@@ -47,6 +47,7 @@ class Product extends Model
         'created_by_user_id',
         'created_by_staff_id',
         'title',
+        'product_code',
         'has_variants',
         'fulfillment_mode',
         'source_details',
@@ -157,6 +158,26 @@ class Product extends Model
         'inventory_quantity',
         'views_count',
     ];
+
+    protected static function booted(): void
+    {
+        static::created(function (self $product): void {
+            if (blank($product->product_code)) {
+                $code = null;
+                for ($attempt = 0; $attempt < 20; $attempt++) {
+                    $candidate = 'TK'.(string) random_int(10000, 99999);
+                    if (!self::withTrashed()->where('product_code', $candidate)->exists()) {
+                        $code = $candidate;
+                        break;
+                    }
+                }
+
+                $product->forceFill([
+                    'product_code' => $code ?: 'TK'.(string) (100000 + (int) $product->getKey()),
+                ])->saveQuietly();
+            }
+        });
+    }
 
     protected function casts(): array
     {

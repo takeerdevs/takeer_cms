@@ -20,7 +20,9 @@ class LegalDocumentController extends Controller
             abort_unless((int) $merchant->user_id === (int) $request->user()->id, 403);
         }
 
-        $documents = $legal->documentsForAcceptance($merchantId);
+        $documents = $merchantId
+            ? $legal->merchantDocumentsForDisplay()
+            : $legal->documentsForAcceptance(null);
         $acceptedDocumentIds = $merchantId
             ? LegalAcceptance::query()
                 ->where('user_id', $request->user()->id)
@@ -37,6 +39,7 @@ class LegalDocumentController extends Controller
                 'content_hash_sha256' => $document->content_hash_sha256,
                 'immutable_storage_uri' => $document->immutable_storage_uri,
                 'accepted' => $acceptedDocumentIds->contains($document->id),
+                'required' => ! $merchantId || in_array($document->document_type, LegalAcceptanceService::REQUIRED_MERCHANT_DOCUMENTS, true),
             ])->values(),
             'merchant_id' => $merchantId,
         ]);
@@ -54,12 +57,14 @@ class LegalDocumentController extends Controller
             $merchant = Merchant::query()->findOrFail($merchantId);
             abort_unless((int) $merchant->user_id === (int) $request->user()->id, 403);
         }
-        $documents = $legal->documentsForAcceptance($merchantId);
-        $required = $merchantId
-            ? LegalAcceptanceService::REQUIRED_MERCHANT_DOCUMENTS
-            : LegalAcceptanceService::REQUIRED_CHECKOUT_DOCUMENTS;
-        abort_if(collect($required)->diff($documents->pluck('document_type'))->isNotEmpty(), 503, 'Required legal and PSP documents are not active.');
-        $legal->recordFor($request->user(), $request, $merchantId, $documents, 'user_clickwrap');
+        $documents = $merchantId
+            ? $legal->acceptMerchant($request->user(), $request, $merchantId)
+            : $legal->documentsForAcceptance(null);
+        if (! $merchantId) {
+            $required = LegalAcceptanceService::REQUIRED_CHECKOUT_DOCUMENTS;
+            abort_if(collect($required)->diff($documents->pluck('document_type'))->isNotEmpty(), 503, 'Required legal and PSP documents are not active.');
+            $legal->recordFor($request->user(), $request, null, $documents, 'user_clickwrap');
+        }
 
         return response()->json(['accepted' => true, 'documents' => $documents->pluck('document_type')->values()]);
     }

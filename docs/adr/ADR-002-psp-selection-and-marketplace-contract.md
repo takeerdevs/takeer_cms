@@ -9,6 +9,8 @@ Enable any pay-in gateway; use a corporate collection account with manual payout
 ## Selected decision
 Enable a provider only after written confirmation covers marketplace collection, verified sellers, PSP custody, order release, direct payout, refund, split fees, callbacks, and records.
 
+For the Tanzania sandbox launch path, AzamPay is the primary checkout driver. Selcom and Flutterwave remain disabled by default and may be enabled explicitly as later fallbacks. Sandbox-to-production promotion is performed through AzamPay URLs and credentials in deployment configuration, without changing checkout code.
+
 ## Provider dependency
 Provider-specific terms, onboarding identifiers, callback keys, payout/refund APIs, status queries, and exports are mandatory configuration inputs.
 

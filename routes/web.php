@@ -83,10 +83,20 @@ Route::get('/sb/{shortCode}', [\App\Http\Controllers\Api\SocialCommerceClaimCont
 Route::get('/social-buy/claim/{invitation:public_id}', [\App\Http\Controllers\Api\SocialCommerceClaimController::class, 'landing'])->name('social-commerce.claim');
 
 Route::middleware('auth')->group(function () {
-    Route::get('/social-commerce/requests/{socialRequest:public_id}', fn (\App\Models\SocialCommerceRequest $socialRequest) => Inertia::render('SocialCommerce/RequestStatus', ['request' => (new \App\Http\Resources\SocialCommerceRequestResource($socialRequest->load(['claimedMerchant', 'product', 'invitations', 'events', 'order'])))->resolve()]))->name('social-commerce.request');
-    Route::get('/social-commerce/requests/{socialRequest:public_id}/offer', fn (\App\Models\SocialCommerceRequest $socialRequest) => Inertia::render('SocialCommerce/Offer', ['request' => (new \App\Http\Resources\SocialCommerceRequestResource($socialRequest->load(['claimedMerchant', 'product', 'order'])))->resolve()]))->name('social-commerce.offer');
+    Route::get('/social-commerce/requests/{socialRequest:public_id}', function (Request $request, \App\Models\SocialCommerceRequest $socialRequest) {
+        abort_unless((int) $socialRequest->buyer_id === (int) $request->user()->id, 403);
+        return Inertia::render('SocialCommerce/RequestStatus', ['request' => (new \App\Http\Resources\SocialCommerceRequestResource($socialRequest->load(['claimedMerchant', 'product', 'invitations', 'events', 'order'])))->resolve()]);
+    })->name('social-commerce.request');
+    Route::get('/social-commerce/requests/{socialRequest:public_id}/offer', function (Request $request, \App\Models\SocialCommerceRequest $socialRequest) {
+        abort_unless((int) $socialRequest->buyer_id === (int) $request->user()->id, 403);
+        return Inertia::render('SocialCommerce/Offer', ['request' => (new \App\Http\Resources\SocialCommerceRequestResource($socialRequest->load(['claimedMerchant', 'product', 'order'])))->resolve()]);
+    })->name('social-commerce.offer');
     Route::get('/merchant/social-commerce/requests', fn () => Inertia::render('Merchant/SocialCommerceRequests'))->name('merchant.social-commerce.requests');
-    Route::get('/merchant/social-commerce/requests/{socialRequest:public_id}', fn (\App\Models\SocialCommerceRequest $socialRequest) => Inertia::render('Merchant/SocialCommerceRequestDetails', ['request' => (new \App\Http\Resources\SocialCommerceRequestResource($socialRequest->load(['claimedMerchant', 'product', 'buyer', 'events'])))->resolve()]))->name('merchant.social-commerce.request');
+    Route::get('/merchant/social-commerce/requests/{socialRequest:public_id}', function (Request $request, \App\Models\SocialCommerceRequest $socialRequest) {
+        $socialRequest->loadMissing('claimedMerchant');
+        abort_unless((int) $socialRequest->claimedMerchant?->user_id === (int) $request->user()->id, 403);
+        return Inertia::render('Merchant/SocialCommerceRequestDetails', ['request' => (new \App\Http\Resources\SocialCommerceRequestResource($socialRequest->load(['product', 'buyer', 'events'])))->resolve()]);
+    })->name('merchant.social-commerce.request');
 });
 
 Route::middleware(['auth', 'admin'])->group(function () {
@@ -1528,7 +1538,15 @@ Route::middleware('auth')->group(function () {
         })->middleware('merchant_permission:products.view,services.view,bundles.view,subscriptions.view');
 
         Route::get('/upload', function (Merchant $merchant) {
-            abort_unless($merchant->canSellProducts(), 403, 'Complete KYC before uploading products.');
+            if (! $merchant->canSellProducts()) {
+                return redirect()
+                    ->route('merchant.kyc', [
+                        'merchant' => $merchant->username,
+                    ])
+                    ->with('error', 'Complete KYC before uploading or publishing products.')
+                    ->with('selling_readiness_step', 'kyc');
+            }
+
             $merchant->loadMissing(['country', 'locations']);
             $merchantTimezone = $merchant->defaultTimezone();
             $countryTimezones = $merchant->country?->timezones() ?? [];
@@ -1894,13 +1912,13 @@ Route::middleware('auth')->group(function () {
         Route::post('/posts', [PostController::class, 'store'])->middleware('merchant_permission:posts.create,posts.publish');
         Route::delete('/posts/{post}', [PostController::class, 'destroy'])->middleware('merchant_permission:posts.delete');
 
-        Route::get('/content-items/api', [MerchantContentController::class, 'index'])->middleware('merchant_permission:digital_products.view');
-        Route::post('/content-items/api', [MerchantContentController::class, 'store'])->middleware('merchant_permission:digital_products.create');
-        Route::get('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'scopedShow'])->middleware('merchant_permission:digital_products.view');
-        Route::get('/content-items/{contentItem:id}/versions/api', [MerchantContentController::class, 'scopedVersions'])->middleware('merchant_permission:digital_products.view');
-        Route::post('/content-items/{contentItem:id}/versions/{version:id}/restore/api', [MerchantContentController::class, 'scopedRestoreVersion'])->middleware('merchant_permission:digital_products.update');
-        Route::put('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'scopedUpdate'])->middleware('merchant_permission:digital_products.update');
-        Route::delete('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'scopedDestroy'])->middleware('merchant_permission:digital_products.delete');
+        Route::get('/content-items/api', [MerchantContentController::class, 'index'])->middleware('merchant_permission:posts.view,posts.create,posts.publish,digital_products.view');
+        Route::post('/content-items/api', [MerchantContentController::class, 'store'])->middleware('merchant_permission:posts.create,posts.publish,digital_products.create');
+        Route::get('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'scopedShow'])->middleware('merchant_permission:posts.view,posts.create,posts.publish,digital_products.view');
+        Route::get('/content-items/{contentItem:id}/versions/api', [MerchantContentController::class, 'scopedVersions'])->middleware('merchant_permission:posts.view,posts.create,posts.publish,digital_products.view');
+        Route::post('/content-items/{contentItem:id}/versions/{version:id}/restore/api', [MerchantContentController::class, 'scopedRestoreVersion'])->middleware('merchant_permission:posts.create,posts.update,posts.publish,digital_products.update');
+        Route::put('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'scopedUpdate'])->middleware('merchant_permission:posts.create,posts.update,posts.publish,digital_products.update');
+        Route::delete('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'scopedDestroy'])->middleware('merchant_permission:posts.create,posts.delete,digital_products.delete');
         Route::get('/posts/api', [MerchantContentController::class, 'posts'])->middleware('merchant_permission:posts.view');
         Route::patch('/posts/{post:id}/interaction/api', [MerchantContentController::class, 'updatePostInteraction'])->middleware('merchant_permission:posts.update');
         Route::get('/content-reports/api', [ContentReportModerationController::class, 'merchantIndex'])->middleware('merchant_permission:posts.view');
@@ -2016,12 +2034,12 @@ Route::middleware('auth')->group(function () {
         Route::post('/service-credentials/api', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'store'])->middleware('merchant_permission:kyc.update');
         Route::delete('/service-credentials/api/{credential}', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'destroy'])->middleware('merchant_permission:kyc.update');
         
-        Route::get('/verification', function (Merchant $merchant) {
+        Route::get('/kyc', function (Merchant $merchant) {
             return Inertia::render('Merchant/VerificationCenter', [
                 'merchantUsername' => $merchant->username,
                 'merchantId' => $merchant->id,
             ]);
-        })->middleware('merchant_permission:kyc.view');
+        })->middleware('merchant_permission:kyc.view')->name('merchant.kyc');
 
         // ── RETAIL OPS PAGES ──
         Route::middleware('retail_ops')->prefix('retail')->group(function () {
@@ -2117,13 +2135,13 @@ Route::middleware('auth')->group(function () {
         Route::delete('/merchant/posts/{post}', [PostController::class, 'destroy'])->middleware('merchant_permission:posts.delete');
 
         // Commerce management (session-auth web endpoints)
-        Route::get('/merchant/content-items/api', [MerchantContentController::class, 'index'])->middleware('merchant_permission:digital_products.view');
-        Route::post('/merchant/content-items/api', [MerchantContentController::class, 'store'])->middleware('merchant_permission:digital_products.create');
-        Route::get('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'show'])->middleware('merchant_permission:digital_products.view');
-        Route::get('/merchant/content-items/{contentItem:id}/versions/api', [MerchantContentController::class, 'versions'])->middleware('merchant_permission:digital_products.view');
-        Route::post('/merchant/content-items/{contentItem:id}/versions/{version:id}/restore/api', [MerchantContentController::class, 'restoreVersion'])->middleware('merchant_permission:digital_products.update');
-        Route::put('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'update'])->middleware('merchant_permission:digital_products.update');
-        Route::delete('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'destroy'])->middleware('merchant_permission:digital_products.delete');
+        Route::get('/merchant/content-items/api', [MerchantContentController::class, 'index'])->middleware('merchant_permission:posts.view,posts.create,posts.publish,digital_products.view');
+        Route::post('/merchant/content-items/api', [MerchantContentController::class, 'store'])->middleware('merchant_permission:posts.create,posts.publish,digital_products.create');
+        Route::get('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'show'])->middleware('merchant_permission:posts.view,posts.create,posts.publish,digital_products.view');
+        Route::get('/merchant/content-items/{contentItem:id}/versions/api', [MerchantContentController::class, 'versions'])->middleware('merchant_permission:posts.view,posts.create,posts.publish,digital_products.view');
+        Route::post('/merchant/content-items/{contentItem:id}/versions/{version:id}/restore/api', [MerchantContentController::class, 'restoreVersion'])->middleware('merchant_permission:posts.create,posts.update,posts.publish,digital_products.update');
+        Route::put('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'update'])->middleware('merchant_permission:posts.create,posts.update,posts.publish,digital_products.update');
+        Route::delete('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'destroy'])->middleware('merchant_permission:posts.create,posts.delete,digital_products.delete');
         Route::get('/merchant/posts/api', [MerchantContentController::class, 'posts'])->middleware('merchant_permission:posts.view');
         Route::patch('/merchant/posts/{post:id}/interaction/api', [MerchantContentController::class, 'updatePostInteraction'])->middleware('merchant_permission:posts.update');
         Route::get('/merchant/content-reports/api', [ContentReportModerationController::class, 'merchantIndex'])->middleware('merchant_permission:posts.view');
@@ -2557,5 +2575,9 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
     Route::get('/admin/settings', function () {
         return Inertia::render('Admin/Settings');
+    });
+
+    Route::get('/admin/legal-documents', function () {
+        return Inertia::render('Admin/LegalDocuments');
     });
 });

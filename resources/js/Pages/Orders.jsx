@@ -33,6 +33,8 @@ import {
     TrendingDown,
     BadgeCheck,
     ArrowUpRight,
+    Link2,
+    Globe2,
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -81,6 +83,10 @@ export default function Orders() {
     const [cargoLoading, setCargoLoading] = useState(false);
     const [followedStores, setFollowedStores] = useState([]);
     const [followingLoading, setFollowingLoading] = useState(false);
+    const [linkBuyRequests, setLinkBuyRequests] = useState([]);
+    const [linkBuyMeta, setLinkBuyMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [linkBuyPage, setLinkBuyPage] = useState(1);
+    const [linkBuyLoading, setLinkBuyLoading] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -127,6 +133,11 @@ export default function Orders() {
     }, [loading, activeTab]);
 
     useEffect(() => {
+        if (loading || activeTab !== 'link_buy') return;
+        loadLinkBuyPage();
+    }, [loading, activeTab, linkBuyPage]);
+
+    useEffect(() => {
         if (!isMerchant || !auth?.user || !window.Echo) return;
 
         const channel = window.Echo.private(`merchant.${auth.user.id}`);
@@ -159,10 +170,11 @@ export default function Orders() {
             const sessionApi = axios.create();
             delete sessionApi.defaults.headers.common.Authorization;
 
-            const [pulseRes, entitlementsRes, subscriptionsRes] = await Promise.allSettled([
+            const [pulseRes, entitlementsRes, subscriptionsRes, linkBuyRes] = await Promise.allSettled([
                 sessionApi.get('/orders/data/pulse', { params: { page: pulsePage, per_page: pulsePerPage } }),
                 sessionApi.get('/orders/data/entitlements'),
                 sessionApi.get('/orders/data/subscriptions'),
+                sessionApi.get('/api/social-commerce/requests'),
             ]);
 
             if (pulseRes.status === 'fulfilled') {
@@ -195,6 +207,14 @@ export default function Orders() {
             } else {
                 setSubscriptions([]);
                 setSubscriptionMeta({ current_page: 1, last_page: 1, total: 0 });
+            }
+
+            if (linkBuyRes.status === 'fulfilled') {
+                setLinkBuyRequests(linkBuyRes.value.data?.data || []);
+                setLinkBuyMeta(linkBuyRes.value.data?.meta || { total: (linkBuyRes.value.data?.data || []).length });
+            } else {
+                setLinkBuyRequests([]);
+                setLinkBuyMeta({ total: 0 });
             }
 
             if (pulseRes.status === 'rejected' && entitlementsRes.status === 'rejected' && subscriptionsRes.status === 'rejected') {
@@ -300,6 +320,21 @@ export default function Orders() {
         }
     }
 
+    async function loadLinkBuyPage() {
+        setLinkBuyLoading(true);
+        try {
+            const sessionApi = axios.create();
+            delete sessionApi.defaults.headers.common.Authorization;
+            const res = await sessionApi.get('/api/social-commerce/requests', { params: { page: linkBuyPage } });
+            setLinkBuyRequests(res.data?.data || []);
+            setLinkBuyMeta(res.data?.meta || { current_page: linkBuyPage, last_page: 1, total: 0 });
+        } catch {
+            toast.error(copy('Unable to load online requests.', 'Imeshindikana kupakia maombi ya mtandaoni.'));
+        } finally {
+            setLinkBuyLoading(false);
+        }
+    }
+
     async function updateFollowPreferences(slug, preferences) {
         const current = followedStores;
         setFollowedStores((rows) => rows.map((row) => (
@@ -372,6 +407,7 @@ export default function Orders() {
         // Cargo tracking is intentionally hidden until its fuller experience is ready.
         // { key: 'cargo', label: t('orders.tabs.cargo'), icon: Truck },
         { key: 'memberships', label: t('orders.tabs.memberships'), icon: Crown },
+        { key: 'link_buy', label: copy('Online requests', 'Maombi ya mtandaoni'), icon: Link2 },
         { key: 'following', label: t('orders.tabs.following'), icon: Bell },
         { key: 'pulse', label: t('orders.tabs.pulse'), icon: Store },
     ];
@@ -443,6 +479,47 @@ export default function Orders() {
                         </button>
                     ))}
                 </div>
+
+                {activeTab === 'link_buy' && (
+                    <section className="space-y-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <h2 className="text-2xl font-black tracking-tight text-slate-900">{copy('Online seller requests', 'Maombi kwa wauzaji wa mtandaoni')}</h2>
+                                <p className="mt-1 text-sm text-muted-foreground">{copy('Track every secure request you created from an external product link until the seller responds or it becomes an order.', 'Fuatilia kila ombi salama ulilotengeneza kwa link ya bidhaa ya nje hadi muuzaji ajibu au liwe oda.')}</p>
+                            </div>
+                            <Button asChild variant="outline" className="rounded-xl"><Link href="/buy-from-social-media"><Link2 className="mr-2 h-4 w-4" />{copy('New online request', 'Ombi jipya')}</Link></Button>
+                        </div>
+
+                        <div className="rounded-2xl border border-brand-100 bg-brand-50/50 px-4 py-3 text-sm font-semibold text-brand-900">
+                            {copy(`${linkBuyMeta.total || linkBuyRequests.length} tracked online requests`, `Maombi ${linkBuyMeta.total || linkBuyRequests.length} ya mtandaoni yanafuatiliwa`)}
+                        </div>
+
+                        {linkBuyLoading ? (
+                            <div className="flex items-center justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-brand-600" /></div>
+                        ) : linkBuyRequests.length === 0 ? (
+                            <EmptyPane icon={Link2} title={copy('No online requests yet', 'Bado hakuna maombi ya mtandaoni')} body={copy('When you generate a secure seller request, its progress will appear here.', 'Ukitengeneza ombi salama kwa muuzaji, maendeleo yake yataonekana hapa.')} />
+                        ) : (
+                            <div className="grid gap-3 md:grid-cols-2">
+                                {linkBuyRequests.map((item) => (
+                                    <Link key={item.public_id} href={`/social-commerce/requests/${item.public_id}`} className="group rounded-2xl border border-border/70 bg-card p-4 transition hover:border-brand-300 hover:shadow-md">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-brand-700">{formatLinkBuyStatus(item.status)}</span>
+                                                    <span className="inline-flex items-center gap-1 text-xs font-bold text-muted-foreground"><Globe2 className="h-3.5 w-3.5" />{item.source?.label || item.platform}</span>
+                                                </div>
+                                                <p className="mt-3 truncate font-black text-slate-950">{item.buyer_notes?.product || item.preview?.snapshot?.title || copy('Online product request', 'Ombi la bidhaa mtandaoni')}</p>
+                                                <p className="mt-1 text-xs text-muted-foreground">{item.seller?.display_name || copy('Waiting for seller confirmation', 'Inasubiri uthibitisho wa muuzaji')} · {formatRequestDate(item.created_at)}</p>
+                                            </div>
+                                            <ArrowUpRight className="h-5 w-5 shrink-0 text-brand-600 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                                        </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
+                        {linkBuyMeta.last_page > 1 && <div className="flex items-center justify-between gap-3"><Button variant="outline" className="rounded-xl" onClick={() => setLinkBuyPage((page) => Math.max(1, page - 1))} disabled={linkBuyPage <= 1 || linkBuyLoading}>{copy('Previous', 'Iliyopita')}</Button><p className="text-sm font-semibold text-muted-foreground">{copy('Page', 'Ukurasa')} {linkBuyMeta.current_page} / {linkBuyMeta.last_page}</p><Button variant="outline" className="rounded-xl" onClick={() => setLinkBuyPage((page) => Math.min(linkBuyMeta.last_page, page + 1))} disabled={linkBuyPage >= linkBuyMeta.last_page || linkBuyLoading}>{copy('Next', 'Inayofuata')}</Button></div>}
+                    </section>
+                )}
 
                 {activeTab === 'pulse' && (
                     <section className="space-y-3">
@@ -2580,6 +2657,30 @@ function formatDate(value) {
     } catch {
         return value;
     }
+}
+
+function formatRequestDate(value) {
+    if (!value) return '';
+    try {
+        return new Date(value).toLocaleDateString('sw-TZ', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch {
+        return value;
+    }
+}
+
+function formatLinkBuyStatus(status) {
+    return {
+        awaiting_seller: 'Waiting for seller',
+        claimed: 'Seller joined',
+        onboarding: 'Seller onboarding',
+        product_setup: 'Product setup',
+        offer_ready: 'Offer ready',
+        converted: 'Order created',
+        declined: 'Declined',
+        expired: 'Expired',
+        cancelled: 'Cancelled',
+        blocked: 'Stopped',
+    }[status] || String(status || '').replaceAll('_', ' ');
 }
 
 function formatDateTime(value) {

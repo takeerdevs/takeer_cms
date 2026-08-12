@@ -40,6 +40,81 @@ class SocialCommerceLinkBuyTest extends TestCase
         $this->get('/buy-from-social-media')->assertOk();
     }
 
+    public function test_public_product_can_be_found_by_its_assigned_tk_code(): void
+    {
+        $seller = User::factory()->create(['role' => 'merchant']);
+        $merchant = Merchant::query()->create([
+            'user_id' => $seller->id,
+            'username' => 'live-code-seller',
+            'display_name' => 'Live Code Seller',
+            'is_default' => true,
+            'is_active' => true,
+            'is_verified' => true,
+        ]);
+        $product = Product::query()->create([
+            'merchant_id' => $merchant->id,
+            'title' => 'TikTok live handbag',
+            'slug' => 'tiktok-live-handbag',
+            'type' => 'physical',
+            'price' => 45000,
+            'inventory_count' => 3,
+        ])->refresh();
+
+        $this->assertMatchesRegularExpression('/^TK[0-9]{5,}$/', $product->product_code);
+
+        $this->getJson('/api/products/code/'.$product->product_code)
+            ->assertOk()
+            ->assertJsonPath('found', true)
+            ->assertJsonPath('product.code', $product->product_code)
+            ->assertJsonPath('product.title', 'TikTok live handbag')
+            ->assertJsonPath('product.url', route('product.show', ['product' => $product->slug]))
+            ->assertJsonPath('product.merchant.username', 'live-code-seller');
+        $this->assertStringContainsString('utm_source=takeer_code', (string) $this->getJson('/api/products/code/'.$product->product_code)->json('product.tracking_url'));
+
+        $this->getJson('/api/products/code/'.strtolower($product->product_code))
+            ->assertOk()
+            ->assertJsonPath('product.code', $product->product_code);
+    }
+
+    public function test_preview_accepts_an_ordinary_public_product_website(): void
+    {
+        Http::fake([
+            'https://example.com/items/sofa' => Http::response(
+                '<html><head><meta property="og:title" content="Blue sofa"><meta property="og:description" content="Call seller to order"></head></html>',
+                200,
+                ['Content-Type' => 'text/html'],
+            ),
+        ]);
+
+        $this->postJson('/api/social-commerce/previews', [
+            'url' => 'https://example.com/items/sofa?utm_source=tiktok',
+        ])->assertOk()
+            ->assertJsonPath('link.platform', 'web')
+            ->assertJsonPath('link.normalized_url', 'https://example.com/items/sofa');
+
+        $buyer = User::factory()->create([
+            'role' => 'buyer',
+            'phone_number' => '+255700000071',
+            'phone_verified_at' => now(),
+        ]);
+
+        $this->actingAs($buyer)->postJson('/api/social-commerce/requests', [
+            'original_url' => 'https://example.com/items/sofa?utm_source=tiktok',
+            'idempotency_key' => 'generic-web-source-1',
+            'buyer_product_note' => 'Blue sofa',
+            'requested_quantity' => 1,
+            'seller_phone' => '+255763141335',
+            'seller_phone_source' => 'buyer_entered',
+            'seller_contact_attested' => true,
+        ])->assertCreated()
+            ->assertJsonPath('request.source.key', 'web')
+            ->assertJsonPath('request.source.label', 'example.com');
+
+        $this->actingAs($buyer)->getJson('/api/social-commerce/requests')
+            ->assertOk()
+            ->assertJsonPath('data.0.source.label', 'example.com');
+    }
+
     public function test_guest_cannot_create_a_social_commerce_request(): void
     {
         $this->postJson('/api/social-commerce/requests', [
@@ -184,7 +259,13 @@ class SocialCommerceLinkBuyTest extends TestCase
         ])->assertCreated();
         $request = SocialCommerceRequest::query()->firstOrFail();
         $requestResponse->assertJsonPath('request.status', SocialCommerceRequest::AWAITING_SELLER);
+        $requestResponse->assertJsonPath('request.source.label', 'Instagram');
         $this->assertDatabaseCount('orders', 0);
+
+        $otherBuyer = User::factory()->create(['role' => 'buyer', 'phone_verified_at' => now()]);
+        $this->actingAs($otherBuyer)
+            ->get('/social-commerce/requests/'.$request->public_id)
+            ->assertForbidden();
 
         $inviteResponse = $this->actingAs($buyer)->postJson('/api/social-commerce/requests/'.$request->public_id.'/invitations', [
             'channel' => 'copy',
@@ -211,6 +292,11 @@ class SocialCommerceLinkBuyTest extends TestCase
             'claim_token' => $token,
             'merchant_id' => $merchant->id,
         ])->assertOk();
+        $this->actingAs($sellerUser)->getJson('/api/merchant/social-commerce/requests')
+            ->assertOk()
+            ->assertJsonPath('data.0.source.label', 'Instagram')
+            ->assertJsonPath('source_summary.0.label', 'Instagram')
+            ->assertJsonPath('source_summary.0.count', 1);
         $this->assertSame(SocialCommerceRequest::PRODUCT_SETUP, $request->fresh()->status);
 
         $product = Product::query()->create([
@@ -242,7 +328,9 @@ class SocialCommerceLinkBuyTest extends TestCase
             ->assertOk()
             ->assertJsonPath('matched', true)
             ->assertJsonPath('product.id', $product->id)
-            ->assertJsonPath('product.url', route('product.show', ['product' => $product->slug]));
+            ->assertJsonPath('product.url', route('product.show', ['product' => $product->slug]))
+            ->assertJsonPath('source.key', 'instagram');
+        $this->assertStringContainsString('utm_source=instagram', (string) $this->postJson('/api/social-commerce/resolve', ['url' => $request->original_url])->json('tracking_url'));
         $this->actingAs($sellerUser)->postJson('/api/merchant/social-commerce/requests/'.$request->public_id.'/offer', [
             'product_id' => $product->id,
             'quantity' => 1,

@@ -25,18 +25,18 @@ class AppServiceProvider extends ServiceProvider
         // ─── AzamPay (Tanzania) ──────────────────────────────────────────────────
         $this->app->singleton(AzamPayTokenService::class, function () {
             return new AzamPayTokenService(
-                authenticatorBaseUrl: config('services.azampay.authenticator_base_url'),
-                clientId:            config('services.azampay.client_id'),
-                clientSecret:        config('services.azampay.client_secret'),
-                appName:             config('services.azampay.app_name'),
+                authenticatorBaseUrl: (string) config('services.azampay.authenticator_base_url'),
+                clientId:            (string) config('services.azampay.client_id'),
+                clientSecret:        (string) config('services.azampay.client_secret'),
+                appName:             (string) config('services.azampay.app_name'),
             );
         });
 
         $this->app->singleton(AzamPayGateway::class, function ($app) {
             return new AzamPayGateway(
                 tokenService:    $app->make(AzamPayTokenService::class),
-                checkoutBaseUrl: config('services.azampay.checkout_base_url'),
-                apiKey:          config('services.azampay.token'),
+                checkoutBaseUrl: (string) config('services.azampay.checkout_base_url'),
+                apiKey:          (string) config('services.azampay.token'),
             );
         });
 

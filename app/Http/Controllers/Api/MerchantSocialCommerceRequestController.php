@@ -15,8 +15,23 @@ class MerchantSocialCommerceRequestController extends Controller
     public function index(Request $request): JsonResponse
     {
         $merchantIds = $request->user()->merchantProfiles()->pluck('id');
-        $requests = SocialCommerceRequest::query()->whereIn('claimed_merchant_id', $merchantIds)->with(['buyer', 'claimedMerchant', 'product', 'invitations'])->latest()->paginate(20);
-        return response()->json(SocialCommerceRequestResource::collection($requests));
+        $query = SocialCommerceRequest::query()->whereIn('claimed_merchant_id', $merchantIds);
+        $sourceCounts = [];
+        foreach ((clone $query)->select(['id', 'platform', 'normalized_url', 'original_url'])->cursor() as $socialRequest) {
+            $source = SocialCommerceRequestResource::sourceFor(
+                (string) $socialRequest->platform,
+                (string) ($socialRequest->normalized_url ?: $socialRequest->original_url),
+            );
+            $key = $source['label'];
+            $sourceCounts[$key] ??= [...$source, 'count' => 0];
+            $sourceCounts[$key]['count']++;
+        }
+        $sourceSummary = collect($sourceCounts)->sortByDesc('count')->values()->all();
+        $requests = $query->with(['buyer', 'claimedMerchant', 'product', 'invitations'])->latest()->paginate(20);
+
+        return SocialCommerceRequestResource::collection($requests)
+            ->additional(['source_summary' => $sourceSummary])
+            ->response();
     }
 
     public function show(Request $request, SocialCommerceRequest $socialRequest): SocialCommerceRequestResource

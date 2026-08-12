@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\SocialCommerceClaimController;
 use App\Http\Controllers\Api\MerchantSocialCommerceRequestController;
 use App\Http\Controllers\Api\AdminSocialCommerceRequestController;
 use App\Http\Controllers\Api\SocialCommerceFastPathController;
+use App\Http\Controllers\Api\ProductCodeLookupController;
 use App\Http\Controllers\Api\LegalDocumentController;
 use App\Http\Controllers\Api\CommerceCatalogController;
 use App\Http\Controllers\Api\ContentReportModerationController;
@@ -84,6 +85,9 @@ Route::post('/analytics/events', [MarketingEventController::class, 'store'])->mi
 Route::post('/social-commerce/previews', [SocialCommercePreviewController::class, 'store'])->middleware('throttle:30,1');
 Route::get('/social-commerce/previews/{preview}', [SocialCommercePreviewController::class, 'show'])->middleware('throttle:60,1');
 Route::post('/social-commerce/resolve', [SocialCommerceFastPathController::class, 'resolve'])->middleware('throttle:30,1');
+Route::get('/products/code/{code}', [ProductCodeLookupController::class, 'show'])
+    ->where('code', '[Tt][Kk][0-9]{5,18}')
+    ->middleware('throttle:60,1');
 Route::post('/social-commerce/invitations/{invitation:public_id}/opt-out', [SocialCommerceFastPathController::class, 'optOut'])->middleware('throttle:5,10');
 Route::post('/social-commerce/claims/{invitation:public_id}/dismiss', [SocialCommerceClaimController::class, 'dismiss'])->middleware('throttle:10,1');
 Route::get('/posts/{post}/comments', [PostController::class, 'comments'])->withTrashed();

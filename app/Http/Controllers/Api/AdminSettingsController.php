@@ -69,7 +69,7 @@ class AdminSettingsController extends Controller
                 'total_admins' => User::where('is_admin', true)->count(),
                 'total_orders' => Order::count(),
                 'open_disputes' => Dispute::where('status', 'open')->count(),
-                'pending_provider_payouts' => ProviderPayout::whereIn('status', ['created', 'submitted', 'processing'])->count(),
+                'pending_provider_payouts' => ProviderPayout::whereIn('state', ['created', 'submitted', 'processing'])->count(),
                 'reconciliation_breaks' => ProviderReconciliationBreak::whereIn('status', ['open', 'investigating'])->count(),
             ],
         ]);

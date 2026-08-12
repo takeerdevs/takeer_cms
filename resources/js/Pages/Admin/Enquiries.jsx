@@ -171,6 +171,7 @@ export default function Enquiries() {
 
 function EnquiryRow({ enquiry, categories, saving, onUpdate }) {
     const [note, setNote] = useState(enquiry.internal_note || '');
+    const { copy } = useLocale();
 
     useEffect(() => {
         setNote(enquiry.internal_note || '');

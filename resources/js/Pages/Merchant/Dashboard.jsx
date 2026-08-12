@@ -7,7 +7,7 @@ import {
     Package, ShoppingBag, Video, UploadCloud,
     TrendingUp, Store, ChevronRight, Truck, ShieldCheck,
     AlertTriangle, FileCheck, CheckCircle2, Settings, BookOpenText, Boxes, Crown, Download, CalendarClock, MapPin, MessageSquare,
-    Users, ClipboardList, BarChart3, UserCog, Utensils, BedDouble, Clock3, Megaphone, LayoutGrid, Layers
+    Users, ClipboardList, BarChart3, UserCog, Utensils, BedDouble, Clock3, Megaphone, LayoutGrid, Layers, Link2
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
@@ -182,6 +182,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
         { key: 'products', label: copy('Products', 'Bidhaa'), description: copy('Inventory, variants, stock, and product listings.', 'Inventory, variants, stock na orodha za bidhaa.'), icon: Package, href: `/merchant/${merchantSlug}/products`, permissions: ['products.view'], modules: ['products'], modes: ['physical_products'] },
         { key: 'menu', label: copy('Menu', 'Menyu'), description: copy('Food, drinks, add-ons, and menu prices.', 'Chakula, vinywaji, viongezi na bei za menyu.'), icon: Utensils, href: `/merchant/${merchantSlug}/menu`, permissions: ['products.view'], modules: ['menu'], modes: ['food_menu'] },
         { key: 'orders', label: copy('Orders', 'Oda'), description: copy('Purchases, payment status, fulfillment, and dispatch.', 'Manunuzi, hali ya malipo, utimilishaji na usafirishaji.'), icon: ShoppingBag, href: `/merchant/${merchantSlug}/orders`, permissions: ['orders.view'], modules: ['orders'], modes: ['physical_products', 'food_menu', 'digital_products', 'custom_orders_quotes', 'subscriptions_memberships'] },
+        { key: 'link_buy_requests', label: copy('Online buyer requests', 'Maombi ya wanunuzi mtandaoni'), description: copy('Track secure Link Buy requests and see where customer traffic originated.', 'Fuatilia maombi salama ya Link Buy na uone wateja walikotoka.'), icon: Link2, href: '/merchant/social-commerce/requests', permissions: ['orders.view'], modules: ['orders'], modes: ['physical_products', 'food_menu', 'custom_orders_quotes'] },
         /* Service, custom-order, availability, and booking workspace items are
            intentionally commented out for the launch. */
         { key: 'digital_products', label: copy('Digital products', 'Bidhaa za kidijitali'), description: copy('Downloads, files, content access, and license keys.', 'Upakuaji, faili, ufikiaji wa maudhui na funguo za leseni.'), icon: Download, href: `/merchant/${merchantSlug}/downloads`, permissions: ['digital_products.view'], modules: ['digital_products'], modes: ['digital_products'] },
@@ -264,7 +265,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                         </div>
                         {can('kyc.view') && (
                             <Link
-                                href={`/merchant/${merchantSlug}/verification`}
+                                href={`/merchant/${merchantSlug}/kyc`}
                                 className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-md px-4 py-2 inline-flex items-center"
                             >
                                 <FileCheck className="mr-2 h-4 w-4" /> {copy('Start verification (KYC)', 'Anza uthibitisho (KYC)')}

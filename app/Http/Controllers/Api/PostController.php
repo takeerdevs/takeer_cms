@@ -21,6 +21,7 @@ use App\Services\ContentPolicyService;
 use App\Services\EntitlementService;
 use App\Services\LinkPreviewService;
 use App\Services\LongFormDocumentService;
+use App\Services\MerchantSellingReadinessService;
 use App\Services\PhoneService;
 use App\Services\PulseNotificationService;
 use App\Support\MerchantPermissions;
@@ -169,7 +170,13 @@ class PostController extends Controller
     /**
      * Store a new social post (merchant).
      */
-    public function store(Request $request, LinkPreviewService $linkPreviewService, LongFormDocumentService $documentService, ContentPolicyService $policyService): JsonResponse
+    public function store(
+        Request $request,
+        LinkPreviewService $linkPreviewService,
+        LongFormDocumentService $documentService,
+        ContentPolicyService $policyService,
+        MerchantSellingReadinessService $sellingReadiness,
+    ): JsonResponse
     {
         $validated = $request->validate([
             'caption' => 'nullable|string',
@@ -194,6 +201,7 @@ class PostController extends Controller
             'reactions_enabled_override' => 'nullable|boolean',
             'forwarder_route_id' => 'nullable|string|max:120',
             'draft_content_item_id' => 'nullable|integer|exists:content_items,id',
+            'accept_merchant_terms' => 'nullable|boolean',
         ]);
 
         if ($documentService->isLexical($validated['body'] ?? null)) {
@@ -226,18 +234,7 @@ class PostController extends Controller
         $hasPromotableGate = count($promotablesInput) > 0;
         $hasSingleUnlockPrice = array_key_exists('restricted_price', $validated) && $validated['restricted_price'] !== null;
         $shouldLockPost = (bool) ($validated['is_restricted'] ?? false) || $hasPromotableGate || $hasSingleUnlockPrice;
-
-        if ($shouldLockPost && ! $this->merchantCanMonetizeContent($merchantProfile)) {
-            return response()->json([
-                'message' => 'Complete KYC before locking content for payment.',
-                'verification_url' => "/merchant/{$merchantProfile->username}/verification",
-            ], 403);
-        }
-
         $isLongForm = ! empty(trim((string) ($validated['body'] ?? '')));
-        $isShortForm = ! $isLongForm;
-        $restrictedPrice = $hasSingleUnlockPrice ? (float) $validated['restricted_price'] : null;
-        $paidShortUnlock = $isShortForm && $shouldLockPost && $restrictedPrice !== null && $restrictedPrice > 0;
 
         $draftContentItem = null;
         if ($isLongForm && ! empty($validated['draft_content_item_id'])) {
@@ -247,7 +244,38 @@ class PostController extends Controller
             if (! $draftContentItem) {
                 return response()->json(['message' => 'The selected draft does not belong to this business.'], 422);
             }
+        }
 
+        $hasPaidLinkedContent = $draftContentItem && (float) ($draftContentItem->price ?? 0) > 0;
+
+        // Every post published from a merchant account must pass the merchant
+        // legal acceptance gate. Commerce-enabled posts additionally require
+        // KYC because they create a sellable or paid offer.
+        $hasCommerceOffer = $attachedProduct !== null || $shouldLockPost || $hasPaidLinkedContent;
+        try {
+            $sellingReadiness->acceptIfRequested($request->user(), $request, $merchantProfile);
+        } catch (\RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'verification_url' => '/legal',
+                'required_step' => 'legal',
+            ], 403);
+        }
+
+        $readiness = $sellingReadiness->check($request->user(), $merchantProfile, $hasCommerceOffer);
+        if (! $readiness['ready']) {
+            return response()->json([
+                'message' => $readiness['message'],
+                'verification_url' => $readiness['verification_url'],
+                'required_step' => $readiness['step'],
+            ], 403);
+        }
+
+        $isShortForm = ! $isLongForm;
+        $restrictedPrice = $hasSingleUnlockPrice ? (float) $validated['restricted_price'] : null;
+        $paidShortUnlock = $isShortForm && $shouldLockPost && $restrictedPrice !== null && $restrictedPrice > 0;
+
+        if ($draftContentItem) {
             $moderation = $policyService->moderateText(trim((string) ($validated['title'] ?? ''))."\n".$documentService->plainText($validated['body'] ?? null, LongFormDocumentService::FORMAT));
             if (! $moderation['allowed']) {
                 return response()->json(['message' => 'This draft cannot be published until its moderation issues are resolved.', 'moderation' => $moderation], 422);
@@ -412,11 +440,6 @@ class PostController extends Controller
             'message' => 'Post imechapishwa!',
             'post' => PostResource::make($post)->resolve(),
         ]);
-    }
-
-    private function merchantCanMonetizeContent(Merchant $merchant): bool
-    {
-        return $merchant->hasCompletedKyc();
     }
 
     /**

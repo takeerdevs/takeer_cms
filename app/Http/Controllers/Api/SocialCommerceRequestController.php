@@ -23,7 +23,7 @@ class SocialCommerceRequestController extends Controller
     public function index(Request $request): JsonResponse
     {
         $requests = SocialCommerceRequest::query()->where('buyer_id', $request->user()->id)->with(['claimedMerchant', 'product', 'invitations'])->latest()->paginate(20);
-        return response()->json(SocialCommerceRequestResource::collection($requests));
+        return SocialCommerceRequestResource::collection($requests)->response();
     }
 
     public function store(

@@ -22,6 +22,8 @@
  */
 return [
 
+    'live_checkout' => env('LIVE_GATEWAY_CHECKOUT', false),
+
     /*
     |--------------------------------------------------------------------------
     | Default Country Fallback
@@ -38,22 +40,22 @@ return [
     */
     'TZ' => [
         [
-            'driver'   => 'selcom',
+            'driver'   => 'azampay',
             'priority' => 1,
+            'enabled'  => env('AZAMPAY_GATEWAY_ENABLED', true),
+            'label'    => 'AzamPay',
+        ],
+        [
+            'driver'   => 'selcom',
+            'priority' => 2,
             'enabled'  => env('SELCOM_GATEWAY_ENABLED', false),
             'label'    => 'Selcom',
         ],
         [
             'driver'   => 'flutterwave',
-            'priority' => 2,
-            'enabled'  => true,
-            'label'    => 'Flutterwave (Mobile Money)',
-        ],
-        [
-            'driver'   => 'azampay',
             'priority' => 3,
-            'enabled'  => true,
-            'label'    => 'AzamPay',
+            'enabled'  => env('FLUTTERWAVE_GATEWAY_ENABLED', false),
+            'label'    => 'Flutterwave (Mobile Money)',
         ],
     ],
 

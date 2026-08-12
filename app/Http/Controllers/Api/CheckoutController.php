@@ -346,7 +346,7 @@ class CheckoutController extends Controller
 
         // ── Create pending Order ──────────────────────────────────────────────
         $transactionRef = 'TXN-' . Str::upper(Str::random(10));
-        $liveGatewayCheckout = (bool) env('LIVE_GATEWAY_CHECKOUT', false);
+        $liveGatewayCheckout = (bool) config('payment_gateways.live_checkout', false);
         $pickupRequestSnapshot = $this->pickupRequestSnapshot(
             $validated,
             $deliveryType === 'self_pickup',

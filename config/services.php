@@ -130,7 +130,7 @@ return [
         'client_secret'          => env('AZAMPAY_CLIENT_SECRET'),
         'token'                  => env('AZAMPAY_TOKEN'), // X-API-Key static header
         'callback_signature_fields' => array_values(array_filter(array_map('trim', explode(',', (string) env('AZAMPAY_CALLBACK_SIGNATURE_FIELDS', ''))))),
-        'app_name'               => env('APP_NAME', 'Takeer'),
+        'app_name'               => env('AZAMPAY_APP_NAME', env('APP_NAME', 'Takeer')),
     ],
 
     'flutterwave' => [

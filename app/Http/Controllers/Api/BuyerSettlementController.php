@@ -156,7 +156,7 @@ class BuyerSettlementController extends Controller
                 'payment_phone' => $paymentPhone,
             ])->save();
 
-            if (! (bool) env('LIVE_GATEWAY_CHECKOUT', false)) {
+            if (! (bool) config('payment_gateways.live_checkout', false)) {
                 if (app()->environment('production')) {
                     return response()->json(['message' => 'A licensed PSP payment route is required in production.'], 503);
                 }
@@ -279,7 +279,7 @@ class BuyerSettlementController extends Controller
                 'payment_phone' => $paymentPhone,
             ])->save();
 
-            if (! (bool) env('LIVE_GATEWAY_CHECKOUT', false)) {
+            if (! (bool) config('payment_gateways.live_checkout', false)) {
                 if (app()->environment('production')) {
                     return response()->json(['message' => 'A licensed PSP payment route is required in production.'], 503);
                 }

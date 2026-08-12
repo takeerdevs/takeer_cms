@@ -143,6 +143,7 @@ export default function SocialCommerceRequestDetails({ request }) {
         ? '/merchant/' + encodeURIComponent(data.seller.username) + '/upload?social_request=' + encodeURIComponent(data.public_id)
         : null;
     const deliveryDetails = [data.destination?.address, data.destination?.extra_details].filter(Boolean).join(', ');
+    const deliveryMapUrl = googleMapsUrl(data.destination, deliveryDetails);
     const linkedProduct = selectedProduct || data.product;
     const linkedProductUrl = canonicalProductUrl(linkedProduct);
 
@@ -164,6 +165,7 @@ export default function SocialCommerceRequestDetails({ request }) {
                                 {formatStatus(data.status)}
                             </span>
                             <span className="text-xs text-muted-foreground">{data.public_id}</span>
+                            <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-brand-700">{data.source?.label || data.platform}</span>
                         </div>
                         <CardTitle className="text-2xl">
                             {data.buyer_notes?.product || data.preview?.snapshot?.title || data.public_id}
@@ -183,7 +185,7 @@ export default function SocialCommerceRequestDetails({ request }) {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <p className="text-sm font-black text-sky-950">
-                                        {copy('Check the original social post', 'Kagua post ya awali')}
+                                        {copy('Check the original online listing', 'Kagua tangazo la awali mtandaoni')}
                                     </p>
                                     <p className="mt-1 text-xs text-sky-900">
                                         {copy('Confirm that the item in the request is yours before linking it to your Takeer product.', 'Thibitisha kuwa bidhaa kwenye ombi ni yako kabla ya kuiunganisha na bidhaa yako ya Takeer.')}
@@ -230,7 +232,20 @@ export default function SocialCommerceRequestDetails({ request }) {
                                     <ChevronDown className="h-4 w-4 text-muted-foreground transition group-open:rotate-180" />
                                 </summary>
                                 <div className="border-t border-border px-4 pb-4 pt-3 text-sm text-muted-foreground">
-                                    {deliveryDetails}
+                                    <a
+                                        href={deliveryMapUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="group block rounded-xl border border-brand-100 bg-brand-50/40 p-3 transition hover:border-brand-300 hover:bg-brand-50"
+                                    >
+                                        <span className="flex items-start justify-between gap-3">
+                                            <span className="break-words text-sm text-foreground">{deliveryDetails}</span>
+                                            <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-brand-600 transition group-hover:translate-x-0.5" />
+                                        </span>
+                                        <span className="mt-2 block text-xs font-bold text-brand-700 group-hover:underline">
+                                            {copy('Open in Google Maps', 'Fungua kwenye Google Maps')}
+                                        </span>
+                                    </a>
                                     <p className="mt-2 text-xs">
                                         {copy('Use this only to prepare delivery. The buyer confirms the final offer before payment.', 'Tumia hii kuandaa delivery tu. Buyer anathibitisha offer ya mwisho kabla ya malipo.')}
                                     </p>
@@ -240,7 +255,7 @@ export default function SocialCommerceRequestDetails({ request }) {
 
                         <div className="flex items-start gap-3 rounded-2xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
                             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
-                            <span>{copy('Once you link a product, the buyer uses its normal Takeer product page and checkout. No separate offer is needed.', 'Ukiunganisha bidhaa, buyer atatumia ukurasa na checkout ya kawaida ya Takeer. Hakuna offer tofauti inayohitajika.')}</span>
+                            <span>{copy('Once you link a product, the buyer uses its normal Takeer product page and checkout. No separate offer is needed.', 'Ukiunganisha bidhaa, Mteja atatumia ukurasa na checkout ya Takeer. Hakuna offer tofauti inayohitajika.')}</span>
                         </div>
 
                         {data.status === 'onboarding' || !canConfigure ? (
@@ -256,7 +271,7 @@ export default function SocialCommerceRequestDetails({ request }) {
                                 </div>
                                 {data.seller?.username && (
                                     <Button asChild className="mt-4">
-                                        <Link href={'/merchant/' + data.seller.username + '/verification'}>
+                                        <Link href={'/merchant/' + data.seller.username + '/kyc'}>
                                             {copy('Continue verification', 'Endelea na uthibitisho')}
                                         </Link>
                                     </Button>
@@ -422,4 +437,23 @@ function formatStatus(status) {
 
 function formatMoney(value) {
     return 'TZS ' + new Intl.NumberFormat('en-TZ', { maximumFractionDigits: 2 }).format(Number(value) || 0);
+}
+
+function googleMapsUrl(destination = {}, fallbackAddress = '') {
+    const latitude = Number(destination.latitude);
+    const longitude = Number(destination.longitude);
+    const hasCoordinates = [destination.latitude, destination.longitude].every((value) => (
+        value !== null
+        && value !== undefined
+        && value !== ''
+        && Number.isFinite(Number(value))
+    ));
+
+    const query = hasCoordinates
+        ? `${latitude},${longitude}`
+        : [fallbackAddress, destination.summary].filter(Boolean).join(', ');
+
+    return query
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+        : '';
 }

@@ -19,6 +19,7 @@ class SocialCommerceRequestResource extends JsonResource
         return [
             'public_id' => $this->public_id,
             'platform' => $this->platform,
+            'source' => $this->sourcePayload(),
             'original_url' => $this->original_url,
             'normalized_url' => $this->normalized_url,
             'external_post_id' => $this->external_post_id,
@@ -91,6 +92,36 @@ class SocialCommerceRequestResource extends JsonResource
             ])->values()),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
+        ];
+    }
+
+    private function sourcePayload(): array
+    {
+        $url = (string) ($this->normalized_url ?: $this->original_url);
+        return self::sourceFor((string) $this->platform, $url);
+    }
+
+    public static function sourceFor(string $platform, string $url): array
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $host = preg_replace('/^www\./', '', $host);
+
+        $label = match (true) {
+            $platform === 'instagram' || str_ends_with($host, 'instagram.com') => 'Instagram',
+            $platform === 'facebook_marketplace' => 'Facebook Marketplace',
+            str_ends_with($host, 'facebook.com') => 'Facebook',
+            str_ends_with($host, 'tiktok.com') => 'TikTok',
+            str_ends_with($host, 'kupatana.com') => 'Kupatana',
+            str_ends_with($host, 'jiji.co.tz') => 'Jiji Tanzania',
+            str_ends_with($host, 'whatsapp.com') || $host === 'wa.me' => 'WhatsApp',
+            $host !== '' => $host,
+            default => $platform !== '' ? str_replace('_', ' ', ucfirst($platform)) : 'Online seller',
+        };
+
+        return [
+            'key' => $platform ?: 'web',
+            'label' => $label,
+            'domain' => $host ?: null,
         ];
     }
 }

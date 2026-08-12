@@ -14,8 +14,6 @@ import {
     Briefcase,
     Camera,
     ArrowLeft,
-    Mail,
-    Phone,
     Fingerprint,
     CreditCard,
     FileText,
@@ -23,7 +21,8 @@ import {
     BadgeCheck,
     AlertCircle,
     Trash2,
-    ExternalLink
+    ExternalLink,
+    Store,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -32,10 +31,16 @@ import { useLocale } from '@/lib/i18n';
 
 export default function VerificationCenter({ merchantUsername, auth }) {
     const { copy } = useLocale();
+    const merchantProfile = auth?.user?.merchant_profiles?.find((profile) => profile.username === merchantUsername)
+        || auth?.user?.merchant_profiles?.[0];
+    const merchantDisplayName = merchantProfile?.display_name || merchantProfile?.username || merchantUsername;
+    const merchantHandle = merchantProfile?.username || merchantUsername;
+    const merchantInitial = String(merchantDisplayName || 'M').trim().slice(0, 1).toUpperCase();
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [kycData, setKycData] = useState(null);
     const [status, setStatus] = useState('unverified'); // unverified, pending, verified, rejected
+    const [isKycComplete, setIsKycComplete] = useState(false);
     const [selectedDoc, setSelectedDoc] = useState(null);
     const [isCountryActive, setIsCountryActive] = useState(true);
     const [countryName, setCountryName] = useState('');
@@ -45,9 +50,6 @@ export default function VerificationCenter({ merchantUsername, auth }) {
     const servicesEnabled = false;
     const [serviceCategories, setServiceCategories] = useState([]);
     const [serviceCredentials, setServiceCredentials] = useState([]);
-    const [legalDocuments, setLegalDocuments] = useState([]);
-    const [legalLoading, setLegalLoading] = useState(true);
-    const [legalSubmitting, setLegalSubmitting] = useState(false);
     const [credentialForm, setCredentialForm] = useState({
         service_category_id: '',
         document_type: 'professional_license',
@@ -81,40 +83,7 @@ export default function VerificationCenter({ merchantUsername, auth }) {
         // Service credential loading is commented out until service providers launch.
         // fetchServiceCategories();
         // fetchServiceCredentials();
-        fetchLegalDocuments();
     }, []);
-
-    const fetchLegalDocuments = async () => {
-        try {
-            const merchantId = auth?.user?.merchant_profiles?.find((profile) => profile.username === merchantUsername)?.id;
-            if (!merchantId) return;
-
-            const res = await axios.get('/api/legal/documents', { params: { merchant_id: merchantId } });
-            setLegalDocuments(res.data?.documents || []);
-        } catch (err) {
-            console.error('Failed to load merchant legal documents', err);
-        } finally {
-            setLegalLoading(false);
-        }
-    };
-
-    const acceptMerchantDocuments = async () => {
-        const merchantId = auth?.user?.merchant_profiles?.find((profile) => profile.username === merchantUsername)?.id;
-        if (!merchantId || legalDocuments.length === 0) return;
-
-        setLegalSubmitting(true);
-        try {
-            await axios.post('/api/legal/acceptances', { merchant_id: merchantId, accept: true });
-            toast.success(copy('Merchant terms accepted and saved.', 'Masharti ya mfanyabiashara yamekubaliwa na kuhifadhiwa.'));
-            fetchLegalDocuments();
-        } catch (err) {
-            toast.error(err.response?.data?.message || copy('Merchant terms are not enabled by administration yet.', 'Masharti ya mfanyabiashara bado hayajawezeshwa na utawala.'));
-        } finally {
-            setLegalSubmitting(false);
-        }
-    };
-
-    const allLegalDocumentsAccepted = legalDocuments.length > 0 && legalDocuments.every((document) => document.accepted);
 
     const serviceCategoryChoices = serviceCategories.flatMap((category) => {
         const children = category.children || [];
@@ -146,6 +115,9 @@ export default function VerificationCenter({ merchantUsername, auth }) {
             const res = await axios.get(`/merchant/${merchantUsername}/kyc/api`);
             setKycData(res.data.kyc);
             setStatus(res.data.merchant_kyc_status);
+            const merchantKycStatus = String(res.data.merchant_kyc_status || '').toLowerCase();
+            const submittedKycStatus = String(res.data.kyc?.status || '').toLowerCase();
+            setIsKycComplete(Boolean(res.data.is_verified) || ['approved', 'verified'].includes(merchantKycStatus) || ['approved', 'verified'].includes(submittedKycStatus));
             setIsCountryActive(res.data.is_country_active);
             setCountryName(res.data.country?.name || '');
             
@@ -338,8 +310,26 @@ export default function VerificationCenter({ merchantUsername, auth }) {
                         <ArrowLeft className="h-6 w-6" />
                     </Button>
                     <div>
-                        <h1 className="text-2xl font-black text-slate-900 tracking-tight">{copy('Verification center', 'Kituo cha uthibitisho')}</h1>
-                        <p className="text-sm font-bold text-slate-500">{copy('Complete these steps to start selling.', 'Kamilisha hatua hizi ili kuanza kuuza.')}</p>
+                        <h1 className="text-2xl font-black text-slate-900 tracking-tight">{copy('KYC verification', 'Uthibitisho wa KYC')}</h1>
+                        <p className="text-sm font-bold text-slate-500">{copy('Complete identity verification for this merchant account.', 'Kamilisha uthibitisho wa utambulisho kwa akaunti hii ya mfanyabiashara.')}</p>
+                    </div>
+                </div>
+
+                <div className="mb-8 text-center">
+                    <div className="mx-auto flex max-w-xs flex-col items-center">
+                        <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-gradient-to-br from-sky-400 to-brand-500 text-3xl font-black text-white shadow-md ring-4 ring-white">
+                            {merchantProfile?.avatar_url ? (
+                                <img src={merchantProfile.avatar_url} alt="" className="h-full w-full object-cover" />
+                            ) : merchantProfile?.type === 'personal' ? (
+                                <User className="h-10 w-10" />
+                            ) : merchantProfile ? (
+                                <span>{merchantInitial}</span>
+                            ) : (
+                                <Store className="h-10 w-10" />
+                            )}
+                        </div>
+                        <p className="mt-4 max-w-full truncate text-xl font-black text-slate-900">{merchantDisplayName}</p>
+                        <p className="mt-1 max-w-full truncate text-base font-bold text-slate-500">@{merchantHandle}</p>
                     </div>
                 </div>
 
@@ -375,128 +365,41 @@ export default function VerificationCenter({ merchantUsername, auth }) {
                             animate={{ opacity: 1, scale: 1 }}
                             className="space-y-8"
                         >
-                            {/* Merchant legal acceptance */}
                             <div className="space-y-4">
-                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-400">0. {copy('Selling and provider terms', 'Masharti ya kuuza na mtoa huduma')}</h2>
-                                <Card className="border-2 border-brand-100 overflow-hidden bg-brand-50/30">
-                                    <CardContent className="p-6 space-y-5">
-                                        <div className="flex gap-4">
-                                            <div className="h-12 w-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center flex-shrink-0">
-                                                <FileText className="h-6 w-6" />
-                                            </div>
-                                            <div>
-                                                <h3 className="font-black text-slate-900">{copy('Merchant Marketplace Agreement', 'Makubaliano ya Soko la Mfanyabiashara')}</h3>
-                                                <p className="text-sm text-slate-600 font-medium mt-1 leading-relaxed">
-                                                    {copy('Read and accept the merchant, PSP processing, refunds, fees, privacy, restricted products, and complaints terms before publishing a listing.', 'Soma na ukubali masharti ya mfanyabiashara, uchakataji wa PSP, marejesho, ada, faragha, bidhaa zilizozuiwa na malalamiko kabla ya kuchapisha bidhaa.')}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {legalLoading ? (
-                                            <p className="text-xs font-bold text-slate-500">{copy('Loading document status...', 'Inapakia hali ya nyaraka...')}</p>
-                                        ) : legalDocuments.length === 0 ? (
-                                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-900">
-                                                {copy('Documents are still awaiting approval/activation. You can read them in the', 'Nyaraka bado zinasubiri idhini/kuwashwa. Unaweza kuzisoma kwenye')} <a href="/legal/merchant-marketplace-agreement" target="_blank" rel="noreferrer" className="font-black underline">{copy('Merchant Agreement', 'Makubaliano ya Mfanyabiashara')}</a> {copy('and', 'na')} <a href="/legal" target="_blank" rel="noreferrer" className="font-black underline">{copy('Legal Center', 'Kituo cha Sheria')}</a>.
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div className="space-y-2">
-                                                    {legalDocuments.map((document) => (
-                                                        <div key={document.document_type} className="flex items-center justify-between gap-3 rounded-xl border border-white bg-white px-3 py-2">
-                                                            <a href={`/legal/${document.document_type === 'merchant_marketplace_agreement' ? 'merchant-marketplace-agreement' : document.document_type.replaceAll('_', '-')}`} target="_blank" rel="noreferrer" className="text-xs font-black text-brand-700 underline">
-                                                                {document.document_type.replaceAll('_', ' ')} · {document.version}
-                                                            </a>
-                                                            <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${document.accepted ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                                                {document.accepted ? copy('Accepted', 'Imekubaliwa') : copy('Required', 'Inahitajika')}
-                                                            </span>
-                                                        </div>
-                                                    ))}
+                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-400">{copy('KYC information', 'Taarifa za KYC')}</h2>
+                                    <Card className="border-2 border-slate-100 overflow-hidden bg-slate-50/50">
+                                        <CardContent className="p-6 space-y-6">
+                                            <div className="flex gap-4">
+                                                <div className="h-12 w-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center flex-shrink-0">
+                                                    <ShieldCheck className="h-6 w-6" />
                                                 </div>
+                                                <div>
+                                                    <h3 className="font-black text-slate-900">{copy('National ID / Passport', 'Kitambulisho cha Taifa / Pasipoti')}</h3>
+                                                    <p className="text-sm text-slate-600 font-medium mt-1 leading-relaxed">
+                                                        {copy('We verify your identity to prevent fraud and keep transactions safe.', 'Tunathibitisha utambulisho wako ili kuzuia utapeli na kuhakikisha usalama wa miamala.')}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {isKycComplete ? (
+                                                <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
+                                                    <CheckCircle2 className="h-5 w-5 shrink-0" />
+                                                    <p className="text-sm font-black">{copy('KYC is complete for this account.', 'KYC imekamilika kwa akaunti hii.')}</p>
+                                                </div>
+                                            ) : (
                                                 <Button
-                                                    type="button"
-                                                    onClick={acceptMerchantDocuments}
-                                                    disabled={legalSubmitting || allLegalDocumentsAccepted}
-                                                    className="w-full h-12 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black"
+                                                    className="w-full h-14 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black text-lg shadow-none border-b-4 border-brand-800 active:border-b-0 active:translate-y-1 transition-all"
+                                                    onClick={() => setView('selection')}
                                                 >
-                                                    {allLegalDocumentsAccepted ? copy('Terms accepted', 'Masharti yamekubaliwa') : legalSubmitting ? copy('Saving...', 'Inahifadhi...') : copy('Read and accept all terms', 'Soma na kubali masharti yote')}
+                                                    {copy('Start verification', 'Anza uthibitisho')}
                                                 </Button>
-                                            </>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            </div>
-
-                            {/* Contact Verification Section */}
-                            <div className="space-y-4">
-                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-400">1. {copy('Contact verification', 'Uthibitisho wa mawasiliano')}</h2>
-                                <div className="grid gap-3">
-                                    {/* Phone (Always verified via OTP) */}
-                                    <div className="flex items-center justify-between p-5 rounded-3xl border-2 border-slate-100 bg-white">
-                                        <div className="flex items-center gap-4">
-                                            <div className="h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-                                                <Phone className="h-6 w-6" />
-                                            </div>
-                                            <div>
-                                                <p className="font-black text-slate-900">{copy('Phone number', 'Nambari ya simu')}</p>
-                                                <p className="text-xs font-bold text-slate-500">{auth?.user?.phone_number}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-wider">
-                                            <CheckCircle2 className="h-3 w-3" /> {copy('Verified', 'Imethibitishwa')}
-                                        </div>
-                                    </div>
-
-                                    {/* Email (Google Login) */}
-                                    <div className="flex items-center justify-between p-5 rounded-3xl border-2 border-slate-100 bg-white">
-                                        <div className="flex items-center gap-4">
-                                            <div className="h-12 w-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
-                                                <Mail className="h-6 w-6" />
-                                            </div>
-                                            <div>
-                                                <p className="font-black text-slate-900">{copy('Email', 'Barua pepe')}</p>
-                                                <p className="text-xs font-bold text-slate-500">{copy('Verify using Google', 'Thibitisha ukitumia Google')}</p>
-                                            </div>
-                                        </div>
-                                        <Button 
-                                            size="sm"
-                                            className="h-10 px-4 rounded-xl bg-white border-2 border-slate-200 text-slate-700 font-bold hover:bg-slate-50 flex items-center gap-2"
-                                        >
-                                            <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-4 w-4" alt="Google" />
-                                            {copy('Connect', 'Unganisha')}
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Identity Verification Section */}
-                            <div className="space-y-4">
-                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-400">2. {copy('Identity verification', 'Uthibitisho wa utambulisho')}</h2>
-                                <Card className="border-2 border-slate-100 overflow-hidden bg-slate-50/50">
-                                    <CardContent className="p-6 space-y-6">
-                                        <div className="flex gap-4">
-                                            <div className="h-12 w-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center flex-shrink-0">
-                                                <ShieldCheck className="h-6 w-6" />
-                                            </div>
-                                            <div>
-                                                <h3 className="font-black text-slate-900">{copy('National ID / Passport', 'Kitambulisho cha Taifa / Pasipoti')}</h3>
-                                                <p className="text-sm text-slate-600 font-medium mt-1 leading-relaxed">
-                                                    {copy('We verify your identity to prevent fraud and keep transactions safe.', 'Tunathibitisha utambulisho wako ili kuzuia utapeli na kuhakikisha usalama wa miamala.')}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <Button 
-                                            className="w-full h-14 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black text-lg shadow-none border-b-4 border-brand-800 active:border-b-0 active:translate-y-1 transition-all"
-                                            onClick={() => setView('selection')}
-                                        >
-                                            {copy('Start verification', 'Anza uthibitisho')}
-                                        </Button>
-                                    </CardContent>
-                                </Card>
+                                            )}
+                                        </CardContent>
+                                    </Card>
                             </div>
 
                             {servicesEnabled && (
                             <div className="space-y-4">
-                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-400">3. {copy('Service credentials', 'Leseni za huduma')}</h2>
+                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-400">{copy('Service credentials', 'Leseni za huduma')}</h2>
                                 <Card className="border-2 border-slate-100 overflow-hidden bg-white">
                                     <CardContent className="p-6 space-y-5">
                                         <div className="flex gap-4">

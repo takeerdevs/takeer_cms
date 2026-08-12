@@ -6,13 +6,17 @@ Accepted — 5 August 2026
 
 ## Context
 
-Instagram posts and Facebook Marketplace listings can create high-intent purchase demand without providing a trustworthy order, seller identity, delivery record, or buyer-protection path. External metadata is also stale and cannot be treated as commercial truth.
+Public product pages, social posts, marketplace listings, classified ads, and live streams can create high-intent purchase demand without providing a trustworthy order, seller identity, delivery record, or buyer-protection path. External metadata is also stale and cannot be treated as commercial truth.
 
 ## Decision
 
 Takeer stores pasted social links as `social_commerce_requests`. A request is a lead and negotiation record only. It cannot start a payment, reserve inventory, or trigger settlement. A seller must claim the request through a one-time fragment token, use an owned merchant profile, pass the existing KYC/PSP gates, and confirm a physical product and offer. Only the buyer's explicit acceptance converts the request into the existing quoted physical inquiry order.
 
-The implementation uses provider adapters for URL normalization and best-effort public metadata. Official Meta account access and messaging are optional enhancements. Seller outreach remains buyer-mediated or explicitly attested SMS when official messaging capability is unavailable. New request creation requires an authenticated, phone-verified buyer and a valid seller phone plus buyer attestation; guests can preview links but cannot create or track requests.
+The implementation uses provider adapters for URL normalization and best-effort public metadata. Specialized Instagram and Facebook Marketplace adapters run before a generic HTTP(S) web adapter, allowing links from TikTok, classifieds, marketplaces, and ordinary product websites to use the same protected request flow. Official platform account access and messaging are optional enhancements. Seller outreach remains buyer-mediated or explicitly attested SMS when official messaging capability is unavailable. New request creation requires an authenticated, phone-verified buyer and a valid seller phone plus buyer attestation; guests can preview links but cannot create or track requests.
+
+Every Takeer product also receives a unique `product_code` in the canonical format `TK` plus at least five digits, such as `TK12345`. This code is a public discovery key intended for live streams, stickers, captions, and pinned comments. The buyer field renders `TK` as a fixed prefix and normally accepts only the numeric part, while pasted full codes are normalized. Entering it performs a read-only lookup and returns a compact canonical Takeer product result linking to the normal product page and checkout. It does not create a social-commerce request or bypass inventory, merchant status, checkout, payment, or buyer-protection controls.
+
+Link Buy requests remain visible before conversion: buyers track them from the Online Requests section in Orders, and claimed merchants track them from the permanent Online Buyer Requests workspace. Both surfaces display a safe source label derived from the normalized external URL. Product-code and seller-confirmed fast-path links add first-party attribution query parameters before opening the canonical Takeer product page, allowing the existing product-view and checkout attribution pipeline to retain `takeer_code`, platform, or originating-domain context.
 
 Claim tokens are high-entropy, stored only as SHA-256 hashes, and supplied in the authenticated POST body. The invitation GET page is non-mutating. Seller contact and delivery context are encrypted; audit and marketing events contain hashes and safe identifiers only.
 
@@ -61,5 +65,6 @@ until the seller confirms the product.
 
 - The existing PSP, payment callback, Safe-Chat, delivery, dispute, refund, release, and payout state machines remain authoritative.
 - Preview failures do not block manual buyer evidence and request submission.
+- Sellers can announce a short product code in audio/video contexts where sharing a clickable URL is impractical.
 - The feature can be disabled by configuration without unlinking converted orders.
 - Product setup and onboarding require more steps than a direct social payment, but this is the required trust boundary for the Tanzania pilot.

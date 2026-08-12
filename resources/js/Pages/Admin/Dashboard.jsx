@@ -4,7 +4,7 @@ import { Head, Link } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
-import { Bell, ShieldAlert, Users, Settings2, TrendingUp, Store, Flag, Shapes, ShieldCheck, Tags, Ruler, Activity, Gauge } from 'lucide-react';
+import { Bell, ShieldAlert, Users, Settings2, TrendingUp, Store, Flag, Shapes, ShieldCheck, Tags, Ruler, Activity, Gauge, BarChart3, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLocale } from '@/lib/i18n';
 
@@ -47,6 +47,7 @@ export default function AdminDashboard() {
         { name: copy('Brands & Models', 'Chapa na Miundo'), href: '/admin/brands', icon: Tags, desc: copy('Manage reusable brand and model catalog', 'Simamia orodha ya chapa na miundo inayotumika tena') },
         { name: copy('Sellable Units', 'Vipimo vya Uuzaji'), href: '/admin/sellable-units', icon: Ruler, desc: copy('Manage units, conversions, and quick quantities', 'Simamia vipimo, ubadilishaji na kiasi cha haraka') },
         { name: copy('Payment Operations', 'Uendeshaji wa Malipo'), href: '/admin/payment-operations', icon: Activity, desc: copy('Review provider payouts, callbacks, and reconciliation breaks', 'Kagua malipo ya PSP, callbacks na tofauti za upatanisho') },
+        { name: copy('Legal Documents', 'Nyaraka za Sheria'), href: '/admin/legal-documents', icon: FileText, desc: copy('Approve and activate documents required before merchant publishing', 'Idhinisha na washe nyaraka zinazohitajika kabla ya merchant kuchapisha') },
         { name: copy('General Settings', 'Mipangilio ya Jumla'), href: '/admin/settings', icon: Settings2, desc: copy('Configure platform-wide non-AI defaults', 'Sanidi mipangilio ya jumla ya jukwaa isiyo ya AI') },
         { name: copy('AI Settings', 'Mipangilio ya AI'), href: '/admin/ai-settings', icon: Settings2, desc: copy('Configure AI providers and keys', 'Sanidi watoa huduma na funguo za AI') },
         { name: copy('AI Usage Audit', 'Ukaguzi wa matumizi ya AI'), href: '/admin/ai-usage', icon: BarChart3, desc: copy('Compare model cost and task usage over time', 'Linganisha gharama za model na matumizi kwa muda') },

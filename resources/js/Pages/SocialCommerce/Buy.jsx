@@ -18,6 +18,7 @@ import {
     Link2,
     Loader2,
     MapPin,
+    PackageSearch,
     MessageCircle,
     Send,
     Share2,
@@ -40,6 +41,7 @@ export default function Buy({ enabled = true, entryEnabled = true }) {
     const defaultPhoneRegion = String(geo?.country?.iso_alpha2 || '').toUpperCase();
     const [step, setStep] = useState('link');
     const [url, setUrl] = useState('');
+    const [productCode, setProductCode] = useState('');
     const [preview, setPreview] = useState(null);
     const [matchedProduct, setMatchedProduct] = useState(null);
     const detectedPlatform = useMemo(() => detectSocialPlatform(url), [url]);
@@ -63,7 +65,43 @@ export default function Buy({ enabled = true, entryEnabled = true }) {
         if (buyerScreenshotPreview) URL.revokeObjectURL(buyerScreenshotPreview);
     }, [buyerScreenshotPreview]);
 
-    const supported = useMemo(() => /instagram\.com\/(?:p|reel)\/|facebook\.com\/(?:[a-z]{2}(?:_[A-Z]{2})?\/)?(?:marketplace\/item|share)\//i.test(url), [url]);
+    const supported = useMemo(() => {
+        try {
+            return ['http:', 'https:'].includes(new URL(url).protocol);
+        } catch {
+            return false;
+        }
+    }, [url]);
+
+    async function loadProductCode(event) {
+        event.preventDefault();
+        const digits = productCode.replace(/\D/g, '').slice(0, 18);
+        const code = `TK${digits}`;
+        setProductCode(digits);
+        setError('');
+
+        if (digits.length < 5) {
+            setError(copy('Enter at least 5 digits after TK.', 'Weka angalau tarakimu 5 baada ya TK.'));
+            return;
+        }
+
+        setBusy(true);
+        try {
+            const response = await axios.get(`/api/products/code/${encodeURIComponent(code)}`);
+            const product = response.data.product;
+            setMatchedProduct({
+                product,
+                merchant: product.merchant,
+                lookup_type: 'code',
+            });
+            setPreview(null);
+            setStep('matched');
+        } catch (exception) {
+            setError(exception.response?.data?.message || copy(`No product was found with code ${code}.`, `Hakuna bidhaa iliyopatikana kwa namba ${code}.`));
+        } finally {
+            setBusy(false);
+        }
+    }
 
     async function loadPreview(event) {
         event.preventDefault();
@@ -296,13 +334,13 @@ export default function Buy({ enabled = true, entryEnabled = true }) {
     if (!enabled || !entryEnabled) {
         return (
             <AppLayout>
-                <Head title="Buy from social media | Takeer" />
+                <Head title={`${copy('Buy from online sellers', 'Nunua kwa wauzaji wa mtandaoni')} | Takeer`} />
                 <div className="mx-auto max-w-2xl px-4 py-8 pb-24 sm:py-12">
                     <Card>
                         <CardContent className="flex flex-col items-start gap-4 p-6 sm:p-8">
                             <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-black uppercase tracking-wider text-brand-700">Takeer</span>
                             <div>
-                                <h1 className="text-2xl font-black tracking-tight">{copy('Buy from social media is temporarily unavailable', 'Ununuzi kutoka mitandao ya kijamii haupatikani kwa muda')}</h1>
+                                <h1 className="text-2xl font-black tracking-tight">{copy('Buying from online sellers is temporarily unavailable', 'Ununuzi kwa wauzaji wa mtandaoni haupatikani kwa muda')}</h1>
                                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy('Please try again later. Existing Takeer orders remain available through normal checkout.', 'Tafadhali jaribu tena baadaye. Oda zilizopo za Takeer bado zinapatikana kupitia checkout ya kawaida.')}</p>
                             </div>
                             <Button asChild variant="outline"><Link href="/"><ArrowRight className="mr-2 h-4 w-4" />{copy('Back to Takeer', 'Rudi Takeer')}</Link></Button>
@@ -315,21 +353,21 @@ export default function Buy({ enabled = true, entryEnabled = true }) {
 
     return (
         <AppLayout>
-            <Head title={`${copy('Buy from social media', 'Nunua kutoka mitandao ya kijamii')} | Takeer`} />
+            <Head title={`${copy('Buy from online sellers', 'Nunua kwa wauzaji wa mtandaoni')} | Takeer`} />
 
             <div className="mx-auto max-w-4xl space-y-6 px-4 pb-18 pt-6 sm:pt-10">
                 <div className="flex items-center justify-between gap-3">
                     <div>
                         <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Takeer Link Buy</p>
-                        <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">{copy('Buy safely from social media', 'Nunua kwa usalama kutoka mitandao ya kijamii')}</h1>
+                        <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">{copy('Buy safely from online sellers', 'Nunua kwa wauzaji wa mtandaoni')}</h1>
                     </div>
                 </div>
-                <p className="max-w-3xl text-base font-medium leading-7 text-muted-foreground">{copy('Paste a public post, reel, video or listing from social media. The seller confirms the final Takeer offer before any payment starts.', 'Bandika post, reel, video au tangazo la bidhaa kutoka mtandao wa kijamii. Muuzaji atathibitisha offer Takeer kabla ya malipo kuanza. Ikitokea ukalipia hapa Takeer na bidhaa hujaipata utarudishiwa fedha zako.')}</p>
+                <p className="max-w-3xl text-base font-medium leading-7 text-muted-foreground">{copy('Enter a Takeer product number or paste any public product link from the web. For an external listing, the seller confirms the final Takeer offer before payment starts.', 'Weka namba ya bidhaa ya Takeer au bandika link yoyote ya umma ya bidhaa kutoka mtandaoni. Kwa bidhaa ya nje, muuzaji atathibitisha offer Takeer kabla ya malipo kuanza.')}</p>
 
                 <Card className="overflow-hidden rounded-3xl border-slate-200/90 shadow-xl shadow-slate-900/[0.04]">
                     <CardHeader className="border-b border-slate-200/80 bg-white px-5 py-4 sm:px-8">
                         <div className="flex items-center gap-3 sm:gap-5">
-                            <StepIndicator index="1" active={step === 'link'} complete={step !== 'link'} label={copy('Link', 'Link')} />
+                            <StepIndicator index="1" active={step === 'link'} complete={step !== 'link'} label={copy('Find', 'Tafuta')} />
                             <div className="h-px flex-1 bg-border" />
                             <StepIndicator index="2" active={step === 'details' || step === 'matched'} complete={step === 'track'} label={step === 'matched' ? copy('Product', 'Bidhaa') : copy('Details', 'Maelezo')} />
                             <div className="h-px flex-1 bg-border" />
@@ -338,22 +376,50 @@ export default function Buy({ enabled = true, entryEnabled = true }) {
                     </CardHeader>
                     <CardContent className="pt-5 pb-5 sm:pt-8 sm:pb-8">
                         {step === 'link' && (
-                            <form onSubmit={loadPreview} className="space-y-2">
+                            <div className="space-y-5">
+                                <form onSubmit={loadProductCode} className="rounded-2xl border border-brand-200 bg-brand-50/60 p-5 sm:p-6">
+                                    <div className="flex items-start gap-3">
+                                        <div className="rounded-xl bg-brand-100 p-2.5 text-brand-700"><PackageSearch className="h-5 w-5" /></div>
+                                        <div>
+                                            <h2 className="text-lg font-black tracking-tight text-slate-950">{copy('Enter the seller product number', 'Weka namba ya bidhaa toka kwa muuzaji')}</h2>
+                                            <p className="mt-1 text-sm font-medium leading-6 text-muted-foreground">{copy('Use the TK code shared by the seller in a live stream, sticker, caption or pinned comment.', 'Weka namba ya bidhaa inayoanza na TK iliyotolewa na muuzaji kwenye live stream, sticker, caption, picha, video au pinned comment.')}</p>
+                                        </div>
+                                    </div>
+                                    <label className="mt-5 block text-sm font-bold" htmlFor="takeer-product-code">{copy('Product number', 'Namba ya bidhaa')}</label>
+                                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                                        <div className="flex h-12 flex-1 overflow-hidden rounded-xl border border-input bg-background transition focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20">
+                                            <span className="flex items-center border-r border-input bg-slate-100 px-3 font-mono text-base font-black tracking-[0.16em] text-brand-700" aria-hidden="true">TK</span>
+                                            <input id="takeer-product-code" value={productCode} onChange={(event) => setProductCode(event.target.value.replace(/\D/g, '').slice(0, 18))} onPaste={(event) => { const digits = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, 18); if (digits) { event.preventDefault(); setProductCode(digits); } }} inputMode="numeric" pattern="[0-9]{5,18}" minLength="5" maxLength="18" required placeholder="12345" className="min-w-0 flex-1 border-0 bg-transparent px-3 font-mono text-base font-black tracking-[0.18em] text-foreground outline-none placeholder:font-normal placeholder:text-muted-foreground" />
+                                        </div>
+                                        <Button type="submit" disabled={busy} className="h-12 shrink-0 sm:min-w-36">
+                                            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageSearch className="mr-2 h-4 w-4" />}
+                                            {copy('Find product', 'Tafuta bidhaa')}
+                                        </Button>
+                                    </div>
+                                </form>
+
+                                <div className="flex items-center gap-3" aria-hidden="true">
+                                    <div className="h-px flex-1 bg-slate-200" />
+                                    <span className="rounded-full bg-slate-100 px-4 py-1 text-xs font-black uppercase tracking-wider text-slate-500">{copy('OR', 'AU')}</span>
+                                    <div className="h-px flex-1 bg-slate-200" />
+                                </div>
+
+                                <form onSubmit={loadPreview} className="space-y-2">
                                 <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5 sm:p-6">
                                     <div className="flex items-start gap-3">
                                         <div className="rounded-xl bg-brand-100 p-2.5 text-brand-700"><Link2 className="h-5 w-5" /></div>
                                         <div>
-                                            <h2 className="text-lg font-black tracking-tight text-slate-950">{copy('Start with the product link', 'Anza na link ya bidhaa')}</h2>
-                                            <p className="mt-1 text-sm font-medium leading-6 text-muted-foreground">{copy('Paste the exact public post, reel, video or listing you want to buy.', 'Bandika post, reel, video au tangazo halisi la bidhaa unalotaka kununua.')}</p>
+                                            <h2 className="text-lg font-black tracking-tight text-slate-950">{copy('Enter a product link from the web', 'Weka link ya bidhaa toka mtandaoni')}</h2>
+                                            <p className="mt-1 text-sm font-medium leading-6 text-muted-foreground">{copy('Paste a public product or listing link from TikTok, Facebook Marketplace, Instagram or any other website.', 'Bandika link ya umma ya bidhaa au tangazo kutoka TikTok, Kupatana, Facebook Marketplace, Instagram au tovuti nyingine yoyote.')}</p>
                                         </div>
                                     </div>
                                     <label className="mt-5 block text-sm font-bold" htmlFor="social-product-link">{copy('Product link', 'Link ya bidhaa')}</label>
                                     <div className="relative mt-2">
                                         <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                        <input id="social-product-link" value={url} onChange={(event) => setUrl(event.target.value)} type="url" required placeholder="https://www.instagram.com/p/..." className={`${inputClass} h-12 pl-10`} />
+                                        <input id="social-product-link" value={url} onChange={(event) => setUrl(event.target.value)} type="url" required placeholder="https://tovuti.com/bidhaa/..." className={`${inputClass} h-12 pl-10`} />
                                     </div>
                                     <p className={`mt-2 text-sm font-medium leading-6 ${supported ? 'text-emerald-700' : 'text-muted-foreground'}`}>
-                                        {supported ? <><CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />{copy('Supported link detected.', 'Link inayokubalika imeonekana.')}</> : copy('Paste a public social-media link. Takeer will identify its source and check whether preview is available.', 'Bandika link ya umma ya mtandao wa kijamii. Takeer itatambua chanzo na kuangalia kama preview inapatikana.')}
+                                        {supported ? <><CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />{copy('Valid web link detected.', 'Link sahihi ya mtandaoni imeonekana.')}</> : copy('Paste any public http:// or https:// product link.', 'Bandika link yoyote ya umma ya bidhaa inayoanza na http:// au https://.')}
                                     </p>
                                     {detectedPlatform.key !== 'other' && <p className="mt-1 text-xs font-bold text-brand-700">{copy(`Source detected: ${detectedPlatform.label}.`, `Chanzo kilichotambuliwa: ${detectedPlatform.label}.`)}</p>}
                                 </div>
@@ -362,7 +428,8 @@ export default function Buy({ enabled = true, entryEnabled = true }) {
                                     {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />}
                                     {busy ? copy('Checking…', 'Inakagua…') : copy('Continue', 'Endelea')}
                                 </Button>
-                            </form>
+                                </form>
+                            </div>
                         )}
 
                         {step === 'details' && (
@@ -449,34 +516,35 @@ export default function Buy({ enabled = true, entryEnabled = true }) {
                                     <div className="flex items-start gap-3">
                                         <div className="rounded-xl bg-white p-2 text-emerald-700 shadow-sm"><CheckCircle2 className="h-5 w-5" /></div>
                                         <div>
-                                            <p className="text-xs font-black uppercase tracking-wider text-emerald-700">{copy('Already available on Takeer', 'Tayari inapatikana Takeer')}</p>
+                                            <p className="text-xs font-black uppercase tracking-wider text-emerald-700">{matchedProduct.lookup_type === 'code' ? copy(`Product found with code ${matchedProduct.product.code}`, `Bidhaa imepatikana kwa namba ${matchedProduct.product.code}`) : copy('Already available on Takeer', 'Tayari inapatikana Takeer')}</p>
                                             <h2 className="mt-1 text-xl font-black tracking-tight">{matchedProduct.product.title}</h2>
                                             <p className="mt-1 text-sm leading-6 text-emerald-800">
-                                                {copy('This social post is already connected to a Takeer product. Continue directly with the normal product checkout.', 'Post hii ya social media tayari imeunganishwa na bidhaa ya Takeer. Endelea moja kwa moja kwenye checkout ya kawaida ya bidhaa.')}
+                                                {matchedProduct.lookup_type === 'code' ? copy('Open the product to review its full details and continue with normal checkout.', 'Fungua bidhaa kuona maelezo yake kamili na kuendelea na checkout ya kawaida.') : copy('This web listing is already connected to a Takeer product. Continue directly with the normal product checkout.', 'Tangazo hili la mtandaoni tayari limeunganishwa na bidhaa ya Takeer. Endelea moja kwa moja kwenye checkout ya kawaida ya bidhaa.')}
                                             </p>
                                         </div>
                                     </div>
                                 </div>
                                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                    <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        {matchedProduct.product.image_url && <img src={matchedProduct.product.image_url} alt={matchedProduct.product.title} className="h-20 w-20 shrink-0 rounded-xl border border-slate-200 object-cover" />}
                                         <div>
                                             <p className="text-sm font-black text-slate-950">{matchedProduct.merchant?.display_name || copy('Verified Takeer seller', 'Seller aliyethibitishwa Takeer')}</p>
                                             {matchedProduct.merchant?.username && <p className="mt-1 text-xs font-semibold text-muted-foreground">@{matchedProduct.merchant.username}</p>}
                                         </div>
-                                        {matchedProduct.product.price !== null && matchedProduct.product.price !== undefined && <p className="font-black text-brand-700">{formatMoney(matchedProduct.product.price)}</p>}
+                                        {matchedProduct.product.price !== null && matchedProduct.product.price !== undefined && <p className="ml-auto shrink-0 font-black text-brand-700">{formatMoney(matchedProduct.product.price)}</p>}
                                     </div>
-                                    <a href={matchedProduct.product.url} className="mt-4 block break-all rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-brand-700 hover:underline">
+                                    <a href={matchedProduct.product.tracking_url || matchedProduct.product.url} className="mt-4 block break-all rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-brand-700 hover:underline">
                                         {matchedProduct.product.url}
                                     </a>
                                     <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                                         <Button asChild className="sm:flex-1">
-                                            <a href={matchedProduct.product.url}>
+                                            <a href={matchedProduct.product.tracking_url || matchedProduct.product.url}>
                                                 <ArrowRight className="mr-2 h-4 w-4" />
                                                 {copy('Open product checkout', 'Fungua checkout ya bidhaa')}
                                             </a>
                                         </Button>
                                         <Button type="button" variant="outline" onClick={() => { setMatchedProduct(null); setStep('link'); }}>
-                                            {copy('Use another link', 'Tumia link nyingine')}
+                                            {copy('Find another product', 'Tafuta bidhaa nyingine')}
                                         </Button>
                                     </div>
                                 </div>
@@ -747,11 +815,11 @@ function detectSocialPlatform(value) {
         if (['pinterest.com', 'pin.it'].includes(hostname)) {
             return { key: 'pinterest', label: 'Pinterest', itemEn: 'Pinterest pin', itemSw: 'pin ya Pinterest' };
         }
+
+        return { key: 'web', label: hostname, itemEn: 'online listing', itemSw: 'tangazo la mtandaoni' };
     } catch {
         return fallback;
     }
-
-    return fallback;
 }
 
 function formatMoney(value) {

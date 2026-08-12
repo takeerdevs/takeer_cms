@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
-import PolicyNotice from '@/Components/PolicyNotice';
 import AddressPickerModal from '@/Components/AddressPickerModal';
 import AutoPostTargetsPanel, { defaultAutoPostTargets } from '@/Components/Merchant/AutoPostTargetsPanel';
 import WholesaleCommerceEditor from '@/Components/Merchant/WholesaleCommerceEditor';
@@ -37,6 +36,7 @@ import ServiceIntakeFormEditor from '@/Components/Merchant/ServiceIntakeFormEdit
 import ServiceLocationAreasEditor from '@/Components/Merchant/ServiceLocationAreasEditor';
 import ServiceRelatedProductsEditor from '@/Components/Merchant/ServiceRelatedProductsEditor';
 import { KNOWN_UPLOAD_MODULE_KEYS, getUploadModuleConfig, publishModuleKey } from '@/lib/uploadModules';
+import { REQUIRED_MERCHANT_DOCUMENT_TYPES } from '@/lib/legalDocuments';
 import { useLocale } from '@/lib/i18n';
 import { hasMerchantPermission } from '@/lib/merchantPermissions';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
@@ -650,6 +650,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const [isLoadingProducts, setIsLoadingProducts] = useState(false);
     const [promotables, setPromotables] = useState({ bundles: [], plans: [] });
     const [promotablesLoading, setPromotablesLoading] = useState(false);
+    const [merchantTermsAccepted, setMerchantTermsAccepted] = useState(false);
+    const [merchantTermsReady, setMerchantTermsReady] = useState(false);
+    const [merchantTermsLoading, setMerchantTermsLoading] = useState(true);
+    const [merchantTermsConsent, setMerchantTermsConsent] = useState(false);
     const [shippingProfiles, setShippingProfiles] = useState([]);
     const [selectedShippingProfileId, setSelectedShippingProfileId] = useState('');
     const [deliveryPromiseOverrideEnabled, setDeliveryPromiseOverrideEnabled] = useState(false);
@@ -1036,6 +1040,68 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         { key: 'location', label: 'Map location' },
     ];
 
+    const fetchMerchantTerms = async () => {
+        if (!currentMerchant?.id) {
+            setMerchantTermsLoading(false);
+            return;
+        }
+
+        setMerchantTermsLoading(true);
+        try {
+            const res = await axios.get('/api/legal/documents', { params: { merchant_id: currentMerchant.id } });
+            const requiredDocuments = (res.data?.documents || []).filter((document) => document.required !== false);
+            setMerchantTermsReady(requiredDocuments.length === REQUIRED_MERCHANT_DOCUMENT_TYPES.length);
+            setMerchantTermsAccepted(
+                requiredDocuments.length === REQUIRED_MERCHANT_DOCUMENT_TYPES.length
+                && requiredDocuments.every((document) => document.accepted)
+            );
+        } catch (error) {
+            console.error('Failed to fetch merchant legal acceptance status', error);
+            setMerchantTermsReady(false);
+            setMerchantTermsAccepted(false);
+        } finally {
+            setMerchantTermsLoading(false);
+        }
+    };
+
+    const merchantTermsDisabledReason = merchantTermsLoading
+        ? copy('Checking merchant terms...', 'Inaangalia masharti ya mfanyabiashara...')
+        : !merchantTermsReady
+            ? copy('Merchant terms are not active yet.', 'Masharti ya mfanyabiashara bado hayajawezeshwa.')
+            : !merchantTermsAccepted && !merchantTermsConsent
+                ? copy('Accept the merchant terms before publishing.', 'Kubali masharti ya mfanyabiashara kabla ya kuchapisha.')
+                : null;
+
+    const merchantTermsConsentNotice = merchantTermsAccepted ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+            {copy('Merchant terms already accepted for this account.', 'Masharti ya mfanyabiashara tayari yamekubaliwa kwa akaunti hii.')}
+        </div>
+    ) : (
+        <div className="space-y-2">
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
+                {copy('By publishing this product, you confirm that you will follow Takeer’s applicable legal, merchant, payment, refund, privacy, and restricted-content rules.', 'Kwa kuchapisha bidhaa hii, unathibitisha kuwa utafuata sheria, masharti na sera za Takeer zinazohusika kuhusu biashara, malipo, marejesho, faragha na content iliyozuiwa.')}{' '}
+                <Link href="/legal" className="font-black underline underline-offset-2">
+                    {copy('Read the Legal Center before continuing.', 'Soma Kituo cha Sheria kabla ya kuendelea.')}
+                </Link>
+            </p>
+            <label className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm ${merchantTermsConsent ? 'border-brand-200 bg-brand-50 text-brand-800' : 'cursor-pointer border-slate-200 bg-white text-slate-700 hover:border-brand-200'}`}>
+                <input
+                    type="checkbox"
+                    checked={merchantTermsConsent}
+                    onChange={(event) => setMerchantTermsConsent(event.target.checked)}
+                    disabled={merchantTermsLoading || !merchantTermsReady}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span>{copy('I have read, understood, and agree to follow the merchant terms before publishing.', 'Nimesoma, nimeelewa, na nakubali kufuata masharti ya mfanyabiashara kabla ya kuchapisha.')}</span>
+            </label>
+            {!merchantTermsLoading && !merchantTermsReady && (
+                <p className="px-1 text-xs font-semibold text-amber-700">
+                    {copy('Merchant terms are not active yet. An administrator must activate them before this product can be published.', 'Masharti ya mfanyabiashara bado hayajawezeshwa. Admin lazima ayawashe kabla ya bidhaa hii kuchapishwa.')}
+                </p>
+            )}
+        </div>
+    );
+
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const editId = params.get('edit');
@@ -1070,6 +1136,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         fetchShippingProfiles();
         fetchReturnPolicies();
         fetchProductCertificates();
+        fetchMerchantTerms();
     }, []);
 
     useEffect(() => {
@@ -3563,6 +3630,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     };
 
     const publishProduct = async () => {
+        if (merchantTermsDisabledReason) {
+            toast.error(merchantTermsDisabledReason);
+            return;
+        }
+
         const serviceNeedsCatalogPrice = step === 'service' && (
             ['pay_now', 'book_appointment'].includes(serviceMode)
             && !['hidden', 'quote_only'].includes(servicePriceDisplay)
@@ -3789,6 +3861,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             const mediaPayload = buildMediaPayload();
             const res = await axios.post(`/merchant/${merchantUsername}/upload/publish`, {
                 ...mediaPayload,
+                accept_merchant_terms: !merchantTermsAccepted && merchantTermsConsent,
                 type: productType,
                 module_key: publishModuleKey(uploadModule, step),
                 module_details: uploadModule === 'menu' && step === 'physical' ? {
@@ -4451,7 +4524,6 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         </div>
                     </div>
 
-                    <PolicyNotice />
                 </div>
             </AppLayout>
         );
@@ -4526,7 +4598,6 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             Re-enable this card when service-provider onboarding is ready. */}
                     </div>
 
-                    <PolicyNotice />
                 </div>
             </AppLayout>
         );
@@ -5293,6 +5364,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 shippingProfiles={shippingProfiles}
                                                 selectedShippingProfileId={selectedShippingProfileId}
                                                 setSelectedShippingProfileId={setSelectedShippingProfileId}
+                                                termsConsent={merchantTermsConsentNotice}
+                                                termsDisabledReason={merchantTermsDisabledReason}
                                                 onPublish={publishProduct}
                                                 disabledReason={physicalPublishDisabledReason}
                                             />
@@ -5351,6 +5424,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 setSelectedShippingProfileId={setSelectedShippingProfileId}
                                                 deliveryPromiseOverride={renderDeliveryPromiseOverride()}
                                                 faqEditor={renderProductFaqEditor()}
+                                                termsConsent={merchantTermsConsentNotice}
+                                                termsDisabledReason={merchantTermsDisabledReason}
                                                 onPublish={publishProduct}
                                                 disabledReason={physicalPublishDisabledReason}
                                             >
@@ -5480,6 +5555,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 setSelectedShippingProfileId={setSelectedShippingProfileId}
                                                 deliveryPromiseOverride={renderDeliveryPromiseOverride()}
                                                 faqEditor={renderProductFaqEditor()}
+                                                termsConsent={merchantTermsConsentNotice}
+                                                termsDisabledReason={merchantTermsDisabledReason}
                                                 onPublish={publishProduct}
                                                 disabledReason={physicalPublishDisabledReason}
                                             />
@@ -7378,9 +7455,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                             <AutoPostTargetsPanel value={autoPostTargets} onChange={setAutoPostTargets} />
 
+                            {merchantTermsConsentNotice}
+
                             <Button
                                 onClick={publishProduct}
-                                disabled={images.some(img => img.isUploading) || isUploadingProductDetailSectionImage || (digitalDeliveryMode === 'upload' && digitalFile?.isUploading) || (digitalDeliveryMode === 'video_stream' && paidVideoFile?.isUploading) || (digitalDeliveryMode === 'audio_stream' && paidAudioFile?.isUploading) || (digitalDeliveryMode === 'gallery_pack' && paidGalleryItems.some(item => item.isUploading))}
+                                disabled={Boolean(merchantTermsDisabledReason) || images.some(img => img.isUploading) || isUploadingProductDetailSectionImage || (digitalDeliveryMode === 'upload' && digitalFile?.isUploading) || (digitalDeliveryMode === 'video_stream' && paidVideoFile?.isUploading) || (digitalDeliveryMode === 'audio_stream' && paidAudioFile?.isUploading) || (digitalDeliveryMode === 'gallery_pack' && paidGalleryItems.some(item => item.isUploading))}
                                 className={`w-full h-14 text-lg font-bold text-white rounded-2xl shadow-xl transition-all transform active:scale-95 ${step === 'digital' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20' : 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/20'}`}
                             >
                                 {copy('Publish to shop now', 'Weka sokoni sasa')} <ChevronRight className="ml-2 h-5 w-5" />
@@ -7690,7 +7769,6 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     })}
                 />
 
-                <PolicyNotice />
             </div>
         </AppLayout>
     );
